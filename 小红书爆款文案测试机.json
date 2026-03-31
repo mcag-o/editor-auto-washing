@@ -1,0 +1,473 @@
+{
+  "name": "小红书爆款文案测试机",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "message": "={{ $input.item.json.output[0].content[0].text }}\n请给出回答才能继续\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1.3,
+      "position": [
+        -80,
+        -352
+      ],
+      "id": "6ad668b6-1dc8-4b5d-97d6-a4ba8b6c4453",
+      "name": "Chat1",
+      "webhookId": "79606556-9a79-4c04-87b6-02ca399b81b1"
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "message": "={{ $input.item.json.output[0].content[0].text }}\n请给出回答才能继续\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1.3,
+      "position": [
+        496,
+        -352
+      ],
+      "id": "1bfc0830-2ec9-45b7-87d7-e70406201295",
+      "name": "Chat2",
+      "webhookId": "79606556-9a79-4c04-87b6-02ca399b81b1"
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "message": "={{ $input.item.json.output[0].content[0].text }}\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1.3,
+      "position": [
+        1072,
+        -352
+      ],
+      "id": "14d251ad-3fda-47d0-86c5-d8ceb19bb008",
+      "name": "Chat3",
+      "webhookId": "79606556-9a79-4c04-87b6-02ca399b81b1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://nekomemo.mtf.org.uk/api/v1/memos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n    \"state\": \"NORMAL\",\n    \"content\":\"{{ $input.item.json.output[0].content[0].text }}\",\n    \"visibility\": \"PRIVATE\",\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2000,
+        -352
+      ],
+      "id": "0fca1856-d66d-47ef-92b2-2382059e8f8e",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "ZD2QWrQXqrK1dkvt",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "message": "={{ $input.item.json.output[0].content[0].text }}\n\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1.3,
+      "position": [
+        -656,
+        -352
+      ],
+      "id": "a66c7b78-4a49-4c0c-a729-b19d7b6aadff",
+      "name": "Chat",
+      "webhookId": "79606556-9a79-4c04-87b6-02ca399b81b1"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "qwen3.5-flash",
+          "mode": "list",
+          "cachedResultName": "QWEN3.5-FLASH"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "你现在是「小红书爆款文案编辑」，擅长写爆款种草笔记。 目标：帮我从零开始，为【产品名】设计小红书的标题方案、文案结构模板，并最终生成可直接发布的一篇完整种草笔记。请严格按下面的步骤循序推进，每完成一步一定要停下来等我确认或补充，再进行下一步。 【产品基础信息】： 产品名称：【产品名】（例如：北欧风加厚绒毛毯） 品类：【品类】（例如：家居 / 护肤 / 零食…） 目标人群：【人群特征】（例如：25-35 岁注重生活品质的上班族女生） 价格区间：【价格】（例如：199-399 元） 核心卖点大概方向：【卖点方向】（例如：超柔软、超保暖、颜值高、好搭配…） 如果这些信息不够，请你先主动向我提问补充。 "
+            },
+            {
+              "content": "={{ $input.item.json.chatInput}}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -1008,
+        -352
+      ],
+      "id": "daa39830-fd14-46eb-9db1-a6a701b10f73",
+      "name": "文案1",
+      "credentials": {
+        "openAiApi": {
+          "id": "N9C20eW9ldIA6atG",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "qwen3.5-flash",
+          "mode": "list",
+          "cachedResultName": "QWEN3.5-FLASH"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "——— 第 1 步：搞清楚产品画像 ——— 你先用 5–10 个问题，帮我把产品、人群、使用场景、竞品、顾客痛点等问清楚。 我回答后，你把所有关键信息整理成一段「产品画像说明」，内容包括：  这个产品是什么？ 卖给谁？她/他的典型生活状态、追求是什么？ 他们在这个品类上常见的痛点/困扰有哪些？ 我的产品能提供的核心价值是什么？ 输出格式用小标题+短句列表，让我一眼看懂。 输出完后停下，问我：「产品画像是否准确？是否需要补充或修改？」"
+            },
+            {
+              "content": "={{ $input.item.json.chatInput}}"
+            },
+            {
+              "content": "={{ $('文案1').item.json.output[0].content[0].text }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -432,
+        -352
+      ],
+      "id": "65e4cb48-fa69-4f39-89dd-9e98e035715f",
+      "name": "画像",
+      "credentials": {
+        "openAiApi": {
+          "id": "N9C20eW9ldIA6atG",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "deepseek-v3.2",
+          "mode": "list",
+          "cachedResultName": "DEEPSEEK-V3.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "在我确认「产品画像」之后，再进行这一步。 参考产品画像，为小红书种草笔记设计一个「标题策略表」。 表格列包含：  序号 技巧名称（如：引人入胜的修辞 / 热门关键词 / 创造价值 / 情绪化语言 / 节日主题 / 解决问题 等） 具体技巧说明（1–2 句说明这个技巧怎么用） 示例标题（每个技巧给 1 个示例） 在表格下面，再额外给出 10 个适合本产品的候选标题：  每个标题 18–26 字 融入 Emoji 口语化、符合小红书年轻女性语气 输出完后停下，让我从中选出 1–3 个最喜欢的标题，并记录下来作为后续写文案的备选标题。"
+            },
+            {
+              "content": "={{ $input.item.json.chatInput}}"
+            },
+            {
+              "content": "={{ $('画像').item.json.output[0].content[0].text }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        144,
+        -352
+      ],
+      "id": "51d32ad8-c4a9-491e-bf81-ce0c8c02721a",
+      "name": "标题策略",
+      "credentials": {
+        "openAiApi": {
+          "id": "N9C20eW9ldIA6atG",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "deepseek-v3.2",
+          "mode": "list",
+          "cachedResultName": "DEEPSEEK-V3.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "第 3 步：设计文案结构模板 ——— 在我选好标题后再进行。 请为本产品设计至少 4 种小红书种草文案结构，包含但不限于：  问题解决型（提出问题 → 描述困扰 → 引出产品 → 使用体验 → 总结推荐） 故事型（背景介绍 → 具体故事情节 → 转折/惊喜 → 总结产品价值） 专家推荐型（专家/朋友身份介绍 → 专业观点 → 推荐产品 → 使用效果） 对比型（对比以前或其它产品 → 说出差异 → 说明我为什么选择现在这款） 请以表格形式输出：  序号 结构名称 结构拆解（分点写：开头要做什么、中间如何展开、结尾如何收束） 通用模板句（每一部分各给 1–2 句示例话术） 文案开头两句示例（针对我选的标题，写出示范开头） 输出后停下，提示我：「请从中选一个最适合你现在想写的结构。」等我选择。"
+            },
+            {
+              "content": "={{ $input.item.json.chatInput}}"
+            },
+            {
+              "content": "={{ $('标题策略').item.json.output[0].content[0].text }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        720,
+        -352
+      ],
+      "id": "ddeeda9e-30fe-434f-866c-6727dbc74d91",
+      "name": "文案结构",
+      "credentials": {
+        "openAiApi": {
+          "id": "N9C20eW9ldIA6atG",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "qwen3.5-plus",
+          "mode": "list",
+          "cachedResultName": "QWEN3.5-PLUS"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": " 第 4 步：生成完整小红书爆款文案 ——— 当我告诉你「选定的标题」和「选定的结构名称」后，再写完整文案。 根据选定标题 + 选定文案结构，写一篇完整的小红书种草笔记。 要求：  字数 600–800 字 用第一人称口吻，像真实博主在分享生活 开头 2–3 句要迅速共情目标人群的痛点或情绪 中间写清楚：使用场景、产品卖点、具体细节体验（触感/味道/效果/搭配等） 适当穿插 Emoji，保持阅读节奏轻快 结尾加入轻柔的行动号召（如：收藏、点赞、评论提问、种草等） 文风整体偏「真实分享+治愈/走心」，避免夸张绝对化词汇。 输出完后，主动给出 2–3 条可以继续优化的方向建议（比如：需要缩短到 400 字版、需要走搞笑风、需要增加专业感等），并询问我下一步想怎么调整。"
+            },
+            {
+              "content": "={{ $input.item.json.chatInput}}"
+            },
+            {
+              "content": "={{ $('文案结构').item.json.output[0].content[0].text }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        1296,
+        -352
+      ],
+      "id": "279b3b33-0c3e-4000-9225-645a572bbda1",
+      "name": "写作文案",
+      "credentials": {
+        "openAiApi": {
+          "id": "N9C20eW9ldIA6atG",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "qwen3.5-plus",
+          "mode": "list",
+          "cachedResultName": "QWEN3.5-PLUS"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=你现在是一个有10年写作经验的资深编辑，把下面这段AI生成的文字改写成非常自然的真人风格：\n保留所有事实、数据、专业术语不变\n故意用不规则句式、口语化连接词、少量语气词\n增加一点个人情感色彩或轻微跑题过渡（像真人写文章会有的）\n避免排比、对偶、过于工整的结构\n输出只给改写后的完整文本，不要解释 原文：{{ $input.item.json.output[0].content[0].text }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        1648,
+        -352
+      ],
+      "id": "07223df4-d3be-4f78-a09a-72433b2c249c",
+      "name": "降低ai率",
+      "notesInFlow": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "N9C20eW9ldIA6atG",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseMode": "responseNodes"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -1232,
+        -352
+      ],
+      "id": "156273c5-8772-4497-98b9-11ca085d5733",
+      "name": "When chat message received",
+      "webhookId": "1959bcf5-ce59-437f-8f15-cf6b8461859e"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat1": {
+      "main": [
+        [
+          {
+            "node": "标题策略",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat2": {
+      "main": [
+        [
+          {
+            "node": "文案结构",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat3": {
+      "main": [
+        [
+          {
+            "node": "写作文案",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat": {
+      "main": [
+        [
+          {
+            "node": "画像",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "文案1": {
+      "main": [
+        [
+          {
+            "node": "Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "画像": {
+      "main": [
+        [
+          {
+            "node": "Chat1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "标题策略": {
+      "main": [
+        [
+          {
+            "node": "Chat2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "文案结构": {
+      "main": [
+        [
+          {
+            "node": "Chat3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "写作文案": {
+      "main": [
+        [
+          {
+            "node": "降低ai率",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "降低ai率": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "文案1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d5af7013-c10a-4851-a9d7-7d06206624e7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e85e81afbd4a17dd09630e637dcf16dd51dcfa2d4acfcfe1b3a70a5b4984df71"
+  },
+  "id": "yE5g15ahsgaHg695",
+  "tags": []
+}
