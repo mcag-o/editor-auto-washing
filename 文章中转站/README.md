@@ -153,6 +153,21 @@
 
 这使得模板库从“目录里的 HTML 文件集合”变成了可查询、可管理的模板资产层。
 
+### 3.6.1 结构化文章模板与格式化子模块
+
+当前 `文章中转站/` 已经吸收了原结构化文章工具的核心能力，并在中站内部形成独立的 formatting 子模块，当前已包含：
+
+- `ArticleDraft`
+- `RenderedAsset`
+- `ReviewTask`
+- `FormattingService`
+- 微信 HTML formatter
+- 结构化模板目录 `knowledge/structured_templates/`
+- 审核后发布门槛
+- Python CLI：`content_hub.interfaces.cli`
+
+这意味着结构化文章的当前主入口已经切换到 `文章中转站/`。
+
 ### 3.7 Ingestion 子系统
 
 当前平台接收层已经有三条最小输入通道：
@@ -198,8 +213,12 @@
   - 当前 extracted runtime 的测试
 - `文章中转站/knowledge/templates/`
   - 模板资产库
+- `文章中转站/knowledge/structured_templates/`
+  - 已并入中站的结构化文章模板资源
 - `文章中转站/main.py`
   - 独立启动入口
+- `文章中转站/examples/`
+  - 当前主线结构化文章示例输入
 - `文章中转站/requirements.txt`
   - 依赖清单
 - `文章中转站/pyproject.toml`
@@ -240,6 +259,24 @@ python3 "文章中转站/main.py"
 ```bash
 PYTHONPATH="文章中转站/src" python3 -m unittest discover -s "文章中转站/tests/content_hub" -p "test_*.py"
 ```
+
+### 5.5 运行结构化文章 CLI
+
+当前推荐使用 `文章中转站` 内的 Python CLI 来完成结构化文章渲染、校验和 dry-run pipeline：
+
+```bash
+PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli render "文章中转站/examples/article.sample.json" -o "文章中转站/.tmp/article.html" --check --template-root "文章中转站/knowledge/structured_templates"
+```
+
+```bash
+PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli validate "文章中转站/examples/article.sample.json" --template-root "文章中转站/knowledge/structured_templates"
+```
+
+```bash
+PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli pipeline "文章中转站/examples/article.sample.json" --output-dir "文章中转站/.tmp/build" --dry-run --template-root "文章中转站/knowledge/structured_templates"
+```
+
+如果你是从旧的结构化文章工具迁移过来的，当前应默认使用这里的 Python CLI 和 `examples/article.sample.json` 作为主线入口。
 
 ---
 

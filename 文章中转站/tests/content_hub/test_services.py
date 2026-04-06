@@ -3,14 +3,23 @@ import tempfile
 import unittest
 
 from content_hub.application.services.config_service import ConfigService
+from content_hub.application.formatting.formatting_service import FormattingService
+from content_hub.application.formatting.registry import FormatterRegistry
+from content_hub.application.formatting.review_service import ReviewService
 from content_hub.application.services.content_service import ContentService
+from content_hub.application.formatting.publish_gate_service import PublishGateService
 from content_hub.application.publishers.record_only_publisher import RecordOnlyPublisher
 from content_hub.application.services.publish_service import PublishService
 from content_hub.application.services.template_service import TemplateService
 from content_hub.application.services.workflow_service import WorkflowService
+from content_hub.bootstrap.container import build_container
 from content_hub.bootstrap.settings import HubSettings, LLMSettings, PublishSettings, RewriteSettings, StorageSettings, TemplateSettings, WeChatCredential, WorkflowSettings
+from content_hub.domain.formatting.models import ArticleDraft, FormatTarget, RenderedAsset, ReviewTask
+from content_hub.infrastructure.formatters.base import BaseFormatter
 from content_hub.infrastructure.storage.article_repository import FileArticleRepository
 from content_hub.infrastructure.storage.publish_record_repository import FilePublishRecordRepository
+from content_hub.infrastructure.storage.rendered_asset_repository import FileRenderedAssetRepository
+from content_hub.infrastructure.storage.review_task_repository import FileReviewTaskRepository
 from content_hub.infrastructure.storage.template_repository import FileTemplateRepository
 from content_hub.runtime.nodes.creative import CreativeEnhancementNode
 from content_hub.runtime.nodes.generation import StaticGenerationNode
@@ -21,6 +30,22 @@ from content_hub.runtime.nodes.rewrite import SuffixRewriteNode
 
 
 class ServiceTestCase(unittest.TestCase):
+    class _StubFormatter(BaseFormatter):
+        def validate(self, article: ArticleDraft, target: FormatTarget) -> list[str]:
+            return []
+
+        def render(self, article: ArticleDraft, target: FormatTarget) -> RenderedAsset:
+            return RenderedAsset(
+                asset_id=f"{article.article_id}-{target.platform}",
+                article_id=article.article_id,
+                platform=target.platform,
+                output_format=target.output_format,
+                template=target.template,
+                content=f"{article.meta['title']}::{target.platform}",
+                artifact_path=None,
+                warnings=[],
+            )
+
     def test_config_service_reads_legacy_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_root = Path(tmp_dir)
@@ -165,6 +190,93 @@ dimensional_creative:
             self.assertIn("创意增强", result.document.body)
             self.assertTrue(result.artifact_path is not None)
             self.assertEqual(result.publish_results[0].platform, "wechat")
+
+    def test_review_service_creates_and_approves_review_tasks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repository = FileReviewTaskRepository(Path(tmp_dir) / "review_tasks.json")
+            service = ReviewService(repository)
+
+            review = service.create_review(article_id="article-1", asset_ids=["asset-1", "asset-2"], reviewer="alice", notes="check wechat")
+            approved = service.approve_review(review.review_id, reviewer="bob", notes="ok")
+
+            self.assertEqual(review.status, "review_pending")
+            self.assertEqual(approved.status, "approved")
+            self.assertEqual(approved.reviewer, "bob")
+
+    def test_publish_gate_service_blocks_unapproved_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            record_repository = FilePublishRecordRepository(Path(tmp_dir) / "publish_records.json")
+            publish_service = PublishService(
+                record_repository,
+                {"wechat": RecordOnlyPublisher(record_repository)},
+            )
+            gate = PublishGateService(publish_service)
+            asset = RenderedAsset(
+                asset_id="asset-1",
+                article_id="article-1",
+                platform="wechat",
+                output_format="html",
+                template="daily-intelligence",
+                content="<html>ok</html>",
+                artifact_path=None,
+                warnings=[],
+            )
+            review = ReviewTask(review_id="review-1", article_id="article-1", asset_ids=["asset-1"], status="review_pending")
+
+            with self.assertRaises(ValueError):
+                gate.publish_reviewed_assets(review, [asset], article_title="AI 日报")
+
+    def test_formatting_service_and_publish_gate_can_publish_approved_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            registry = FormatterRegistry()
+            registry.register("wechat", "html", self._StubFormatter())
+            rendered_asset_repository = FileRenderedAssetRepository(tmp_path / "rendered_assets.json")
+            formatting_service = FormattingService(registry, rendered_asset_repository)
+            review_service = ReviewService(FileReviewTaskRepository(tmp_path / "review_tasks.json"))
+            record_repository = FilePublishRecordRepository(tmp_path / "publish_records.json")
+            publish_service = PublishService(record_repository, {"wechat": RecordOnlyPublisher(record_repository)})
+            gate = PublishGateService(publish_service)
+
+            article = ArticleDraft(
+                article_id="article-1",
+                template="daily-intelligence",
+                meta={"title": "AI 日报", "digest": "摘要", "author": "editor"},
+                headline={"title": "头条", "body": ["第一段"]},
+                sections=[],
+                conclusion="结论",
+                cta="行动",
+                source_refs=[],
+                target_platforms=["wechat"],
+            )
+            assets = formatting_service.format_article(article, [FormatTarget(platform="wechat", template="daily-intelligence", output_format="html")])
+            review = review_service.create_review(article_id=article.article_id, asset_ids=[assets[0].asset_id])
+            review = review_service.approve_review(review.review_id)
+
+            results = gate.publish_reviewed_assets(review, assets, article_title="AI 日报")
+
+            self.assertEqual(len(results), 1)
+            self.assertTrue(results[0].success)
+            self.assertEqual(results[0].platform, "wechat")
+            self.assertEqual(publish_service.get_history("AI 日报")[0]["platform"], "wechat")
+
+    def test_container_registers_wechat_formatter_with_structured_templates(self) -> None:
+        project_root = Path(__file__).resolve().parents[3]
+        settings = HubSettings(
+            llm=LLMSettings(provider="stub", model="stub-model"),
+            workflow=WorkflowSettings(publish_platform="record-only", article_format="markdown", auto_publish=False),
+            rewrite=RewriteSettings(enabled=False),
+            template=TemplateSettings(root_dir=project_root / "文章中转站" / "knowledge" / "templates"),
+            storage=StorageSettings(root_dir=project_root / "文章中转站" / ".tmp-test-storage"),
+            publish=PublishSettings(),
+        )
+        container = build_container(project_root, settings)
+
+        formatter = container.formatting_service.registry.get("wechat", "html")
+
+        self.assertIsNotNone(formatter)
+        self.assertIn("daily-intelligence", formatter.template_catalog.list_templates())
+        self.assertIn("studio-brief", formatter.template_catalog.list_templates())
 
 
 if __name__ == "__main__":

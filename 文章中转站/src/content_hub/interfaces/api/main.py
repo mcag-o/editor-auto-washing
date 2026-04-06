@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from content_hub.bootstrap.container import build_container
+from content_hub.domain.formatting.models import FormatTarget
 
 
 class CreateContentRequest(BaseModel):
@@ -67,10 +68,50 @@ class SubmitHotTopicsRequest(BaseModel):
     items: list[dict]
 
 
-def create_app() -> FastAPI:
+class CreateDraftRequest(BaseModel):
+    template: str
+    meta: dict
+    headline: dict
+    sections: list[dict]
+    conclusion: str = ""
+    cta: str = ""
+    source_refs: list[dict] = []
+    target_platforms: list[str] = []
+
+
+class RenderTargetRequest(BaseModel):
+    platform: str
+    template: str
+    output_format: str
+    variant: str = "default"
+
+
+class RenderArticleRequest(BaseModel):
+    article_id: str
+    targets: list[RenderTargetRequest]
+
+
+class CreateReviewRequest(BaseModel):
+    article_id: str
+    asset_ids: list[str]
+    reviewer: str = ""
+    notes: str = ""
+
+
+class ReviewDecisionRequest(BaseModel):
+    reviewer: str = ""
+    notes: str = ""
+
+
+class PublishReviewRequest(BaseModel):
+    article_title: str = ""
+    account_info: dict | None = None
+
+
+def create_app(project_root: Path | None = None, settings_override=None) -> FastAPI:
     app = FastAPI(title="Content Hub API", version="0.1.0")
-    project_root = Path(__file__).resolve().parents[4]
-    container = build_container(project_root)
+    resolved_project_root = project_root or Path(__file__).resolve().parents[4]
+    container = build_container(resolved_project_root, settings_override)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -112,7 +153,7 @@ def create_app() -> FastAPI:
             container.settings.rewrite.enabled = request.rewrite.get(
                 "enabled", container.settings.rewrite.enabled
             )
-        config_path = project_root / "文章中转站" / "config.generated.yaml"
+        config_path = resolved_project_root / "文章中转站" / "config.generated.yaml"
         container.config_service.save_hub_settings(container.settings, config_path)
         return {"saved_to": str(config_path)}
 
@@ -246,6 +287,154 @@ def create_app() -> FastAPI:
             return {"data": container.publish_service.get_history(article_title)}
         return {"data": container.publish_service.list_records()}
 
+    @app.post("/drafts")
+    async def create_draft(request: CreateDraftRequest) -> dict:
+        draft = container.draft_service.create_draft(
+            template=request.template,
+            meta=request.meta,
+            headline=request.headline,
+            sections=request.sections,
+            conclusion=request.conclusion,
+            cta=request.cta,
+            source_refs=request.source_refs,
+            target_platforms=request.target_platforms,
+        )
+        return {"article_id": draft.article_id, "status": draft.status, "template": draft.template}
+
+    @app.get("/drafts/{article_id}")
+    async def get_draft(article_id: str) -> dict:
+        draft = container.draft_service.get_draft(article_id)
+        if draft is None:
+            return {"article_id": article_id, "status": "missing"}
+        return {
+            "article_id": draft.article_id,
+            "template": draft.template,
+            "meta": draft.meta,
+            "headline": draft.headline,
+            "sections": draft.sections,
+            "conclusion": draft.conclusion,
+            "cta": draft.cta,
+            "source_refs": draft.source_refs,
+            "target_platforms": draft.target_platforms,
+            "status": draft.status,
+        }
+
+    @app.post("/formatting/render")
+    async def render_article(request: RenderArticleRequest) -> dict:
+        draft = container.draft_service.get_draft(request.article_id)
+        if draft is None:
+            return {"article_id": request.article_id, "status": "missing"}
+        assets = container.formatting_service.format_article(
+            draft,
+            [
+                FormatTarget(
+                    platform=target.platform,
+                    template=target.template,
+                    output_format=target.output_format,
+                    variant=target.variant,
+                )
+                for target in request.targets
+            ],
+        )
+        return {
+            "article_id": draft.article_id,
+            "assets": [
+                {
+                    "asset_id": asset.asset_id,
+                    "platform": asset.platform,
+                    "output_format": asset.output_format,
+                    "template": asset.template,
+                    "status": asset.status,
+                }
+                for asset in assets
+            ],
+        }
+
+    @app.get("/formatting/assets")
+    async def list_rendered_assets(article_id: str | None = None, platform: str | None = None) -> dict:
+        assets = container.formatting_service.list_assets(article_id=article_id, platform=platform)
+        return {
+            "data": [
+                {
+                    "asset_id": asset.asset_id,
+                    "article_id": asset.article_id,
+                    "platform": asset.platform,
+                    "output_format": asset.output_format,
+                    "template": asset.template,
+                    "status": asset.status,
+                }
+                for asset in assets
+            ]
+        }
+
+    @app.get("/formatting/assets/{asset_id}")
+    async def get_rendered_asset(asset_id: str) -> dict:
+        asset = container.formatting_service.get_asset(asset_id)
+        if asset is None:
+            return {"asset_id": asset_id, "status": "missing"}
+        return {
+            "asset_id": asset.asset_id,
+            "article_id": asset.article_id,
+            "platform": asset.platform,
+            "output_format": asset.output_format,
+            "template": asset.template,
+            "content": asset.content,
+            "warnings": asset.warnings,
+            "status": asset.status,
+        }
+
+    @app.post("/reviews")
+    async def create_review(request: CreateReviewRequest) -> dict:
+        review = container.review_service.create_review(
+            article_id=request.article_id,
+            asset_ids=request.asset_ids,
+            reviewer=request.reviewer,
+            notes=request.notes,
+        )
+        return {"review_id": review.review_id, "status": review.status, "asset_ids": review.asset_ids}
+
+    @app.post("/reviews/{review_id}/approve")
+    async def approve_review(review_id: str, request: ReviewDecisionRequest) -> dict:
+        review = container.review_service.approve_review(review_id, reviewer=request.reviewer, notes=request.notes)
+        return {"review_id": review.review_id, "status": review.status, "reviewer": review.reviewer}
+
+    @app.post("/reviews/{review_id}/reject")
+    async def reject_review(review_id: str, request: ReviewDecisionRequest) -> dict:
+        review = container.review_service.reject_review(review_id, reviewer=request.reviewer, notes=request.notes)
+        return {"review_id": review.review_id, "status": review.status, "reviewer": review.reviewer}
+
+    @app.post("/reviews/{review_id}/publish")
+    async def publish_review(review_id: str, request: PublishReviewRequest) -> dict:
+        review = container.review_service.get_review(review_id)
+        if review is None:
+            return {"review_id": review_id, "status": "missing"}
+        assets = [
+            asset
+            for asset_id in review.asset_ids
+            for asset in [container.formatting_service.get_asset(asset_id)]
+            if asset is not None
+        ]
+        article_title = request.article_title or review.article_id
+        results = container.publish_gate_service.publish_reviewed_assets(
+            review,
+            assets,
+            article_title=article_title,
+            account_info=request.account_info,
+        )
+        return {
+            "review_id": review.review_id,
+            "status": review.status,
+            "results": [
+                {
+                    "platform": result.platform,
+                    "success": result.success,
+                    "message": result.message,
+                    "metadata": result.metadata,
+                }
+                for result in results
+            ],
+        }
+
     @app.post("/ingestion/reference-urls")
     async def submit_reference_urls(request: SubmitReferenceUrlsRequest) -> dict:
         return container.ingestion_service.submit_reference_urls(request.urls)
@@ -333,6 +522,7 @@ def create_app() -> FastAPI:
         }
 
     return app
-
-
-app = create_app()
+try:
+    app = create_app()
+except FileNotFoundError:  # pragma: no cover - runtime environment may not have legacy config
+    app = FastAPI(title="Content Hub API", version="0.1.0")

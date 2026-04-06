@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 content_hub_api = "content_hub.interfaces.api.main:create_app"
+content_hub_cli = "content_hub.interfaces.cli:main"
 
 [build-system]
 requires = ["hatchling"]
