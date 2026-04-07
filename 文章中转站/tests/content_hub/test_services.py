@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 from content_hub.application.services.config_service import ConfigService
+from content_hub.application.formatting.draft_service import DraftService
 from content_hub.application.formatting.formatting_service import FormattingService
 from content_hub.application.formatting.registry import FormatterRegistry
 from content_hub.application.formatting.review_service import ReviewService
@@ -17,6 +18,7 @@ from content_hub.bootstrap.settings import HubSettings, LLMSettings, PublishSett
 from content_hub.domain.formatting.models import ArticleDraft, FormatTarget, RenderedAsset, ReviewTask
 from content_hub.infrastructure.formatters.base import BaseFormatter
 from content_hub.infrastructure.storage.article_repository import FileArticleRepository
+from content_hub.infrastructure.storage.article_draft_repository import FileArticleDraftRepository
 from content_hub.infrastructure.storage.publish_record_repository import FilePublishRecordRepository
 from content_hub.infrastructure.storage.rendered_asset_repository import FileRenderedAssetRepository
 from content_hub.infrastructure.storage.review_task_repository import FileReviewTaskRepository
@@ -203,6 +205,55 @@ dimensional_creative:
             self.assertEqual(approved.status, "approved")
             self.assertEqual(approved.reviewer, "bob")
 
+    def test_draft_and_review_services_carry_profile_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            draft_service = DraftService(FileArticleDraftRepository(tmp_path / "article_drafts.json"))
+            review_service = ReviewService(FileReviewTaskRepository(tmp_path / "review_tasks.json"))
+
+            draft = draft_service.create_draft(
+                template="daily-intelligence",
+                meta={"title": "AI 日报", "digest": "摘要", "author": "editor"},
+                headline={"title": "头条", "body": ["第一段"]},
+                sections=[],
+                conclusion="结论",
+                cta="行动",
+                provider_profile="default",
+                article_profile="wechat-daily",
+                publish_profile="wechat-review",
+            )
+            review = review_service.create_review(
+                article_id=draft.article_id,
+                asset_ids=["asset-1"],
+                publish_profile="wechat-review",
+            )
+
+            self.assertEqual(draft.provider_profile, "default")
+            self.assertEqual(draft.article_profile, "wechat-daily")
+            self.assertEqual(draft.publish_profile, "wechat-review")
+            self.assertEqual(review.publish_profile, "wechat-review")
+
+    def test_publish_gate_precheck_uses_publish_profile_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            record_repository = FilePublishRecordRepository(Path(tmp_dir) / "publish_records.json")
+            publish_service = PublishService(record_repository, {"wechat": RecordOnlyPublisher(record_repository)})
+            gate = PublishGateService(publish_service)
+
+            allowed = gate.precheck_auto_publish(
+                publish_profile="wechat-auto",
+                allowed_profiles={"wechat-auto"},
+                review_status="approved",
+            )
+            blocked = gate.precheck_auto_publish(
+                publish_profile="wechat-review",
+                allowed_profiles={"wechat-auto"},
+                review_status="approved",
+            )
+
+            self.assertTrue(allowed["ok"])
+            self.assertFalse(blocked["ok"])
+            self.assertEqual(blocked["reason"], "profile_not_allowed")
+
     def test_publish_gate_service_blocks_unapproved_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             record_repository = FilePublishRecordRepository(Path(tmp_dir) / "publish_records.json")
@@ -277,6 +328,21 @@ dimensional_creative:
         self.assertIsNotNone(formatter)
         self.assertIn("daily-intelligence", formatter.template_catalog.list_templates())
         self.assertIn("studio-brief", formatter.template_catalog.list_templates())
+
+    def test_container_exposes_workspace_article_service(self) -> None:
+        project_root = Path(__file__).resolve().parents[3]
+        settings = HubSettings(
+            llm=LLMSettings(provider="stub", model="stub-model"),
+            workflow=WorkflowSettings(publish_platform="record-only", article_format="markdown", auto_publish=False),
+            rewrite=RewriteSettings(enabled=False),
+            template=TemplateSettings(root_dir=project_root / "文章中转站" / "knowledge" / "templates"),
+            storage=StorageSettings(root_dir=project_root / "文章中转站" / ".tmp-test-storage"),
+            publish=PublishSettings(),
+        )
+
+        container = build_container(project_root, settings)
+
+        self.assertIsNotNone(container.workspace_article_service)
 
 
 if __name__ == "__main__":

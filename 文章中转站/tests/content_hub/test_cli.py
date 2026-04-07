@@ -128,6 +128,53 @@ class ContentHubCliTestCase(unittest.TestCase):
             self.assertIn('"html"', result.stdout)
             self.assertIn('"resolved_article"', result.stdout)
 
+    def test_ingestion_import_bundle_command_prints_summary_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            bundle_path = tmp_path / "bundle.json"
+            bundle_path.write_text(
+                json.dumps(
+                    {
+                        "items": [
+                            {"url": "https://example.com/1", "title": "Topic 1"},
+                            {"url": "https://example.com/2", "title": "Topic 2"},
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    "-m",
+                    "content_hub.interfaces.cli",
+                    "ingestion",
+                    "import-bundle",
+                    str(bundle_path),
+                    "--provider-profile",
+                    "provider-default",
+                    "--article-profile",
+                    "article-default",
+                    "--publish-profile",
+                    "publish-default",
+                    "--project-root",
+                    str(tmp_path),
+                ],
+                cwd=Path(__file__).resolve().parents[3],
+                env={"PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src")},
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["imported_count"], 2)
+            self.assertEqual(payload["skipped_count"], 0)
+            self.assertEqual(len(payload["created_article_ids"]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -35,6 +35,11 @@ class ApiStructureTestCase(unittest.TestCase):
         self.assertIn('@app.post("/jobs")', source)
         self.assertIn('@app.get("/jobs/{job_id}")', source)
         self.assertIn('@app.post("/workflows/execute")', source)
+        self.assertIn('@app.post("/workspace/articles")', source)
+        self.assertIn('@app.get("/workspace/articles")', source)
+        self.assertIn('@app.get("/workspace/articles/{article_id}")', source)
+        self.assertIn('@app.post("/workspace/articles/{article_id}/status")', source)
+        self.assertIn('@app.post("/ingestion/import-bundle")', source)
 
 
 if __name__ == "__main__":

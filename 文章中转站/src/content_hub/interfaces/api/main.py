@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from typing import Any
 from pathlib import Path
+import uuid
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -68,6 +70,13 @@ class SubmitHotTopicsRequest(BaseModel):
     items: list[dict]
 
 
+class ImportBundleRequest(BaseModel):
+    bundle: dict
+    provider_profile: str
+    article_profile: str
+    publish_profile: str
+
+
 class CreateDraftRequest(BaseModel):
     template: str
     meta: dict
@@ -106,6 +115,19 @@ class ReviewDecisionRequest(BaseModel):
 class PublishReviewRequest(BaseModel):
     article_title: str = ""
     account_info: dict | None = None
+
+
+class CreateWorkspaceArticleRequest(BaseModel):
+    source_type: str
+    source_payload: dict
+    provider_profile: str
+    article_profile: str
+    publish_profile: str
+
+
+class UpdateWorkspaceArticleStatusRequest(BaseModel):
+    status: str
+    notes: str = ""
 
 
 def create_app(project_root: Path | None = None, settings_override=None) -> FastAPI:
@@ -435,6 +457,117 @@ def create_app(project_root: Path | None = None, settings_override=None) -> Fast
             ],
         }
 
+    @app.post("/workspace/articles")
+    async def create_workspace_article(request: CreateWorkspaceArticleRequest) -> dict:
+        source_payload = request.source_payload if isinstance(request.source_payload, dict) else {}
+        title = str(source_payload.get("title") or request.source_type or "workspace-article")
+        article = container.workspace_article_service.create_article(
+            article_id=f"wa-{uuid.uuid4().hex[:12]}",
+            title=title,
+        )
+        return {
+            "article_id": article.article_id,
+            "title": article.title,
+            "status": article.status,
+            "status_history": article.status_history,
+        }
+
+    @app.get("/workspace/articles")
+    async def list_workspace_articles(status: str | None = None) -> dict:
+        return {
+            "data": [
+                {
+                    "article_id": article.article_id,
+                    "title": article.title,
+                    "status": article.status,
+                    "status_history": article.status_history,
+                }
+                for article in container.workspace_article_service.list_articles(status=status)
+            ]
+        }
+
+    @app.get("/workspace/articles/{article_id}")
+    async def get_workspace_article(article_id: str) -> dict:
+        article = container.workspace_article_service.get_article(article_id)
+        if article is None:
+            return {"article_id": article_id, "status": "missing"}
+        return {
+            "article_id": article.article_id,
+            "title": article.title,
+            "status": article.status,
+            "status_history": article.status_history,
+        }
+
+    @app.post("/workspace/articles/{article_id}/status")
+    async def update_workspace_article_status(article_id: str, request: UpdateWorkspaceArticleStatusRequest) -> dict:
+        service = container.workspace_article_service
+        status = request.status
+        article: Any
+
+        if status == "draft_ready":
+            mark_draft_ready = getattr(service, "mark_draft_ready", None)
+            if callable(mark_draft_ready):
+                article = mark_draft_ready(article_id, draft_id="")
+            else:
+                current = service.get_article(article_id)
+                if current is None:
+                    raise KeyError(f"workspace article not found: {article_id}")
+                if current.status == "draft":
+                    article = current
+                elif current.status == "review_rejected":
+                    article = service.transition_article(article_id, "draft")
+                else:
+                    raise ValueError(
+                        "draft_ready fallback supports only draft or review_rejected"
+                    )
+        elif status == "rendered":
+            mark_rendered = getattr(service, "mark_rendered", None)
+            if callable(mark_rendered):
+                article = mark_rendered(article_id, asset_ids=[])
+            else:
+                article = service.transition_article(article_id, "rendered")
+        elif status == "review_pending":
+            mark_review_pending = getattr(service, "mark_review_pending", None)
+            if callable(mark_review_pending):
+                article = mark_review_pending(article_id, review_id="")
+            else:
+                article = service.transition_article(article_id, "review_pending")
+        elif status == "approved":
+            mark_approved = getattr(service, "mark_approved", None)
+            if callable(mark_approved):
+                article = mark_approved(article_id, notes=request.notes)
+            else:
+                article = service.transition_article(article_id, "approved")
+        elif status == "published":
+            mark_published = getattr(service, "mark_published", None)
+            if callable(mark_published):
+                article = mark_published(article_id, publish_result_ids=[])
+            else:
+                article = service.transition_article(article_id, "published")
+        elif status == "failed":
+            mark_failed = getattr(service, "mark_failed", None)
+            if callable(mark_failed):
+                article = mark_failed(article_id, notes=request.notes or "manual")
+            else:
+                current = service.get_article(article_id)
+                if current is None:
+                    raise KeyError(f"workspace article not found: {article_id}")
+                if current.status == "review_pending":
+                    article = service.transition_article(article_id, "review_rejected")
+                else:
+                    raise ValueError(
+                        "failed fallback supports only transition from review_pending to review_rejected"
+                    )
+        else:
+            raise ValueError(f"unsupported workspace article status: {status}")
+
+        return {
+            "article_id": article.article_id,
+            "title": article.title,
+            "status": article.status,
+            "status_history": article.status_history,
+        }
+
     @app.post("/ingestion/reference-urls")
     async def submit_reference_urls(request: SubmitReferenceUrlsRequest) -> dict:
         return container.ingestion_service.submit_reference_urls(request.urls)
@@ -446,6 +579,15 @@ def create_app(project_root: Path | None = None, settings_override=None) -> Fast
     @app.post("/ingestion/hot-topics")
     async def submit_hot_topics(request: SubmitHotTopicsRequest) -> dict:
         return container.ingestion_service.submit_hot_topics(request.items)
+
+    @app.post("/ingestion/import-bundle")
+    async def import_bundle(request: ImportBundleRequest) -> dict:
+        return container.ingestion_service.import_content_hub_bundle(
+            bundle=request.bundle,
+            provider_profile=request.provider_profile,
+            article_profile=request.article_profile,
+            publish_profile=request.publish_profile,
+        )
 
     @app.get("/ingestion")
     async def list_ingestion() -> dict:
