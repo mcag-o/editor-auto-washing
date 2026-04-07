@@ -11,7 +11,16 @@ export function defineJsonCrawler(config) {
   return function createCrawler(deps) {
     return {
       async collect({ platform, canonicalPlatform, meta }) {
-        const payload = await deps.requestJson(config.sourceUrl, config.requestOptions ?? {});
+        const sourceUrl = meta?.sourceUrl ?? config.sourceUrl;
+        const requestOptions = {
+          ...(config.requestOptions ?? {}),
+          ...(meta?.requestOptions ?? {}),
+          headers: {
+            ...(config.requestOptions?.headers ?? {}),
+            ...(meta?.requestOptions?.headers ?? {})
+          }
+        };
+        const payload = await deps.requestJson(sourceUrl, requestOptions);
         const entries = config.mapEntries(payload);
 
         if (!Array.isArray(entries)) {
@@ -24,7 +33,7 @@ export function defineJsonCrawler(config) {
           aliases: meta.aliases,
           displayName: meta.displayName,
           sourceType: 'json-api',
-          sourceUrl: config.sourceUrl,
+          sourceUrl,
           items: entries
             .map((entry, index) => config.mapItem(entry, index, canonicalPlatform))
             .filter(Boolean)
@@ -43,15 +52,24 @@ export function defineHtmlCrawler(config) {
   return function createCrawler(deps) {
     return {
       async collect({ platform, canonicalPlatform, meta }) {
+        const sourceUrl = meta?.sourceUrl ?? config.sourceUrl;
+        const requestOptions = {
+          ...(config.requestOptions ?? {}),
+          ...(meta?.requestOptions ?? {}),
+          headers: {
+            ...(config.requestOptions?.headers ?? {}),
+            ...(meta?.requestOptions?.headers ?? {})
+          }
+        };
         let html;
 
         try {
-          html = await deps.requestText(config.sourceUrl, config.requestOptions ?? {});
+          html = await deps.requestText(sourceUrl, requestOptions);
         } catch (error) {
           if (!deps.browserEnabled || !deps.requestRenderedHtml) {
             throw error;
           }
-          html = await deps.requestRenderedHtml(config.sourceUrl, { timeoutMs: 15000 });
+          html = await deps.requestRenderedHtml(sourceUrl, { timeoutMs: 15000 });
         }
 
         const $ = cheerio.load(html);
@@ -67,7 +85,7 @@ export function defineHtmlCrawler(config) {
           aliases: meta.aliases,
           displayName: meta.displayName,
           sourceType: 'html',
-          sourceUrl: config.sourceUrl,
+          sourceUrl,
           items: entries
             .map((entry, index) => config.mapItem(entry, index, canonicalPlatform, $))
             .filter(Boolean)

@@ -10,6 +10,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "collect": "node src/cli/run.js",
+    "sources:list": "node src/cli/sources.js list",
+    "sources:check": "node src/cli/sources.js check",
+    "ops": "node src/cli/ops.js",
     "smoke": "node scripts/smoke.js"
   },
   "dependencies": {
@@ -18,6 +21,7 @@
     "p-limit": "^6.2.0",
     "playwright": "^1.55.0",
     "undici": "^7.16.0",
+    "yaml": "^2.8.1",
     "zod": "^4.1.8"
   },
   "devDependencies": {

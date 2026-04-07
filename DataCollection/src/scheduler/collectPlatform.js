@@ -11,7 +11,15 @@ import { UnsupportedPlatformError } from '../core/errors.js';
  */
 export async function collectPlatform(platformId, options = {}) {
   const canonical = normalizePlatformId(platformId);
-  const meta = canonical ? getPlatformMeta(canonical) : null;
+  const baseMeta = canonical ? getPlatformMeta(canonical) : null;
+  const overrideMeta = canonical ? options.metaById?.[canonical] : null;
+  const meta = baseMeta
+    ? {
+        ...baseMeta,
+        ...(overrideMeta ?? {}),
+        aliases: overrideMeta?.aliases ?? baseMeta.aliases
+      }
+    : null;
   const crawler = canonical ? options.registry?.[canonical] : null;
 
   if (!canonical || !meta || !crawler) {
