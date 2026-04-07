@@ -1,6 +1,6 @@
-# 文章中转站
+# ArticleWashing
 
-`文章中转站/` 是从原始 `AIWriteX` 仓库中抽取出来的 service-first 内容中站运行时，也是当前推荐的主开发目录。
+`ArticleWashing/` 是从原始 `AIWriteX` 仓库中抽取出来的 service-first 内容中站运行时，也是当前推荐的主开发目录。
 
 这份 README 不是一个简单的启动说明，而是把以下三类信息整合到了一起：
 
@@ -8,7 +8,7 @@
 - 当前架构、能力边界与完成态判断
 - 后续继续开发时需要保留的上下文
 
-如果你后续主要依赖 `文章中转站/` 继续开发，可以把这份文档视为覆盖整个项目的总说明。
+如果你后续主要依赖 `ArticleWashing/` 继续开发，可以把这份文档视为覆盖整个项目的总说明。
 
 ---
 
@@ -25,7 +25,7 @@
 
 本次重构的目标不是继续维护桌面应用，而是把其中真正有业务价值的能力抽出来，形成一个可 API 化、可任务化、可继续演进的“内容中站”运行时。
 
-因此，`文章中转站/` 的定位是：
+因此，`ArticleWashing/` 的定位是：
 
 - 新的主运行时
 - 未来主开发目录
@@ -34,7 +34,7 @@
 
 简而言之：
 
-> 原项目更像“桌面产品 + 本地服务”，现在的 `文章中转站/` 更像“可独立运行的 service-first 内容中站”。
+> 原项目更像“桌面产品 + 本地服务”，现在的 `ArticleWashing/` 更像“可独立运行的 service-first 内容中站”。
 
 ---
 
@@ -46,7 +46,7 @@
 
 - 新运行时已经能够独立承载主路径能力
 - 原始仓库中的关键 legacy 核心已大多被 shim 化或降级为兼容层
-- 后续工作应以增强 `文章中转站/` 能力为主，而不是继续把 legacy 目录当主开发区
+- 后续工作应以增强 `ArticleWashing/` 能力为主，而不是继续把 legacy 目录当主开发区
 
 对完成度的直观判断可以这样理解：
 
@@ -59,7 +59,7 @@
 
 因此，当前最合理的开发策略是：
 
-- 以 `文章中转站/` 为主继续开发
+- 以 `ArticleWashing/` 为主继续开发
 - 把原始 `src/ai_write_x/` 视为历史兼容层与参考资料
 
 ---
@@ -155,7 +155,7 @@
 
 ### 3.6.1 结构化文章模板与格式化子模块
 
-当前 `文章中转站/` 已经吸收了原结构化文章工具的核心能力，并在中站内部形成独立的 formatting 子模块，当前已包含：
+当前 `ArticleWashing/` 已经吸收了原结构化文章工具的核心能力，并在中站内部形成独立的 formatting 子模块，当前已包含：
 
 - `ArticleDraft`
 - `RenderedAsset`
@@ -166,7 +166,7 @@
 - 审核后发布门槛
 - Python CLI：`content_hub.interfaces.cli`
 
-这意味着结构化文章的当前主入口已经切换到 `文章中转站/`。
+这意味着结构化文章的当前主入口已经切换到 `ArticleWashing/`。
 
 ### 3.7 Ingestion 子系统
 
@@ -205,23 +205,23 @@
 
 ## 4. 当前目录结构
 
-`文章中转站/` 当前应视为一个独立项目，核心目录如下：
+`ArticleWashing/` 当前应视为一个独立项目，核心目录如下：
 
-- `文章中转站/src/content_hub/`
+- `ArticleWashing/src/content_hub/`
   - 主运行时代码
-- `文章中转站/tests/content_hub/`
+- `ArticleWashing/tests/content_hub/`
   - 当前 extracted runtime 的测试
-- `文章中转站/knowledge/templates/`
+- `ArticleWashing/knowledge/templates/`
   - 模板资产库
-- `文章中转站/knowledge/structured_templates/`
+- `ArticleWashing/knowledge/structured_templates/`
   - 已并入中站的结构化文章模板资源
-- `文章中转站/main.py`
+- `ArticleWashing/main.py`
   - 独立启动入口
-- `文章中转站/examples/`
+- `ArticleWashing/examples/`
   - 当前主线结构化文章示例输入
-- `文章中转站/requirements.txt`
+- `ArticleWashing/requirements.txt`
   - 依赖清单
-- `文章中转站/pyproject.toml`
+- `ArticleWashing/pyproject.toml`
   - 项目元数据
 
 当前建议把这个目录理解成“新的主项目根”，而不是原仓库里的一个附属示例目录。
@@ -233,7 +233,7 @@
 ### 5.1 安装依赖
 
 ```bash
-python3 -m pip install -r "文章中转站/requirements.txt"
+python3 -m pip install -r "ArticleWashing/requirements.txt"
 ```
 
 建议 Python 版本：
@@ -245,39 +245,39 @@ python3 -m pip install -r "文章中转站/requirements.txt"
 在仓库根目录执行：
 
 ```bash
-PYTHONPATH="文章中转站/src" uvicorn content_hub.interfaces.api.main:app --reload
+PYTHONPATH="ArticleWashing/src" uvicorn content_hub.interfaces.api.main:app --reload
 ```
 
 ### 5.3 运行独立入口
 
 ```bash
-python3 "文章中转站/main.py"
+python3 "ArticleWashing/main.py"
 ```
 
 ### 5.4 运行测试
 
 ```bash
-PYTHONPATH="文章中转站/src" python3 -m unittest discover -s "文章中转站/tests/content_hub" -p "test_*.py"
+PYTHONPATH="ArticleWashing/src" python3 -m unittest discover -s "ArticleWashing/tests/content_hub" -p "test_*.py"
 ```
 
 ### 5.5 以 workspace 为中心管理配置
 
-如果你准备把 `文章中转站/` 用作长期运行目录，当前推荐先初始化一个独立 workspace，再通过 CLI 查看和校验配置状态。
+如果你准备把 `ArticleWashing/` 用作长期运行目录，当前推荐先初始化一个独立 workspace，再通过 CLI 查看和校验配置状态。
 
 ```bash
-PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli workspace init "/path/to/workspace" --name "content-workspace"
+PYTHONPATH="ArticleWashing/src" python3 -m content_hub.interfaces.cli workspace init "/path/to/workspace" --name "content-workspace"
 ```
 
 ```bash
-PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli workspace show-config "/path/to/workspace"
+PYTHONPATH="ArticleWashing/src" python3 -m content_hub.interfaces.cli workspace show-config "/path/to/workspace"
 ```
 
 ```bash
-PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli workspace resolve-config "/path/to/workspace"
+PYTHONPATH="ArticleWashing/src" python3 -m content_hub.interfaces.cli workspace resolve-config "/path/to/workspace"
 ```
 
 ```bash
-PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli workspace doctor "/path/to/workspace"
+PYTHONPATH="ArticleWashing/src" python3 -m content_hub.interfaces.cli workspace doctor "/path/to/workspace"
 ```
 
 其中：
@@ -290,18 +290,18 @@ PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli workspace
 
 ### 5.6 运行结构化文章 CLI
 
-当前推荐使用 `文章中转站` 内的 Python CLI 来完成结构化文章渲染、校验和 dry-run pipeline：
+当前推荐使用 `ArticleWashing` 内的 Python CLI 来完成结构化文章渲染、校验和 dry-run pipeline：
 
 ```bash
-PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli render "文章中转站/examples/article.sample.json" -o "文章中转站/.tmp/article.html" --check --template-root "文章中转站/knowledge/structured_templates"
+PYTHONPATH="ArticleWashing/src" python3 -m content_hub.interfaces.cli render "ArticleWashing/examples/article.sample.json" -o "ArticleWashing/.tmp/article.html" --check --template-root "ArticleWashing/knowledge/structured_templates"
 ```
 
 ```bash
-PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli validate "文章中转站/examples/article.sample.json" --template-root "文章中转站/knowledge/structured_templates"
+PYTHONPATH="ArticleWashing/src" python3 -m content_hub.interfaces.cli validate "ArticleWashing/examples/article.sample.json" --template-root "ArticleWashing/knowledge/structured_templates"
 ```
 
 ```bash
-PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli pipeline "文章中转站/examples/article.sample.json" --output-dir "文章中转站/.tmp/build" --dry-run --template-root "文章中转站/knowledge/structured_templates"
+PYTHONPATH="ArticleWashing/src" python3 -m content_hub.interfaces.cli pipeline "ArticleWashing/examples/article.sample.json" --output-dir "ArticleWashing/.tmp/build" --dry-run --template-root "ArticleWashing/knowledge/structured_templates"
 ```
 
 如果你是从旧的结构化文章工具迁移过来的，当前应默认使用这里的 Python CLI 和 `examples/article.sample.json` 作为主线入口。
@@ -310,7 +310,7 @@ PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli pipeline 
 
 ## 6. 当前架构理解方式
 
-推荐把 `文章中转站/` 理解成下面几层：
+推荐把 `ArticleWashing/` 理解成下面几层：
 
 1. **bootstrap**
    - 容器装配
@@ -402,15 +402,15 @@ PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli pipeline 
 
 ---
 
-## 8. 如果只带走 `文章中转站/`，还缺什么
+## 8. 如果只带走 `ArticleWashing/`，还缺什么
 
-如果你打算把 `文章中转站/` 拿出原仓库独立开发，建议你除了这个目录本身，还把以下知识一起保留下来：
+如果你打算把 `ArticleWashing/` 拿出原仓库独立开发，建议你除了这个目录本身，还把以下知识一起保留下来：
 
 - 当前这份 `README.md`
 - 原始迁移计划中的目标边界、架构原则和风险判断
 - 原始仓库里形成的 agent/维护说明
 
-也就是说，`文章中转站/` 已经足以作为新的主开发目录，但为了保留迁移知识，你需要让这份 README 自身足够完整。
+也就是说，`ArticleWashing/` 已经足以作为新的主开发目录，但为了保留迁移知识，你需要让这份 README 自身足够完整。
 
 这也是为什么这份文档要覆盖整个项目，而不只是写启动命令。
 
@@ -420,7 +420,7 @@ PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli pipeline 
 
 现在更推荐的工作方式是：
 
-- 把 `文章中转站/` 当主项目继续开发
+- 把 `ArticleWashing/` 当主项目继续开发
 - 不再把“继续提取 legacy”作为默认目标
 - 把原仓库中其余内容视为：
   - 兼容层
@@ -446,7 +446,7 @@ PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli pipeline 
    - job 化处理
 
 4. 逐步减少对原始 `src/ai_write_x/` shared utility 的依赖
-   - 让 `文章中转站/` 真正自足
+   - 让 `ArticleWashing/` 真正自足
 
 ### 9.2 不推荐继续默认做的事情
 
@@ -467,7 +467,7 @@ PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli pipeline 
 
 因此从工程判断上说：
 
-> `文章中转站/` 已经足以承载后续主开发，原项目的主体提取任务已经完成。
+> `ArticleWashing/` 已经足以承载后续主开发，原项目的主体提取任务已经完成。
 
 后面如果还继续做，属于：
 
@@ -480,10 +480,10 @@ PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli pipeline 
 
 ## 11. 一句话总结
 
-`文章中转站/` 不是一个“从大项目里临时裁出来的示例目录”，而是当前已经基本成型的 service-first 内容中站主运行时。
+`ArticleWashing/` 不是一个“从大项目里临时裁出来的示例目录”，而是当前已经基本成型的 service-first 内容中站主运行时。
 
 如果你接下来要继续做自己的版本，建议：
 
-- 直接以 `文章中转站/` 为主项目开发
+- 直接以 `ArticleWashing/` 为主项目开发
 - 把原仓库其余部分视为兼容层与历史参考
 - 把后续工作重心放在新能力增强，而不是继续大规模 legacy 提取

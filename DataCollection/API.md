@@ -2,33 +2,33 @@
 
 ## Node 采集系统接口
 
-`数据采集/` 当前提供的是命令行与编程调用接口，不直接暴露 HTTP 服务。
+`DataCollection/` 当前提供的是命令行与编程调用接口，不直接暴露 HTTP 服务。
 
 ### CLI 入口
 
-文件：`数据采集/src/cli/run.js`
+文件：`DataCollection/src/cli/run.js`
 
 #### 单平台采集
 
 ```bash
-node 数据采集/src/cli/run.js --platform baidu
+node DataCollection/src/cli/run.js --platform baidu
 ```
 
 #### 多平台采集
 
 ```bash
-node 数据采集/src/cli/run.js --platforms baidu,weibo,zhihu
+node DataCollection/src/cli/run.js --platforms baidu,weibo,zhihu
 ```
 
 #### 采集全部平台
 
 ```bash
-node 数据采集/src/cli/run.js --all
+node DataCollection/src/cli/run.js --all
 ```
 
 ### 编程调用入口
 
-文件：`数据采集/src/index.js`
+文件：`DataCollection/src/index.js`
 
 导出内容：
 
@@ -41,7 +41,7 @@ node 数据采集/src/cli/run.js --all
 调用示例：
 
 ```js
-import { env, createPlatformRegistry, collectMany } from './数据采集/src/index.js';
+import { env, createPlatformRegistry, collectMany } from './DataCollection/src/index.js';
 
 const registry = createPlatformRegistry(env);
 const result = await collectMany(['baidu', 'hackernews'], { registry, env });
@@ -106,7 +106,7 @@ console.log(result);
 参数：`platform=wise`、`tab=realtime`
 响应字段：`data.cards[0].content[0].content[]`，包含 `word`、`url`、`desc`、`hotScore`
 可用性：可用
-调用范例：`node 数据采集/src/cli/run.js --platform baidu`
+调用范例：`node DataCollection/src/cli/run.js --platform baidu`
 
 ### `shaoshupai` / `sspai`
 
@@ -116,7 +116,7 @@ console.log(result);
 参数：`limit`、`offset`、`created_at`
 响应字段：`data[]`，包含 `id`、`title`、`summary`
 可用性：可用
-调用范例：`node 数据采集/src/cli/run.js --platform sspai`
+调用范例：`node DataCollection/src/cli/run.js --platform sspai`
 
 ### `weibo`
 
@@ -126,7 +126,7 @@ console.log(result);
 参数：无
 响应字段：`data.realtime[]`，包含 `word`、`raw_hot`
 可用性：条件可用
-调用范例：`WEIBO_COOKIE='...' node 数据采集/src/cli/run.js --platform weibo`
+调用范例：`WEIBO_COOKIE='...' node DataCollection/src/cli/run.js --platform weibo`
 
 ### `zhihu`
 
@@ -136,7 +136,7 @@ console.log(result);
 参数：`limit`、`ws_qiangzhisafe`
 响应字段：`data[]`，深层字段 `target.question.title`、`target.question.id`、`target.excerpt`
 可用性：可用
-调用范例：`node 数据采集/src/cli/run.js --platform zhihu`
+调用范例：`node DataCollection/src/cli/run.js --platform zhihu`
 
 ### `36kr` / `tskr`
 
@@ -146,7 +146,7 @@ console.log(result);
 参数：JSON body，包含 `partner_id`、`param.siteId`、`param.platformId`、`timestamp`
 响应字段：`data.hotRankList[]`
 可用性：条件可用
-调用范例：`node 数据采集/src/cli/run.js --platform 36kr`
+调用范例：`node DataCollection/src/cli/run.js --platform 36kr`
 
 ### `52pojie` / `ftpojie`
 
@@ -156,7 +156,7 @@ console.log(result);
 参数：`mod=guide`、`view=hot`
 响应字段：HTML DOM 节点 `tbody[id^="normalthread_"]`
 可用性：条件可用
-调用范例：`node 数据采集/src/cli/run.js --platform ftpojie`
+调用范例：`node DataCollection/src/cli/run.js --platform ftpojie`
 
 ### `bilibili`
 
@@ -166,7 +166,7 @@ console.log(result);
 参数：无
 响应字段：`data.list[]`，包含 `title`、`bvid`、`desc`、`owner`、`stat`
 可用性：可用
-调用范例：`node 数据采集/src/cli/run.js --platform bilibili`
+调用范例：`node DataCollection/src/cli/run.js --platform bilibili`
 
 ### `douban`
 
@@ -176,7 +176,7 @@ console.log(result);
 参数：无
 响应字段：HTML DOM 节点 `div.channel-item`
 可用性：条件可用
-调用范例：`node 数据采集/src/cli/run.js --platform douban`
+调用范例：`node DataCollection/src/cli/run.js --platform douban`
 
 ### `hupu`
 
@@ -186,7 +186,7 @@ console.log(result);
 参数：无
 响应字段：HTML DOM 节点 `div.t-info`
 可用性：条件可用
-调用范例：`node 数据采集/src/cli/run.js --platform hupu`
+调用范例：`node DataCollection/src/cli/run.js --platform hupu`
 
 ### `tieba`
 
@@ -196,7 +196,7 @@ console.log(result);
 参数：无
 响应字段：`data.bang_topic.topic_list[]`
 可用性：可用
-调用范例：`node 数据采集/src/cli/run.js --platform tieba`
+调用范例：`node DataCollection/src/cli/run.js --platform tieba`
 
 ### `juejin`
 
@@ -206,7 +206,7 @@ console.log(result);
 参数：`category_id`、`type`
 响应字段：`data[]`，深层字段 `content.title`、`content.content_id`
 可用性：可用
-调用范例：`node 数据采集/src/cli/run.js --platform juejin`
+调用范例：`node DataCollection/src/cli/run.js --platform juejin`
 
 ### `douyin`
 
@@ -216,7 +216,7 @@ console.log(result);
 参数：可扩展 Web API query
 响应字段：`data.word_list[]`，字段包含 `word`、`sentence_id`、`hot_value`
 可用性：条件可用
-调用范例：`node 数据采集/src/cli/run.js --platform douyin`
+调用范例：`node DataCollection/src/cli/run.js --platform douyin`
 
 ### `v2ex` / `vtex`
 
@@ -226,7 +226,7 @@ console.log(result);
 参数：`tab=hot`
 响应字段：HTML DOM 节点 `div.cell.item`
 可用性：可用
-调用范例：`node 数据采集/src/cli/run.js --platform vtex`
+调用范例：`node DataCollection/src/cli/run.js --platform vtex`
 
 ### `jinritoutiao`
 
@@ -236,7 +236,7 @@ console.log(result);
 参数：`origin=toutiao_pc`
 响应字段：`data[]`，字段存在大小写漂移
 可用性：条件可用
-调用范例：`node 数据采集/src/cli/run.js --platform jinritoutiao`
+调用范例：`node DataCollection/src/cli/run.js --platform jinritoutiao`
 
 ### `tenxunwang`
 
@@ -246,7 +246,7 @@ console.log(result);
 参数：`offset`、`page_size`、`rank_id`
 响应字段：`idlist[0].newslist` 或 `data.newslist`
 可用性：条件可用
-调用范例：`node 数据采集/src/cli/run.js --platform tenxunwang`
+调用范例：`node DataCollection/src/cli/run.js --platform tenxunwang`
 
 ### `stackoverflow`
 
@@ -256,7 +256,7 @@ console.log(result);
 参数：`order`、`sort`、`site`
 响应字段：`items[]`
 可用性：可用
-调用范例：`node 数据采集/src/cli/run.js --platform stackoverflow`
+调用范例：`node DataCollection/src/cli/run.js --platform stackoverflow`
 
 ### `github`
 
@@ -266,7 +266,7 @@ console.log(result);
 参数：`q`、`sort`
 响应字段：`items[]`
 可用性：可用
-调用范例：`node 数据采集/src/cli/run.js --platform github`
+调用范例：`node DataCollection/src/cli/run.js --platform github`
 
 ### `hackernews`
 
@@ -276,7 +276,7 @@ console.log(result);
 参数：无
 响应字段：HTML DOM 节点 `tr.athing`
 可用性：可用
-调用范例：`node 数据采集/src/cli/run.js --platform hackernews`
+调用范例：`node DataCollection/src/cli/run.js --platform hackernews`
 
 ### `sina_finance`
 
@@ -286,7 +286,7 @@ console.log(result);
 参数：`page`、`page_size`、`zhibo_id`
 响应字段：`result.data.feed.list` 或 `data.feed.list`
 可用性：条件可用
-调用范例：`node 数据采集/src/cli/run.js --platform sina_finance`
+调用范例：`node DataCollection/src/cli/run.js --platform sina_finance`
 
 ### `eastmoney`
 
@@ -296,7 +296,7 @@ console.log(result);
 参数：依上游策略可扩展
 响应字段：`data.fastNewsList` 或 `data.list`
 可用性：条件可用
-调用范例：`node 数据采集/src/cli/run.js --platform eastmoney`
+调用范例：`node DataCollection/src/cli/run.js --platform eastmoney`
 
 ### `xueqiu`
 
@@ -306,7 +306,7 @@ console.log(result);
 参数：`count`
 响应字段：`list[]`
 可用性：条件可用
-调用范例：`XUEQIU_COOKIE='...' node 数据采集/src/cli/run.js --platform xueqiu`
+调用范例：`XUEQIU_COOKIE='...' node DataCollection/src/cli/run.js --platform xueqiu`
 
 ### `cls`
 
@@ -316,4 +316,4 @@ console.log(result);
 参数：建议带官网风格 query
 响应字段：`data.column_list[]`
 可用性：条件可用
-调用范例：`node 数据采集/src/cli/run.js --platform cls`
+调用范例：`node DataCollection/src/cli/run.js --platform cls`

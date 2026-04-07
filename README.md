@@ -4,33 +4,33 @@
 
 仓库当前包含两个活跃子项目：
 
-- `文章中转站/`：面向服务化运行的内容中转站，也是当前推荐的主开发目录
-- `数据采集/`：负责热榜与内容来源采集、平台适配和调度逻辑的 Node.js 项目
+- `ArticleWashing/`：面向服务化运行的内容中转站，也是当前推荐的主开发目录
+- `DataCollection/`：负责热榜与内容来源采集、平台适配和调度逻辑的 Node.js 项目
 
-如果你是第一次进入这个仓库，建议先把它理解为“多个相关项目组成的工作区”。如果你准备继续开发核心服务能力，优先从 `文章中转站/` 开始。
+如果你是第一次进入这个仓库，建议先把它理解为“多个相关项目组成的工作区”。如果你准备继续开发核心服务能力，优先从 `ArticleWashing/` 开始。
 
-如果你只想先用一个最小步骤确认环境和项目入口，推荐先从 `文章中转站/` 开始：
+如果你只想先用一个最小步骤确认环境和项目入口，推荐先从 `ArticleWashing/` 开始：
 
 ```bash
-python3 -m pip install -r "文章中转站/requirements.txt"
-PYTHONPATH="文章中转站/src" python3 -m unittest discover -s "文章中转站/tests/content_hub" -p "test_workflow.py"
+python3 -m pip install -r "ArticleWashing/requirements.txt"
+PYTHONPATH="ArticleWashing/src" python3 -m unittest discover -s "ArticleWashing/tests/content_hub" -p "test_workflow.py"
 ```
 
 判断从哪个目录开始，可以先用下面这条简单规则：
 
-- 偏服务运行、API、工作流：去 `文章中转站/`
-- 偏抓取输入、平台采集、调度：去 `数据采集/`
-- 偏结构化文章渲染、校验、格式化产物生成：优先进入 `文章中转站/`
+- 偏服务运行、API、工作流：去 `ArticleWashing/`
+- 偏抓取输入、平台采集、调度：去 `DataCollection/`
+- 偏结构化文章渲染、校验、格式化产物生成：优先进入 `ArticleWashing/`
 
 ## 仓库结构
 
-### `文章中转站/`
+### `ArticleWashing/`
 
 - 技术栈：Python、FastAPI、`unittest`
 - 作用：承载 service-first 内容中转站运行时，对外提供 API、工作流和内容服务能力
 - 适合改动：API、工作流节点、内容域模型、存储层、发布流程、任务系统
 
-### `数据采集/`
+### `DataCollection/`
 
 - 技术栈：Node.js、ESM、Vitest
 - 作用：负责热榜和内容源采集，处理平台适配、采集调度与请求重试等运行逻辑
@@ -38,38 +38,38 @@ PYTHONPATH="文章中转站/src" python3 -m unittest discover -s "文章中转�
 
 ## 快速开始
 
-### 1. `文章中转站/`
+### 1. `ArticleWashing/`
 
 从仓库根目录执行。
 
 安装依赖：
 
 ```bash
-python3 -m pip install -r "文章中转站/requirements.txt"
+python3 -m pip install -r "ArticleWashing/requirements.txt"
 ```
 
 运行主 API（用于本地启动服务）：
 
 ```bash
-PYTHONPATH="文章中转站/src" uvicorn content_hub.interfaces.api.main:app --reload
+PYTHONPATH="ArticleWashing/src" uvicorn content_hub.interfaces.api.main:app --reload
 ```
 
 运行独立入口（用于快速验证运行时入口；与 API 启动二选一即可）：
 
 ```bash
-python3 "文章中转站/main.py"
+python3 "ArticleWashing/main.py"
 ```
 
 适用场景：继续服务端、API、工作流主线能力开发。
 
-### 2. `数据采集/`
+### 2. `DataCollection/`
 
 从仓库根目录执行：
 
 ```bash
-(cd 数据采集 && npm install)
-(cd 数据采集 && npm test)
-(cd 数据采集 && npm run collect)
+(cd DataCollection && npm install)
+(cd DataCollection && npm test)
+(cd DataCollection && npm run collect)
 ```
 
 适用场景：继续抓取器、平台适配和采集调度相关开发。
@@ -78,17 +78,17 @@ python3 "文章中转站/main.py"
 
 两个子项目的测试方式并不相同：
 
-- `文章中转站/`：使用 Python `unittest`，要求 Python `>=3.10,<3.13`
-- `数据采集/`：使用 npm + Vitest，要求 Node `>=20`
+- `ArticleWashing/`：使用 Python `unittest`，要求 Python `>=3.10,<3.13`
+- `DataCollection/`：使用 npm + Vitest，要求 Node `>=20`
 
 单文件测试示例：
 
 ```bash
-(PYTHONPATH="文章中转站/src" python3 -m unittest discover -s "文章中转站/tests/content_hub" -p "test_workflow.py")
+(PYTHONPATH="ArticleWashing/src" python3 -m unittest discover -s "ArticleWashing/tests/content_hub" -p "test_workflow.py")
 ```
 
 ```bash
-(cd 数据采集 && npx vitest run test/core/httpClient.test.js)
+(cd DataCollection && npx vitest run test/core/httpClient.test.js)
 ```
 
 开发时建议遵循以下顺序：
@@ -100,14 +100,14 @@ python3 "文章中转站/main.py"
 
 ## 推荐开发路径
 
-- 如果你在做新的 service、API 和工作流能力，优先进入 `文章中转站/`
-- 如果你在做站点抓取、平台适配、采集调度，进入 `数据采集/`
-- 如果你在做文章渲染、结构校验、CLI 或本地流程，优先进入 `文章中转站/`
+- 如果你在做新的 service、API 和工作流能力，优先进入 `ArticleWashing/`
+- 如果你在做站点抓取、平台适配、采集调度，进入 `DataCollection/`
+- 如果你在做文章渲染、结构校验、CLI 或本地流程，优先进入 `ArticleWashing/`
 
 ## 补充说明
 
 - 根目录 `README.md` 只负责仓库级导航，更多实现细节请查看各子项目自己的 README 和目录文档。
-- `文章中转站/` 是当前推荐的主开发目录；如果没有明确理由，新的核心服务能力应优先落在这里。
-- 结构化文章能力已逐步并入 `文章中转站/`，新的结构化文章入口、格式化输出与审核发布链路应以 `文章中转站/` 为准。
-- 原 `结构化文章/` 的模板、渲染、校验、dry-run pipeline 与 CLI 主入口已并入 `文章中转站/`。
+- `ArticleWashing/` 是当前推荐的主开发目录；如果没有明确理由，新的核心服务能力应优先落在这里。
+- 结构化文章能力已逐步并入 `ArticleWashing/`，新的结构化文章入口、格式化输出与审核发布链路应以 `ArticleWashing/` 为准。
+- 原 `结构化文章/` 的模板、渲染、校验、dry-run pipeline 与 CLI 主入口已并入 `ArticleWashing/`。
 - 当前仓库根目录没有统一的 build、lint、test 入口；执行命令前请先确认自己所在的目标子项目。
