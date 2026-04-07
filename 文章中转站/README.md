@@ -260,7 +260,35 @@ python3 "文章中转站/main.py"
 PYTHONPATH="文章中转站/src" python3 -m unittest discover -s "文章中转站/tests/content_hub" -p "test_*.py"
 ```
 
-### 5.5 运行结构化文章 CLI
+### 5.5 以 workspace 为中心管理配置
+
+如果你准备把 `文章中转站/` 用作长期运行目录，当前推荐先初始化一个独立 workspace，再通过 CLI 查看和校验配置状态。
+
+```bash
+PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli workspace init "/path/to/workspace" --name "content-workspace"
+```
+
+```bash
+PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli workspace show-config "/path/to/workspace"
+```
+
+```bash
+PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli workspace resolve-config "/path/to/workspace"
+```
+
+```bash
+PYTHONPATH="文章中转站/src" python3 -m content_hub.interfaces.cli workspace doctor "/path/to/workspace"
+```
+
+其中：
+
+- 非敏感配置保存在 `workspace.yaml`
+- 凭据建议放在 `secrets.yaml`，或通过 `env.*` 形式引用环境变量
+- `show-config` 用于查看 workspace 当前声明的配置
+- `resolve-config` 用于查看 secret ref 是否已经被成功解析
+- `doctor` 用于检查缺失 secret、默认 profile 引用和基础配置问题
+
+### 5.6 运行结构化文章 CLI
 
 当前推荐使用 `文章中转站` 内的 Python CLI 来完成结构化文章渲染、校验和 dry-run pipeline：
 

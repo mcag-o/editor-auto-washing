@@ -19,6 +19,7 @@ from content_hub.application.services.platform_service import PlatformService
 from content_hub.application.services.publish_service import PublishService
 from content_hub.application.services.template_service import TemplateService
 from content_hub.application.services.workflow_service import WorkflowService
+from content_hub.application.workspace.article_service import WorkspaceArticleService
 from content_hub.bootstrap.settings import HubSettings
 from content_hub.infrastructure.storage.article_repository import FileArticleRepository
 from content_hub.infrastructure.storage.article_draft_repository import FileArticleDraftRepository
@@ -31,6 +32,7 @@ from content_hub.infrastructure.storage.job_event_repository import FileJobEvent
 from content_hub.infrastructure.storage.job_repository import FileJobRepository
 from content_hub.infrastructure.storage.publish_record_repository import FilePublishRecordRepository
 from content_hub.infrastructure.storage.template_repository import FileTemplateRepository
+from content_hub.infrastructure.storage.workspace_article_repository import FileWorkspaceArticleRepository
 from content_hub.infrastructure.formatters.template_catalog import FileTemplateCatalog
 from content_hub.infrastructure.formatters.wechat_html_formatter import WechatHtmlFormatter
 from content_hub.runtime.nodes.creative import CreativeEnhancementNode
@@ -59,6 +61,7 @@ class ServiceContainer:
     workflow_service: WorkflowService
     job_service: JobService
     job_event_service: JobEventService
+    workspace_article_service: WorkspaceArticleService
 
 
 def build_container(project_root: Path, settings: HubSettings | None = None) -> ServiceContainer:
@@ -76,6 +79,9 @@ def build_container(project_root: Path, settings: HubSettings | None = None) -> 
     publish_record_repository = FilePublishRecordRepository(resolved_settings.storage.publish_record_file)
     job_repository = FileJobRepository(resolved_settings.storage.root_dir / "jobs.json")
     job_event_repository = FileJobEventRepository(resolved_settings.storage.root_dir / "job_events.json")
+    workspace_article_repository = FileWorkspaceArticleRepository(
+        resolved_settings.storage.root_dir / "workspace_articles.json"
+    )
     publish_service = PublishService(
         publish_record_repository,
         {
@@ -118,6 +124,7 @@ def build_container(project_root: Path, settings: HubSettings | None = None) -> 
     workflow_service = WorkflowService(registry)
     job_event_service = JobEventService(job_repository, job_event_repository)
     job_service = JobService(workflow_service.engine, job_repository, job_event_service)
+    workspace_article_service = WorkspaceArticleService(workspace_article_repository)
 
     return ServiceContainer(
         settings=resolved_settings,
@@ -132,10 +139,12 @@ def build_container(project_root: Path, settings: HubSettings | None = None) -> 
             ingestion_repository,
             raw_content_repository,
             hot_topic_repository,
+            workspace_article_service,
         ),
         platform_service=PlatformService(),
         publish_service=publish_service,
         workflow_service=workflow_service,
         job_service=job_service,
         job_event_service=job_event_service,
+        workspace_article_service=workspace_article_service,
     )

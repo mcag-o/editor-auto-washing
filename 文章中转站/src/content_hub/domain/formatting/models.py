@@ -16,6 +16,9 @@ class ArticleDraft:
     cta: str
     source_refs: list[dict[str, Any]] = field(default_factory=list)
     target_platforms: list[str] = field(default_factory=list)
+    provider_profile: str = ""
+    article_profile: str = ""
+    publish_profile: str = ""
     status: str = "draft"
 
 
@@ -46,5 +49,6 @@ class ReviewTask:
     article_id: str
     asset_ids: list[str]
     status: str
+    publish_profile: str = ""
     reviewer: str = ""
     notes: str = ""

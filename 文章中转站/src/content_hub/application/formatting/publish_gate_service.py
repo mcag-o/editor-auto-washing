@@ -10,6 +10,18 @@ class PublishGateService:
     def __init__(self, publish_service: PublishService):
         self.publish_service = publish_service
 
+    def precheck_auto_publish(
+        self,
+        publish_profile: str,
+        allowed_profiles: set[str],
+        review_status: str,
+    ) -> dict[str, str | bool]:
+        if review_status != "approved":
+            return {"ok": False, "reason": "review_not_approved"}
+        if publish_profile not in allowed_profiles:
+            return {"ok": False, "reason": "profile_not_allowed"}
+        return {"ok": True, "reason": "ok"}
+
     def publish_reviewed_assets(
         self,
         review: ReviewTask,
