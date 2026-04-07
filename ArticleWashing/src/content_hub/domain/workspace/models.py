@@ -157,6 +157,9 @@ class AutomationPolicy:
     auto_generate: bool = False
     auto_publish: bool = False
     interval_seconds: int = 1800
+    incoming_dir: str | None = None
+    processed_dir: str | None = None
+    failed_dir: str | None = None
     alert_warning_threshold: int | None = None
     alert_critical_threshold: int | None = None
     alert_webhook_cooldown_seconds: int | None = None
@@ -169,6 +172,21 @@ class AutomationPolicy:
             auto_generate=bool(raw.get("auto_generate", False)),
             auto_publish=bool(raw.get("auto_publish", False)),
             interval_seconds=int(raw.get("interval_seconds", 1800)),
+            incoming_dir=(
+                str(raw["incoming_dir"])
+                if raw.get("incoming_dir") is not None
+                else None
+            ),
+            processed_dir=(
+                str(raw["processed_dir"])
+                if raw.get("processed_dir") is not None
+                else None
+            ),
+            failed_dir=(
+                str(raw["failed_dir"])
+                if raw.get("failed_dir") is not None
+                else None
+            ),
             alert_warning_threshold=(
                 int(raw["alert_warning_threshold"])
                 if raw.get("alert_warning_threshold") is not None
@@ -192,9 +210,74 @@ class AutomationPolicy:
             "auto_generate": self.auto_generate,
             "auto_publish": self.auto_publish,
             "interval_seconds": self.interval_seconds,
+            "incoming_dir": self.incoming_dir,
+            "processed_dir": self.processed_dir,
+            "failed_dir": self.failed_dir,
             "alert_warning_threshold": self.alert_warning_threshold,
             "alert_critical_threshold": self.alert_critical_threshold,
             "alert_webhook_cooldown_seconds": self.alert_webhook_cooldown_seconds,
+        }
+
+
+@dataclass
+class CollectorPolicy:
+    enabled: bool = False
+    command: str = ""
+    working_dir: str = "DataCollection"
+    bundle_out_pattern: str = "incoming/bundle-{timestamp}.json"
+    platforms: list[str] = field(default_factory=list)
+    global_concurrency: int = 4
+    http_timeout_ms: int = 10000
+    http_retry_count: int = 2
+    http_retry_base_ms: int = 250
+    default_user_agent: str = ""
+    http_proxy: str = ""
+    https_proxy: str = ""
+    weibo_cookie: str = ""
+    xueqiu_cookie: str = ""
+    enable_browser_fallback: bool = False
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any] | None) -> "CollectorPolicy":
+        raw = raw or {}
+        return cls(
+            enabled=bool(raw.get("enabled", False)),
+            command=raw.get("command", ""),
+            working_dir=raw.get("working_dir", "DataCollection"),
+            bundle_out_pattern=raw.get(
+                "bundle_out_pattern",
+                "incoming/bundle-{timestamp}.json",
+            ),
+            platforms=list(raw.get("platforms", [])),
+            global_concurrency=int(raw.get("global_concurrency", 4)),
+            http_timeout_ms=int(raw.get("http_timeout_ms", 10000)),
+            http_retry_count=int(raw.get("http_retry_count", 2)),
+            http_retry_base_ms=int(raw.get("http_retry_base_ms", 250)),
+            default_user_agent=str(raw.get("default_user_agent", "")),
+            http_proxy=str(raw.get("http_proxy", "")),
+            https_proxy=str(raw.get("https_proxy", "")),
+            weibo_cookie=str(raw.get("weibo_cookie", "")),
+            xueqiu_cookie=str(raw.get("xueqiu_cookie", "")),
+            enable_browser_fallback=bool(raw.get("enable_browser_fallback", False)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "command": self.command,
+            "working_dir": self.working_dir,
+            "bundle_out_pattern": self.bundle_out_pattern,
+            "platforms": self.platforms,
+            "global_concurrency": self.global_concurrency,
+            "http_timeout_ms": self.http_timeout_ms,
+            "http_retry_count": self.http_retry_count,
+            "http_retry_base_ms": self.http_retry_base_ms,
+            "default_user_agent": self.default_user_agent,
+            "http_proxy": self.http_proxy,
+            "https_proxy": self.https_proxy,
+            "weibo_cookie": self.weibo_cookie,
+            "xueqiu_cookie": self.xueqiu_cookie,
+            "enable_browser_fallback": self.enable_browser_fallback,
         }
 
 
@@ -210,6 +293,7 @@ class WorkspaceSettings:
     default_provider_profile: str
     default_article_profile: str
     default_publish_profile: str
+    collector: CollectorPolicy = field(default_factory=CollectorPolicy)
 
     @classmethod
     def default(cls, name: str = "content-workspace") -> "WorkspaceSettings":
@@ -239,6 +323,7 @@ class WorkspaceSettings:
             },
             review_policy=ReviewPolicy(),
             automation=AutomationPolicy(),
+            collector=CollectorPolicy(),
             default_provider_profile="default",
             default_article_profile="wechat-daily",
             default_publish_profile="wechat-review",
@@ -263,6 +348,7 @@ class WorkspaceSettings:
             },
             review_policy=ReviewPolicy.from_dict(raw.get("review_policy")),
             automation=AutomationPolicy.from_dict(raw.get("automation")),
+            collector=CollectorPolicy.from_dict(raw.get("collector")),
             default_provider_profile=raw.get("default_provider_profile", "default"),
             default_article_profile=raw.get("default_article_profile", "wechat-daily"),
             default_publish_profile=raw.get("default_publish_profile", "wechat-review"),
@@ -286,6 +372,7 @@ class WorkspaceSettings:
             },
             "review_policy": self.review_policy.to_dict(),
             "automation": self.automation.to_dict(),
+            "collector": self.collector.to_dict(),
         }
 
 

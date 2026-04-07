@@ -28,6 +28,7 @@ class WorkspaceSettingsTestCase(unittest.TestCase):
         self.assertEqual(settings.paths.incoming_dir, "incoming")
         self.assertEqual(settings.review_policy.default_mode, "review_required")
         self.assertFalse(settings.automation.auto_publish)
+        self.assertFalse(settings.collector.enabled)
 
     def test_workspace_settings_round_trips_to_dict(self) -> None:
         settings = WorkspaceSettings(
@@ -76,6 +77,7 @@ class WorkspaceSettingsTestCase(unittest.TestCase):
         self.assertTrue(restored.article_profiles["wechat-auto"].allow_auto_publish)
         self.assertTrue(restored.publish_profiles["wechat-auto"].allow_auto_publish)
         self.assertEqual(restored.automation.interval_seconds, 900)
+        self.assertEqual(restored.collector.global_concurrency, 4)
         self.assertEqual(restored.to_dict(), payload)
 
     def test_config_service_loads_workspace_yaml_and_resolves_secrets(self) -> None:

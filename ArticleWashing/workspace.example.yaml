@@ -1,0 +1,102 @@
+# 工作区名称，可用于区分 prod/staging/dev
+name: prod-workspace
+
+# 目录约定：统一放在 workspace 根目录下
+paths:
+  data_dir: workspace_data
+  incoming_dir: incoming
+  articles_dir: articles
+  drafts_dir: drafts
+  rendered_dir: rendered
+  reviews_dir: reviews
+  publish_records_dir: publish_records
+  logs_dir: logs
+
+# 默认 profile：CLI 不传参时将使用这些默认值
+default_provider_profile: openai-main
+default_article_profile: wechat-daily
+default_publish_profile: wechat-main
+
+# 采集器配置（统一放在 workspace.yaml，减少命令行参数）
+collector:
+  enabled: true
+  # 可留空：系统会自动使用 node src/cli/run.js --bundle-out ...
+  # 也可自定义，支持 {bundle_out} 占位符
+  command: ""
+  # 采集项目目录，支持绝对路径或相对 workspace 根目录
+  working_dir: DataCollection
+  # 采集产物写入路径模板，支持 {timestamp} 占位符
+  bundle_out_pattern: incoming/bundle-{timestamp}.json
+  # 平台列表为空时表示由采集器自行决定（通常等价于全量）
+  platforms: []
+  # 以下参数会在未设置同名环境变量时自动注入到采集进程
+  global_concurrency: 4
+  http_timeout_ms: 10000
+  http_retry_count: 2
+  http_retry_base_ms: 250
+  default_user_agent: ""
+  http_proxy: ""
+  https_proxy: ""
+  weibo_cookie: ""
+  xueqiu_cookie: ""
+  enable_browser_fallback: false
+
+# AI 提供商配置
+provider_profiles:
+  openai-main:
+    provider: openai-compatible
+    model: gpt-4.1
+    # 推荐使用 env.* 形式从环境变量读取密钥
+    secret_ref: env.LLM_API_KEY
+    base_url: ""
+    temperature: 0.7
+    max_tokens: 4096
+    enabled: true
+
+# 文章处理风格与模板策略
+article_profiles:
+  wechat-daily:
+    style: news-rewrite
+    output_format: html
+    template: daily-intelligence
+    length: medium
+    image_policy: none
+    allow_auto_publish: false
+
+# 发布账号配置
+publish_profiles:
+  wechat-main:
+    platform: wechat
+    account: main
+    # 可在 secrets.yaml 中配置 wechat.main: <secret>
+    secret_ref: wechat.main
+    allow_auto_publish: false
+    retry_count: 1
+    fallback_to_review: true
+
+# 审核门禁策略
+review_policy:
+  default_mode: review_required
+  auto_publish_profiles: []
+  blocking_errors:
+    - missing_secret
+    - render_failed
+    - validation_failed
+
+# 自动化任务配置
+automation:
+  auto_import: true
+  auto_generate: false
+  auto_publish: false
+  # daemon 轮询间隔（秒）
+  interval_seconds: 300
+  # 可选：覆盖 incoming/processed/failed 路径
+  # 不填时默认使用 paths.incoming_dir 及其子目录
+  incoming_dir: incoming
+  processed_dir: incoming/processed
+  failed_dir: incoming/failed
+  # 告警阈值：连续失败达到 warning/critical
+  alert_warning_threshold: 3
+  alert_critical_threshold: 6
+  # webhook 冷却时间（秒）
+  alert_webhook_cooldown_seconds: 300

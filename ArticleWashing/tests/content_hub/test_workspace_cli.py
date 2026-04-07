@@ -185,6 +185,97 @@ class WorkspaceCliTestCase(unittest.TestCase):
             state_payload = json.loads((incoming_dir / "automation_state.json").read_text(encoding="utf-8"))
             self.assertEqual(state_payload["command"], "run-once")
 
+    def test_automation_run_pipeline_runs_collector_and_imports_created_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace_root = Path(tmp_dir) / "workspace"
+            init_result = self._run_cli(
+                ["workspace", "init", str(workspace_root), "--name", "cloud-writer"]
+            )
+            self.assertEqual(init_result.returncode, 0, init_result.stderr)
+
+            config_path = workspace_root / "workspace.yaml"
+            config_payload = json.loads(
+                self._run_cli(["workspace", "show-config", str(workspace_root)]).stdout
+            )
+            config_payload["collector"] = {
+                "enabled": True,
+                "command": (
+                    'python3 -c "import json,pathlib; '
+                    "path=pathlib.Path(r'{bundle_out}'); "
+                    'path.parent.mkdir(parents=True, exist_ok=True); '
+                    "path.write_text(json.dumps({{'items':[{{'url':'https://example.com/pipeline','title':'Pipeline Topic'}}]}}), encoding='utf-8')\""
+                ),
+                "bundle_out_pattern": "incoming/pipeline-{timestamp}.json",
+            }
+
+            import yaml
+
+            config_path.write_text(
+                yaml.safe_dump(config_payload, allow_unicode=True, sort_keys=False),
+                encoding="utf-8",
+            )
+
+            result = self._run_cli(
+                [
+                    "automation",
+                    "run-pipeline",
+                    str(workspace_root),
+                    "--project-root",
+                    str(workspace_root),
+                ]
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["collector"]["bundle_path"].endswith(".json"))
+            self.assertEqual(payload["import_summary"]["imported_files"], 1)
+            self.assertEqual(payload["import_summary"]["failed_files"], 0)
+
+    def test_automation_run_pipeline_reports_env_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace_root = Path(tmp_dir) / "workspace"
+            init_result = self._run_cli(
+                ["workspace", "init", str(workspace_root), "--name", "cloud-writer"]
+            )
+            self.assertEqual(init_result.returncode, 0, init_result.stderr)
+
+            config_path = workspace_root / "workspace.yaml"
+            config_payload = json.loads(
+                self._run_cli(["workspace", "show-config", str(workspace_root)]).stdout
+            )
+            config_payload["collector"] = {
+                "enabled": False,
+                "command": "",
+            }
+
+            import yaml
+
+            config_path.write_text(
+                yaml.safe_dump(config_payload, allow_unicode=True, sort_keys=False),
+                encoding="utf-8",
+            )
+
+            result = self._run_cli(
+                [
+                    "automation",
+                    "run-pipeline",
+                    str(workspace_root),
+                    "--project-root",
+                    str(workspace_root),
+                ],
+                extra_env={
+                    "CONTENT_HUB_AUTOMATION_ALERT_WEBHOOK_COOLDOWN_SECONDS": "12",
+                },
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["collector"]["status"], "skipped")
+            self.assertIn(
+                "CONTENT_HUB_AUTOMATION_ALERT_WEBHOOK_COOLDOWN_SECONDS",
+                payload["env_overrides"],
+            )
+
     def test_automation_run_once_routes_success_and_failed_files_to_default_directories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             workspace_root = Path(tmp_dir) / "workspace"

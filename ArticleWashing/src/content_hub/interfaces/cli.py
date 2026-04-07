@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -29,6 +30,19 @@ AUTOMATION_FAILURE_ALERT_THRESHOLD = 3
 AUTOMATION_CRITICAL_ALERT_THRESHOLD = 6
 AUTOMATION_ALERT_WEBHOOK_ENV = "CONTENT_HUB_AUTOMATION_ALERT_WEBHOOK_URL"
 AUTOMATION_ALERT_WEBHOOK_COOLDOWN_ENV = "CONTENT_HUB_AUTOMATION_ALERT_WEBHOOK_COOLDOWN_SECONDS"
+
+_COLLECTOR_ENV_KEYS = {
+    "GLOBAL_CONCURRENCY": "global_concurrency",
+    "HTTP_TIMEOUT_MS": "http_timeout_ms",
+    "HTTP_RETRY_COUNT": "http_retry_count",
+    "HTTP_RETRY_BASE_MS": "http_retry_base_ms",
+    "DEFAULT_USER_AGENT": "default_user_agent",
+    "HTTP_PROXY": "http_proxy",
+    "HTTPS_PROXY": "https_proxy",
+    "WEIBO_COOKIE": "weibo_cookie",
+    "XUEQIU_COOKIE": "xueqiu_cookie",
+    "ENABLE_BROWSER_FALLBACK": "enable_browser_fallback",
+}
 
 
 def load_article(path: Path) -> ArticleDraft:
@@ -162,6 +176,111 @@ def handle_workspace_doctor(args: argparse.Namespace) -> int:
 
 def _default_cli_project_root() -> Path:
     return Path(__file__).resolve().parents[3]
+
+
+def _resolve_workspace_path(
+    *,
+    workspace_root: Path,
+    configured_path: str | None,
+    default_path: Path,
+) -> Path:
+    if not configured_path:
+        return default_path
+
+    candidate = Path(configured_path)
+    return candidate if candidate.is_absolute() else workspace_root / candidate
+
+
+def _resolve_workspace_incoming_dir(
+    *,
+    workspace_root: Path,
+    workspace_settings: WorkspaceSettings,
+    incoming_arg: str | None,
+) -> Path:
+    if incoming_arg:
+        return Path(incoming_arg)
+
+    return _resolve_workspace_path(
+        workspace_root=workspace_root,
+        configured_path=workspace_settings.automation.incoming_dir,
+        default_path=workspace_root / workspace_settings.paths.incoming_dir,
+    )
+
+
+def _resolve_workspace_processed_dir(
+    *,
+    workspace_root: Path,
+    workspace_settings: WorkspaceSettings,
+    incoming_dir: Path,
+) -> Path:
+    return _resolve_workspace_path(
+        workspace_root=workspace_root,
+        configured_path=workspace_settings.automation.processed_dir,
+        default_path=incoming_dir / "processed",
+    )
+
+
+def _resolve_workspace_failed_dir(
+    *,
+    workspace_root: Path,
+    workspace_settings: WorkspaceSettings,
+    incoming_dir: Path,
+) -> Path:
+    return _resolve_workspace_path(
+        workspace_root=workspace_root,
+        configured_path=workspace_settings.automation.failed_dir,
+        default_path=incoming_dir / "failed",
+    )
+
+
+def _build_collector_env(
+    *,
+    collector_policy,
+) -> tuple[dict[str, str], list[str]]:
+    env = os.environ.copy()
+    config_applied: list[str] = []
+
+    for env_key, policy_field in _COLLECTOR_ENV_KEYS.items():
+        if env.get(env_key):
+            continue
+
+        value = getattr(collector_policy, policy_field)
+        if isinstance(value, bool):
+            env[env_key] = "true" if value else "false"
+            config_applied.append(env_key)
+            continue
+
+        serialized = str(value).strip()
+        if not serialized:
+            continue
+        env[env_key] = serialized
+        config_applied.append(env_key)
+
+    return env, sorted(config_applied)
+
+
+def _detect_env_overrides() -> list[str]:
+    keys = {
+        AUTOMATION_ALERT_WEBHOOK_ENV,
+        AUTOMATION_ALERT_WEBHOOK_COOLDOWN_ENV,
+        *list(_COLLECTOR_ENV_KEYS.keys()),
+    }
+    return sorted(
+        key
+        for key in keys
+        if os.environ.get(key) not in (None, "")
+    )
+
+
+def _resolve_collector_bundle_path(
+    *,
+    workspace_root: Path,
+    pattern: str,
+) -> Path:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    rendered = pattern.replace("{timestamp}", timestamp)
+    bundle_path = Path(rendered)
+    return bundle_path if bundle_path.is_absolute() else workspace_root / bundle_path
 
 
 def _build_cli_container(project_root: Path) -> ServiceContainer:
@@ -444,13 +563,21 @@ def _resolve_automation_run_once_context(args: argparse.Namespace) -> dict:
     provider_profile = args.provider_profile or workspace_settings.default_provider_profile
     article_profile = args.article_profile or workspace_settings.default_article_profile
     publish_profile = args.publish_profile or workspace_settings.default_publish_profile
-    incoming_dir = (
-        Path(args.incoming_dir)
-        if args.incoming_dir
-        else workspace_root / workspace_settings.paths.incoming_dir
+    incoming_dir = _resolve_workspace_incoming_dir(
+        workspace_root=workspace_root,
+        workspace_settings=workspace_settings,
+        incoming_arg=args.incoming_dir,
     )
-    processed_dir = incoming_dir / "processed"
-    failed_dir = incoming_dir / "failed"
+    processed_dir = _resolve_workspace_processed_dir(
+        workspace_root=workspace_root,
+        workspace_settings=workspace_settings,
+        incoming_dir=incoming_dir,
+    )
+    failed_dir = _resolve_workspace_failed_dir(
+        workspace_root=workspace_root,
+        workspace_settings=workspace_settings,
+        incoming_dir=incoming_dir,
+    )
     automation_policy = workspace_settings.automation
     alert_warning_threshold = (
         int(automation_policy.alert_warning_threshold)
@@ -623,13 +750,115 @@ def handle_automation_run_daemon(args: argparse.Namespace) -> int:
     return 1 if had_failures else 0
 
 
+def handle_automation_run_pipeline(args: argparse.Namespace) -> int:
+    context = _resolve_automation_run_once_context(args)
+    workspace_settings = context["workspace_settings"]
+    collector_policy = workspace_settings.collector
+
+    collector_summary: dict[str, object]
+    collector_config_applied: list[str] = []
+    if collector_policy.enabled:
+        bundle_path = _resolve_collector_bundle_path(
+            workspace_root=context["workspace_root"],
+            pattern=collector_policy.bundle_out_pattern,
+        )
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+
+        collector_command_template = collector_policy.command.strip()
+        if collector_command_template:
+            collector_command = collector_command_template.format(
+                bundle_out=str(bundle_path)
+            )
+        else:
+            platforms_args = ""
+            if collector_policy.platforms:
+                platforms = ",".join(collector_policy.platforms)
+                platforms_args = f" --platforms {platforms}"
+            collector_command = (
+                f"node src/cli/run.js{platforms_args} --bundle-out \"{bundle_path}\""
+            )
+
+        collector_workdir = Path(collector_policy.working_dir)
+        if not collector_workdir.is_absolute():
+            collector_workdir = context["workspace_root"] / collector_workdir
+        if not collector_workdir.exists():
+            fallback_workdir = Path(args.project_root).parent / "DataCollection"
+            collector_workdir = fallback_workdir if fallback_workdir.exists() else Path(args.project_root)
+
+        collector_env, collector_config_applied = _build_collector_env(
+            collector_policy=collector_policy,
+        )
+        collector_result = subprocess.run(
+            collector_command,
+            cwd=collector_workdir,
+            env=collector_env,
+            shell=True,
+            capture_output=True,
+            text=True,
+        )
+        if collector_result.returncode != 0:
+            payload = {
+                "ok": False,
+                "collector": {
+                    "status": "failed",
+                    "command": collector_command,
+                    "working_dir": str(collector_workdir),
+                    "bundle_path": str(bundle_path),
+                    "returncode": collector_result.returncode,
+                    "stderr": collector_result.stderr,
+                },
+                "env_overrides": _detect_env_overrides(),
+                "config_applied_to_env": collector_config_applied,
+            }
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 1
+
+        collector_summary = {
+            "status": "ok",
+            "working_dir": str(collector_workdir),
+            "command": collector_command,
+            "bundle_path": str(bundle_path),
+            "returncode": collector_result.returncode,
+        }
+    else:
+        collector_summary = {
+            "status": "skipped",
+            "reason": "collector.disabled",
+        }
+
+    import_summary = _run_automation_import_once(
+        command="run-pipeline",
+        project_root=Path(args.project_root),
+        workspace_root=context["workspace_root"],
+        incoming_dir=context["incoming_dir"],
+        processed_dir=context["processed_dir"],
+        failed_dir=context["failed_dir"],
+        provider_profile=context["provider_profile"],
+        article_profile=context["article_profile"],
+        publish_profile=context["publish_profile"],
+        alert_warning_threshold=context["alert_warning_threshold"],
+        alert_critical_threshold=context["alert_critical_threshold"],
+        alert_webhook_cooldown_seconds=context["alert_webhook_cooldown_seconds"],
+    )
+
+    payload = {
+        "ok": int(import_summary.get("failed_files", 0)) == 0,
+        "collector": collector_summary,
+        "import_summary": import_summary,
+        "env_overrides": _detect_env_overrides(),
+        "config_applied_to_env": collector_config_applied,
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 1 if not payload["ok"] else 0
+
+
 def handle_automation_stop(args: argparse.Namespace) -> int:
     workspace_root = Path(args.workspace)
     workspace_settings = ConfigService(workspace_root).load_workspace_settings(workspace_root)
-    incoming_dir = (
-        Path(args.incoming_dir)
-        if args.incoming_dir
-        else workspace_root / workspace_settings.paths.incoming_dir
+    incoming_dir = _resolve_workspace_incoming_dir(
+        workspace_root=workspace_root,
+        workspace_settings=workspace_settings,
+        incoming_arg=args.incoming_dir,
     )
     signal_path = _automation_stop_signal_path(incoming_dir)
     signal_path.parent.mkdir(parents=True, exist_ok=True)
@@ -655,9 +884,25 @@ def handle_automation_retry_failed(args: argparse.Namespace) -> int:
     article_profile = args.article_profile or workspace_settings.default_article_profile
     publish_profile = args.publish_profile or workspace_settings.default_publish_profile
 
-    incoming_dir = workspace_root / workspace_settings.paths.incoming_dir
-    failed_dir = Path(args.failed_dir) if args.failed_dir else incoming_dir / "failed"
-    processed_dir = incoming_dir / "processed"
+    incoming_dir = _resolve_workspace_incoming_dir(
+        workspace_root=workspace_root,
+        workspace_settings=workspace_settings,
+        incoming_arg=None,
+    )
+    failed_dir = (
+        Path(args.failed_dir)
+        if args.failed_dir
+        else _resolve_workspace_failed_dir(
+            workspace_root=workspace_root,
+            workspace_settings=workspace_settings,
+            incoming_dir=incoming_dir,
+        )
+    )
+    processed_dir = _resolve_workspace_processed_dir(
+        workspace_root=workspace_root,
+        workspace_settings=workspace_settings,
+        incoming_dir=incoming_dir,
+    )
 
     container = _build_cli_container(Path(args.project_root))
     summary = container.ingestion_service.import_content_hub_bundles_from_directory(
@@ -704,10 +949,10 @@ def handle_automation_retry_failed(args: argparse.Namespace) -> int:
 def handle_automation_status(args: argparse.Namespace) -> int:
     workspace_root = Path(args.workspace)
     workspace_settings = ConfigService(workspace_root).load_workspace_settings(workspace_root)
-    incoming_dir = (
-        Path(args.incoming_dir)
-        if args.incoming_dir
-        else workspace_root / workspace_settings.paths.incoming_dir
+    incoming_dir = _resolve_workspace_incoming_dir(
+        workspace_root=workspace_root,
+        workspace_settings=workspace_settings,
+        incoming_arg=args.incoming_dir,
     )
     snapshot_path = _automation_state_path(workspace_root, incoming_dir)
     if not snapshot_path.exists():
@@ -731,10 +976,10 @@ def handle_automation_status(args: argparse.Namespace) -> int:
 def handle_automation_health(args: argparse.Namespace) -> int:
     workspace_root = Path(args.workspace)
     workspace_settings = ConfigService(workspace_root).load_workspace_settings(workspace_root)
-    incoming_dir = (
-        Path(args.incoming_dir)
-        if args.incoming_dir
-        else workspace_root / workspace_settings.paths.incoming_dir
+    incoming_dir = _resolve_workspace_incoming_dir(
+        workspace_root=workspace_root,
+        workspace_settings=workspace_settings,
+        incoming_arg=args.incoming_dir,
     )
     snapshot_path = _automation_state_path(workspace_root, incoming_dir)
     alert_path = _automation_alert_path(incoming_dir)
@@ -903,6 +1148,18 @@ def build_parser() -> argparse.ArgumentParser:
     automation_run_daemon_parser.add_argument("--interval-seconds", type=int)
     automation_run_daemon_parser.add_argument("--max-runs", type=int)
     automation_run_daemon_parser.set_defaults(handler=handle_automation_run_daemon)
+
+    automation_run_pipeline_parser = automation_subparsers.add_parser("run-pipeline")
+    automation_run_pipeline_parser.add_argument("workspace")
+    automation_run_pipeline_parser.add_argument(
+        "--project-root",
+        default=str(_default_cli_project_root()),
+    )
+    automation_run_pipeline_parser.add_argument("--incoming-dir")
+    automation_run_pipeline_parser.add_argument("--provider-profile")
+    automation_run_pipeline_parser.add_argument("--article-profile")
+    automation_run_pipeline_parser.add_argument("--publish-profile")
+    automation_run_pipeline_parser.set_defaults(handler=handle_automation_run_pipeline)
 
     automation_retry_failed_parser = automation_subparsers.add_parser("retry-failed")
     automation_retry_failed_parser.add_argument("workspace")
