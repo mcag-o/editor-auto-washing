@@ -13,3 +13,6 @@ AGENTS.md
 docs/
 .worktrees/
 .kilo/
+DataCollection/.env
+ArticleWashing/workspace.yaml
+ArticleWashing/.env
