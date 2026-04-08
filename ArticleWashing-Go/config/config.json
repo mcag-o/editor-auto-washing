@@ -1,0 +1,49 @@
+{
+  "http": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "read_timeout_sec": 15,
+    "write_timeout_sec": 30,
+    "shutdown_timeout_sec": 10
+  },
+  "log": {
+    "level": "info",
+    "format": "json"
+  },
+  "database": {
+    "driver": "sqlite",
+    "path": "./data/content-hub.db",
+    "max_open_conns": 10,
+    "max_idle_conns": 5,
+    "conn_max_life_min": 60
+  },
+  "storage": {
+    "base_path": "./data/storage",
+    "max_size_mb": 1024
+  },
+  "workflow": {
+    "max_concurrent_jobs": 5,
+    "retry_max_attempts": 3,
+    "timeout_sec": 300
+  },
+  "platforms": {
+    "baidu": {
+      "enabled": false
+    },
+    "wechat": {
+      "enabled": false
+    },
+    "zhihu": {
+      "enabled": false
+    },
+    "toutiao": {
+      "enabled": false
+    },
+    "csdn": {
+      "enabled": false
+    }
+  },
+  "secrets": {
+    "env_prefix": "CONTENTHUB"
+  }
+}

@@ -1,0 +1,227 @@
+package config
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestLoaderLoadNonExistentCreatesDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, defaultHTTPPort, cfg.HTTP.Port)
+	assert.Equal(t, defaultLogLevel, cfg.Log.Level)
+}
+
+func TestLoaderLoadExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := DefaultConfig()
+	cfg.HTTP.Port = 9090
+	cfg.Log.Level = "debug"
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	loaded, err := loader.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, 9090, loaded.HTTP.Port)
+	assert.Equal(t, "debug", loaded.Log.Level)
+}
+
+func TestLoaderLoadInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	require.NoError(t, os.WriteFile(path, []byte("{invalid json"), 0o644))
+
+	loader := NewLoader(path)
+	_, err := loader.Load()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse config file")
+}
+
+func TestLoaderLoadValidationFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	invalid := map[string]interface{}{
+		"http": map[string]interface{}{
+			"host": "",
+			"port": -1,
+		},
+	}
+	data, _ := json.Marshal(invalid)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	_, err := loader.Load()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "config validation failed")
+}
+
+func TestLoaderSave(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	loader := NewLoader(path)
+	cfg := DefaultConfig()
+	cfg.HTTP.Port = 7070
+
+	err := loader.Save(cfg)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var loaded Config
+	require.NoError(t, json.Unmarshal(data, &loaded))
+	assert.Equal(t, 7070, loaded.HTTP.Port)
+}
+
+func TestLoaderSaveCreatesDirectory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nested", "deep", "config.json")
+
+	loader := NewLoader(path)
+	cfg := DefaultConfig()
+
+	err := loader.Save(cfg)
+	require.NoError(t, err)
+
+	_, err = os.Stat(path)
+	require.NoError(t, err)
+}
+
+func TestLoaderSaveAtomicOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	original := DefaultConfig()
+	original.HTTP.Port = 1111
+
+	data, _ := json.Marshal(original)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+
+	badPath := filepath.Join(dir, string([]byte{0}), "config.json")
+	loader.SetPath(badPath)
+
+	cfg := DefaultConfig()
+	cfg.HTTP.Port = 2222
+	err := loader.Save(cfg)
+	require.Error(t, err)
+
+	_, err = os.Stat(path)
+	require.NoError(t, err)
+}
+
+func TestLoaderReload(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := DefaultConfig()
+	cfg.HTTP.Port = 8080
+	data, _ := json.Marshal(cfg)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	_, err := loader.Load()
+	require.NoError(t, err)
+
+	cfg.HTTP.Port = 9090
+	data, _ = json.Marshal(cfg)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	reloaded, err := loader.Reload()
+	require.NoError(t, err)
+	assert.Equal(t, 9090, reloaded.HTTP.Port)
+}
+
+func TestLoaderCurrent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := DefaultConfig()
+	cfg.HTTP.Port = 5555
+	data, _ := json.Marshal(cfg)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	_, err := loader.Load()
+	require.NoError(t, err)
+
+	current := loader.Current()
+	assert.Equal(t, 5555, current.HTTP.Port)
+}
+
+func TestLoaderOnChange(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg1 := DefaultConfig()
+	cfg1.HTTP.Port = 8080
+	data, _ := json.Marshal(cfg1)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	_, err := loader.Load()
+	require.NoError(t, err)
+
+	var changeReceived bool
+	var oldCfg, newCfg Config
+	loader.OnChange(func(old, new Config, changes Changes) {
+		changeReceived = true
+		oldCfg = old
+		newCfg = new
+	})
+
+	cfg2 := DefaultConfig()
+	cfg2.HTTP.Port = 9090
+	data, _ = json.Marshal(cfg2)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	_, err = loader.Reload()
+	require.NoError(t, err)
+
+	assert.True(t, changeReceived)
+	assert.Equal(t, 8080, oldCfg.HTTP.Port)
+	assert.Equal(t, 9090, newCfg.HTTP.Port)
+}
+
+func TestLoaderApplyDefaults(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]interface{}{
+		"http": map[string]interface{}{
+			"port": 3000,
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, 3000, cfg.HTTP.Port)
+	assert.Equal(t, defaultHTTPHost, cfg.HTTP.Host)
+	assert.Equal(t, defaultLogLevel, cfg.Log.Level)
+}

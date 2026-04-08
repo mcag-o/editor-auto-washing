@@ -1,0 +1,241 @@
+package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+)
+
+const (
+	defaultHTTPHost = "0.0.0.0"
+	defaultHTTPPort = 8080
+	defaultLogLevel = "info"
+	defaultDBPath   = "./data/content-hub.db"
+)
+
+type Config struct {
+	HTTP      HTTPConfig      `json:"http"`
+	Log       LogConfig       `json:"log"`
+	Database  DatabaseConfig  `json:"database"`
+	Storage   StorageConfig   `json:"storage"`
+	Workflow  WorkflowConfig  `json:"workflow"`
+	Platforms PlatformsConfig `json:"platforms"`
+	Secrets   SecretsConfig   `json:"secrets,omitempty"`
+}
+
+type HTTPConfig struct {
+	Host            string `json:"host"`
+	Port            int    `json:"port"`
+	ReadTimeoutSec  int    `json:"read_timeout_sec"`
+	WriteTimeoutSec int    `json:"write_timeout_sec"`
+	ShutdownSec     int    `json:"shutdown_timeout_sec"`
+}
+
+type LogConfig struct {
+	Level  string `json:"level"`
+	Format string `json:"format"`
+}
+
+type DatabaseConfig struct {
+	Driver         string `json:"driver"`
+	Path           string `json:"path"`
+	MaxOpenConns   int    `json:"max_open_conns"`
+	MaxIdleConns   int    `json:"max_idle_conns"`
+	ConnMaxLifeMin int    `json:"conn_max_life_min"`
+}
+
+type StorageConfig struct {
+	BasePath  string `json:"base_path"`
+	MaxSizeMB int    `json:"max_size_mb"`
+}
+
+type WorkflowConfig struct {
+	MaxConcurrentJobs int `json:"max_concurrent_jobs"`
+	RetryMaxAttempts  int `json:"retry_max_attempts"`
+	TimeoutSec        int `json:"timeout_sec"`
+}
+
+type PlatformsConfig struct {
+	Baidu   PlatformEntry `json:"baidu"`
+	WeChat  PlatformEntry `json:"wechat"`
+	Zhihu   PlatformEntry `json:"zhihu"`
+	Toutiao PlatformEntry `json:"toutiao"`
+	CSDN    PlatformEntry `json:"csdn"`
+}
+
+type PlatformEntry struct {
+	Enabled bool   `json:"enabled"`
+	Cookie  string `json:"cookie,omitempty"`
+	Token   string `json:"token,omitempty"`
+}
+
+type SecretsConfig struct {
+	EnvPrefix string `json:"env_prefix"`
+}
+
+func DefaultConfig() Config {
+	return Config{
+		HTTP: HTTPConfig{
+			Host:            defaultHTTPHost,
+			Port:            defaultHTTPPort,
+			ReadTimeoutSec:  15,
+			WriteTimeoutSec: 30,
+			ShutdownSec:     10,
+		},
+		Log: LogConfig{
+			Level:  defaultLogLevel,
+			Format: "json",
+		},
+		Database: DatabaseConfig{
+			Driver:         "sqlite",
+			Path:           defaultDBPath,
+			MaxOpenConns:   10,
+			MaxIdleConns:   5,
+			ConnMaxLifeMin: 60,
+		},
+		Storage: StorageConfig{
+			BasePath:  "./data/storage",
+			MaxSizeMB: 1024,
+		},
+		Workflow: WorkflowConfig{
+			MaxConcurrentJobs: 5,
+			RetryMaxAttempts:  3,
+			TimeoutSec:        300,
+		},
+		Platforms: PlatformsConfig{
+			Baidu:   PlatformEntry{Enabled: false},
+			WeChat:  PlatformEntry{Enabled: false},
+			Zhihu:   PlatformEntry{Enabled: false},
+			Toutiao: PlatformEntry{Enabled: false},
+			CSDN:    PlatformEntry{Enabled: false},
+		},
+		Secrets: SecretsConfig{
+			EnvPrefix: "CONTENTHUB",
+		},
+	}
+}
+
+func (c *Config) Validate() error {
+	if c.HTTP.Host == "" {
+		return fmt.Errorf("http.host cannot be empty")
+	}
+	if c.HTTP.Port < 1 || c.HTTP.Port > 65535 {
+		return fmt.Errorf("http.port must be between 1 and 65535, got %d", c.HTTP.Port)
+	}
+	if c.HTTP.ReadTimeoutSec <= 0 {
+		return fmt.Errorf("http.read_timeout_sec must be positive")
+	}
+	if c.HTTP.WriteTimeoutSec <= 0 {
+		return fmt.Errorf("http.write_timeout_sec must be positive")
+	}
+	if c.Log.Level == "" {
+		return fmt.Errorf("log.level cannot be empty")
+	}
+	validLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
+	if !validLevels[c.Log.Level] {
+		return fmt.Errorf("log.level must be one of debug,info,warn,error, got %q", c.Log.Level)
+	}
+	if c.Database.Driver == "" {
+		return fmt.Errorf("database.driver cannot be empty")
+	}
+	if c.Database.Path == "" {
+		return fmt.Errorf("database.path cannot be empty")
+	}
+	if c.Database.MaxOpenConns <= 0 {
+		return fmt.Errorf("database.max_open_conns must be positive")
+	}
+	if c.Storage.BasePath == "" {
+		return fmt.Errorf("storage.base_path cannot be empty")
+	}
+	if c.Workflow.MaxConcurrentJobs <= 0 {
+		return fmt.Errorf("workflow.max_concurrent_jobs must be positive")
+	}
+	if c.Workflow.RetryMaxAttempts < 0 {
+		return fmt.Errorf("workflow.retry_max_attempts cannot be negative")
+	}
+	return nil
+}
+
+func (c *Config) ResolveSecrets() {
+	c.resolvePlatformSecrets(&c.Platforms.Baidu, "BAIDU")
+	c.resolvePlatformSecrets(&c.Platforms.WeChat, "WECHAT")
+	c.resolvePlatformSecrets(&c.Platforms.Zhihu, "ZHIHU")
+	c.resolvePlatformSecrets(&c.Platforms.Toutiao, "TOUTIAO")
+	c.resolvePlatformSecrets(&c.Platforms.CSDN, "CSDN")
+}
+
+func (c *Config) resolvePlatformSecrets(p *PlatformEntry, platformKey string) {
+	prefix := c.Secrets.EnvPrefix
+	if p.Cookie == "" {
+		p.Cookie = os.Getenv(fmt.Sprintf("%s_%s_COOKIE", prefix, platformKey))
+	}
+	if p.Token == "" {
+		p.Token = os.Getenv(fmt.Sprintf("%s_%s_TOKEN", prefix, platformKey))
+	}
+}
+
+func (c *Config) Hash() (string, error) {
+	data, err := json.Marshal(c)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", fnvHash(data)), nil
+}
+
+func fnvHash(data []byte) uint64 {
+	var hash uint64 = 14695981039346656037
+	for _, b := range data {
+		hash ^= uint64(b)
+		hash *= 1099511628211
+	}
+	return hash
+}
+
+func (c *Config) PlatformStatus() map[string]bool {
+	return map[string]bool{
+		"baidu":   c.Platforms.Baidu.Enabled,
+		"wechat":  c.Platforms.WeChat.Enabled,
+		"zhihu":   c.Platforms.Zhihu.Enabled,
+		"toutiao": c.Platforms.Toutiao.Enabled,
+		"csdn":    c.Platforms.CSDN.Enabled,
+	}
+}
+
+func (c *Config) EnabledPlatforms() []string {
+	var enabled []string
+	for name, active := range c.PlatformStatus() {
+		if active {
+			enabled = append(enabled, name)
+		}
+	}
+	return enabled
+}
+
+func (c *Config) Redacted() Config {
+	redacted := *c
+	redacted.Platforms.Baidu = redactPlatform(redacted.Platforms.Baidu)
+	redacted.Platforms.WeChat = redactPlatform(redacted.Platforms.WeChat)
+	redacted.Platforms.Zhihu = redactPlatform(redacted.Platforms.Zhihu)
+	redacted.Platforms.Toutiao = redactPlatform(redacted.Platforms.Toutiao)
+	redacted.Platforms.CSDN = redactPlatform(redacted.Platforms.CSDN)
+	return redacted
+}
+
+func redactPlatform(p PlatformEntry) PlatformEntry {
+	redacted := p
+	if redacted.Cookie != "" {
+		redacted.Cookie = maskSecret(redacted.Cookie)
+	}
+	if redacted.Token != "" {
+		redacted.Token = maskSecret(redacted.Token)
+	}
+	return redacted
+}
+
+func maskSecret(s string) string {
+	if len(s) <= 8 {
+		return "****"
+	}
+	return s[:4] + strings.Repeat("*", len(s)-8) + s[len(s)-4:]
+}
