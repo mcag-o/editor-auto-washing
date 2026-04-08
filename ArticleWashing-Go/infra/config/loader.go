@@ -83,6 +83,12 @@ func (l *Loader) Current() Config {
 	return l.current
 }
 
+func (l *Loader) Get() *Config {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return &l.current
+}
+
 func (l *Loader) OnChange(fn func(old, new Config, changes Changes)) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -99,6 +105,13 @@ func (l *Loader) saveLocked(cfg Config) error {
 	dir := filepath.Dir(l.path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	if _, err := os.Stat(l.path); err == nil {
+		backupPath := l.path + ".bak"
+		if data, readErr := os.ReadFile(l.path); readErr == nil {
+			os.WriteFile(backupPath, data, 0o644)
+		}
 	}
 
 	tmpFile, err := os.CreateTemp(dir, ".config-*.tmp")
@@ -201,6 +214,24 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Secrets.EnvPrefix == "" {
 		cfg.Secrets.EnvPrefix = def.Secrets.EnvPrefix
+	}
+	if cfg.LLM.Provider == "" {
+		cfg.LLM.Provider = def.LLM.Provider
+	}
+	if cfg.LLM.Model == "" {
+		cfg.LLM.Model = def.LLM.Model
+	}
+	if cfg.LLM.MaxTokens == 0 {
+		cfg.LLM.MaxTokens = def.LLM.MaxTokens
+	}
+	if cfg.LLM.TimeoutSec == 0 {
+		cfg.LLM.TimeoutSec = def.LLM.TimeoutSec
+	}
+	if cfg.Template.PromptDir == "" {
+		cfg.Template.PromptDir = def.Template.PromptDir
+	}
+	if cfg.Template.DefaultPrompt == "" {
+		cfg.Template.DefaultPrompt = def.Template.DefaultPrompt
 	}
 }
 

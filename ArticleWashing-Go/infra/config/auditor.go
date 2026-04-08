@@ -94,11 +94,38 @@ func (a *AuditLog) Size() int {
 	return len(a.Entries)
 }
 
+type Auditor struct {
+	log *AuditLog
+}
+
+func NewAuditor() *Auditor {
+	return &Auditor{
+		log: &AuditLog{},
+	}
+}
+
+func (a *Auditor) Record(old, new Config, changes Changes, source string) {
+	entry := CreateAuditEntry(old, new, changes, source)
+	a.log.Add(entry)
+}
+
+func (a *Auditor) Log() *AuditLog {
+	return a.log
+}
+
+func (a *Auditor) Size() int {
+	return a.log.Size()
+}
+
+func (a *Auditor) Last() *AuditEntry {
+	return a.log.Last()
+}
+
 func (c Changes) HasChanges() bool {
 	return len(c) > 0
 }
 
-func (c Changes) summary() map[string]int {
+func (c Changes) Summary() map[string]int {
 	counts := make(map[string]int)
 	for _, ch := range c {
 		counts[ch.Type]++

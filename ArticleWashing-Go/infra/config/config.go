@@ -22,6 +22,8 @@ type Config struct {
 	Workflow  WorkflowConfig  `json:"workflow"`
 	Platforms PlatformsConfig `json:"platforms"`
 	Secrets   SecretsConfig   `json:"secrets,omitempty"`
+	LLM       LLMConfig       `json:"llm"`
+	Template  TemplateConfig  `json:"template"`
 }
 
 type HTTPConfig struct {
@@ -54,6 +56,22 @@ type WorkflowConfig struct {
 	MaxConcurrentJobs int `json:"max_concurrent_jobs"`
 	RetryMaxAttempts  int `json:"retry_max_attempts"`
 	TimeoutSec        int `json:"timeout_sec"`
+}
+
+type LLMConfig struct {
+	Provider    string  `json:"provider"`
+	APIKey      string  `json:"api_key,omitempty"`
+	BaseURL     string  `json:"base_url"`
+	Model       string  `json:"model"`
+	Temperature float64 `json:"temperature"`
+	MaxTokens   int     `json:"max_tokens"`
+	TimeoutSec  int     `json:"timeout_sec"`
+}
+
+type TemplateConfig struct {
+	PromptDir     string `json:"prompt_dir"`
+	DefaultPrompt string `json:"default_prompt"`
+	CacheEnabled  bool   `json:"cache_enabled"`
 }
 
 type PlatformsConfig struct {
@@ -112,6 +130,18 @@ func DefaultConfig() Config {
 		},
 		Secrets: SecretsConfig{
 			EnvPrefix: "CONTENTHUB",
+		},
+		LLM: LLMConfig{
+			Provider:    "openai",
+			Model:       "gpt-4",
+			Temperature: 0.7,
+			MaxTokens:   4096,
+			TimeoutSec:  60,
+		},
+		Template: TemplateConfig{
+			PromptDir:     "./prompts",
+			DefaultPrompt: "default",
+			CacheEnabled:  true,
 		},
 	}
 }
@@ -181,6 +211,10 @@ func (c *Config) Hash() (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%x", fnvHash(data)), nil
+}
+
+func (c *Config) ToJSON() ([]byte, error) {
+	return json.MarshalIndent(c, "", "  ")
 }
 
 func fnvHash(data []byte) uint64 {
