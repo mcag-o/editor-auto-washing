@@ -1,0 +1,6 @@
+data/
+bin/
+*.db
+*.log
+config.json.bak
+config.json.tmp
