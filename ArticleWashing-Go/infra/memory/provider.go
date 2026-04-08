@@ -1,0 +1,512 @@
+package memory
+
+import (
+	"content-hub/domain"
+	"content-hub/pkg/repo"
+	"context"
+	"fmt"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+)
+
+var (
+	_ repo.ArticleRepo   = (*memArticleRepo)(nil)
+	_ repo.TemplateRepo  = (*memTemplateRepo)(nil)
+	_ repo.DraftRepo     = (*memDraftRepo)(nil)
+	_ repo.AssetRepo     = (*memAssetRepo)(nil)
+	_ repo.ReviewRepo    = (*memReviewRepo)(nil)
+	_ repo.PublishRepo   = (*memPublishRepo)(nil)
+	_ repo.JobRepo       = (*memJobRepo)(nil)
+	_ repo.JobEventRepo  = (*memJobEventRepo)(nil)
+	_ repo.IngestionRepo = (*memIngestionRepo)(nil)
+	_ repo.WorkspaceRepo = (*memWorkspaceRepo)(nil)
+)
+
+type Provider struct {
+	mu         sync.RWMutex
+	articles   map[string]*domain.ContentDocument
+	templates  map[string]*domain.TemplateAsset
+	drafts     map[string]*domain.ArticleDraft
+	assets     map[string]map[string]any
+	reviews    map[string]*domain.ReviewTask
+	publishes  map[string]*domain.PublishRecord
+	jobs       map[string]*domain.JobRun
+	jobEvents  map[string][]*domain.JobEvent
+	ingestions map[string]*domain.IngestionRecord
+	workspaces map[string]*domain.WorkspaceArticle
+}
+
+func NewProvider() *Provider {
+	return &Provider{
+		articles:   make(map[string]*domain.ContentDocument),
+		templates:  make(map[string]*domain.TemplateAsset),
+		drafts:     make(map[string]*domain.ArticleDraft),
+		assets:     make(map[string]map[string]any),
+		reviews:    make(map[string]*domain.ReviewTask),
+		publishes:  make(map[string]*domain.PublishRecord),
+		jobs:       make(map[string]*domain.JobRun),
+		jobEvents:  make(map[string][]*domain.JobEvent),
+		ingestions: make(map[string]*domain.IngestionRecord),
+		workspaces: make(map[string]*domain.WorkspaceArticle),
+	}
+}
+
+func (p *Provider) ArticleRepo() repo.ArticleRepo     { return &memArticleRepo{p: p} }
+func (p *Provider) TemplateRepo() repo.TemplateRepo   { return &memTemplateRepo{p: p} }
+func (p *Provider) DraftRepo() repo.DraftRepo         { return &memDraftRepo{p: p} }
+func (p *Provider) AssetRepo() repo.AssetRepo         { return &memAssetRepo{p: p} }
+func (p *Provider) ReviewRepo() repo.ReviewRepo       { return &memReviewRepo{p: p} }
+func (p *Provider) PublishRepo() repo.PublishRepo     { return &memPublishRepo{p: p} }
+func (p *Provider) JobRepo() repo.JobRepo             { return &memJobRepo{p: p} }
+func (p *Provider) JobEventRepo() repo.JobEventRepo   { return &memJobEventRepo{p: p} }
+func (p *Provider) IngestionRepo() repo.IngestionRepo { return &memIngestionRepo{p: p} }
+func (p *Provider) WorkspaceRepo() repo.WorkspaceRepo { return &memWorkspaceRepo{p: p} }
+
+type memArticleRepo struct{ p *Provider }
+
+func (r *memArticleRepo) Create(_ context.Context, doc *domain.ContentDocument) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.articles[doc.ID] = doc
+	return nil
+}
+
+func (r *memArticleRepo) GetByID(_ context.Context, id string) (*domain.ContentDocument, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+	doc, ok := r.p.articles[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("article", id)
+	}
+	return doc, nil
+}
+
+func (r *memArticleRepo) List(_ context.Context, q domain.ListQuery) ([]domain.ContentDocument, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	var docs []domain.ContentDocument
+	for _, doc := range r.p.articles {
+		if q.TitleQuery != "" && !strings.Contains(strings.ToLower(doc.Title), strings.ToLower(q.TitleQuery)) {
+			continue
+		}
+		docs = append(docs, *doc)
+	}
+
+	sort.Slice(docs, func(i, j int) bool {
+		return docs[i].CreatedAt.After(docs[j].CreatedAt)
+	})
+
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	offset := q.Offset
+	if offset >= len(docs) {
+		return []domain.ContentDocument{}, nil
+	}
+	end := offset + limit
+	if end > len(docs) {
+		end = len(docs)
+	}
+	return docs[offset:end], nil
+}
+
+func (r *memArticleRepo) Update(_ context.Context, id string, body string) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	doc, ok := r.p.articles[id]
+	if !ok {
+		return domain.NewNotFoundErr("article", id)
+	}
+	doc.Body = body
+	doc.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *memArticleRepo) Delete(_ context.Context, id string) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	if _, ok := r.p.articles[id]; !ok {
+		return domain.NewNotFoundErr("article", id)
+	}
+	delete(r.p.articles, id)
+	return nil
+}
+
+type memTemplateRepo struct{ p *Provider }
+
+func (r *memTemplateRepo) Create(_ context.Context, t *domain.TemplateAsset) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.templates[t.ID] = t
+	return nil
+}
+
+func (r *memTemplateRepo) GetByID(_ context.Context, id string) (*domain.TemplateAsset, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+	t, ok := r.p.templates[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("template", id)
+	}
+	return t, nil
+}
+
+func (r *memTemplateRepo) List(_ context.Context, category string) ([]domain.TemplateAsset, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	var templates []domain.TemplateAsset
+	for _, t := range r.p.templates {
+		if category != "" && t.Category != category {
+			continue
+		}
+		templates = append(templates, *t)
+	}
+
+	sort.Slice(templates, func(i, j int) bool {
+		if templates[i].Category == templates[j].Category {
+			return templates[i].Name < templates[j].Name
+		}
+		return templates[i].Category < templates[j].Category
+	})
+
+	return templates, nil
+}
+
+func (r *memTemplateRepo) ListCategories(_ context.Context) ([]string, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	seen := make(map[string]bool)
+	var categories []string
+	for _, t := range r.p.templates {
+		if !seen[t.Category] {
+			seen[t.Category] = true
+			categories = append(categories, t.Category)
+		}
+	}
+	sort.Strings(categories)
+	return categories, nil
+}
+
+func (r *memTemplateRepo) Update(_ context.Context, id string, content string) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	t, ok := r.p.templates[id]
+	if !ok {
+		return domain.NewNotFoundErr("template", id)
+	}
+	t.Content = content
+	t.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *memTemplateRepo) Delete(_ context.Context, id string) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	if _, ok := r.p.templates[id]; !ok {
+		return domain.NewNotFoundErr("template", id)
+	}
+	delete(r.p.templates, id)
+	return nil
+}
+
+type memDraftRepo struct{ p *Provider }
+
+func (r *memDraftRepo) Create(_ context.Context, d *domain.ArticleDraft) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.drafts[d.ID] = d
+	return nil
+}
+
+func (r *memDraftRepo) GetByID(_ context.Context, id string) (*domain.ArticleDraft, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+	d, ok := r.p.drafts[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("draft", id)
+	}
+	return d, nil
+}
+
+func (r *memDraftRepo) List(_ context.Context, status *string) ([]domain.ArticleDraft, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	var drafts []domain.ArticleDraft
+	for _, d := range r.p.drafts {
+		if status != nil && d.Status != *status {
+			continue
+		}
+		drafts = append(drafts, *d)
+	}
+	return drafts, nil
+}
+
+func (r *memDraftRepo) Update(_ context.Context, id string, fn func(*domain.ArticleDraft)) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	d, ok := r.p.drafts[id]
+	if !ok {
+		return domain.NewNotFoundErr("draft", id)
+	}
+	fn(d)
+	d.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+type memAssetRepo struct{ p *Provider }
+
+func (r *memAssetRepo) Create(_ context.Context, a map[string]any) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	id, _ := a["id"].(string)
+	if id == "" {
+		return fmt.Errorf("asset missing id")
+	}
+	r.p.assets[id] = a
+	return nil
+}
+
+func (r *memAssetRepo) GetByID(_ context.Context, id string) (map[string]any, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+	a, ok := r.p.assets[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("asset", id)
+	}
+	return a, nil
+}
+
+func (r *memAssetRepo) List(_ context.Context, articleID, platform string) ([]map[string]any, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	var assets []map[string]any
+	for _, a := range r.p.assets {
+		if articleID != "" {
+			if aid, ok := a["article_id"].(string); !ok || aid != articleID {
+				continue
+			}
+		}
+		if platform != "" {
+			if p, ok := a["platform"].(string); !ok || p != platform {
+				continue
+			}
+		}
+		assets = append(assets, a)
+	}
+	return assets, nil
+}
+
+type memReviewRepo struct{ p *Provider }
+
+func (r *memReviewRepo) Create(_ context.Context, rev *domain.ReviewTask) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.reviews[rev.ID] = rev
+	return nil
+}
+
+func (r *memReviewRepo) GetByID(_ context.Context, id string) (*domain.ReviewTask, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+	rev, ok := r.p.reviews[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("review", id)
+	}
+	return rev, nil
+}
+
+func (r *memReviewRepo) ListByArticle(_ context.Context, articleID string) ([]domain.ReviewTask, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	var tasks []domain.ReviewTask
+	for _, rev := range r.p.reviews {
+		if rev.ArticleID == articleID {
+			tasks = append(tasks, *rev)
+		}
+	}
+	return tasks, nil
+}
+
+func (r *memReviewRepo) UpdateStatus(_ context.Context, id string, status, reviewer, notes string) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	rev, ok := r.p.reviews[id]
+	if !ok {
+		return domain.NewNotFoundErr("review", id)
+	}
+	rev.Status = status
+	rev.Reviewer = reviewer
+	rev.Notes = notes
+	rev.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+type memPublishRepo struct{ p *Provider }
+
+func (r *memPublishRepo) Record(_ context.Context, rec *domain.PublishRecord) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.publishes[rec.ID] = rec
+	return nil
+}
+
+func (r *memPublishRepo) ListByArticle(_ context.Context, title string) ([]domain.PublishRecord, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	var records []domain.PublishRecord
+	for _, rec := range r.p.publishes {
+		if rec.ArticleTitle == title {
+			records = append(records, *rec)
+		}
+	}
+	return records, nil
+}
+
+type memJobRepo struct{ p *Provider }
+
+func (r *memJobRepo) Create(_ context.Context, j *domain.JobRun) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.jobs[j.ID] = j
+	return nil
+}
+
+func (r *memJobRepo) GetByID(_ context.Context, id string) (*domain.JobRun, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+	j, ok := r.p.jobs[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("job", id)
+	}
+	return j, nil
+}
+
+func (r *memJobRepo) List(_ context.Context, status *string) ([]domain.JobRun, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	var jobs []domain.JobRun
+	for _, j := range r.p.jobs {
+		if status != nil && j.Status != *status {
+			continue
+		}
+		jobs = append(jobs, *j)
+	}
+	return jobs, nil
+}
+
+func (r *memJobRepo) Update(_ context.Context, id string, fn func(*domain.JobRun)) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	j, ok := r.p.jobs[id]
+	if !ok {
+		return domain.NewNotFoundErr("job", id)
+	}
+	fn(j)
+	j.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+type memJobEventRepo struct{ p *Provider }
+
+func (r *memJobEventRepo) Add(_ context.Context, evt *domain.JobEvent) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.jobEvents[evt.JobID] = append(r.p.jobEvents[evt.JobID], evt)
+	return nil
+}
+
+func (r *memJobEventRepo) ListByJob(_ context.Context, jobID string) ([]domain.JobEvent, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	events := r.p.jobEvents[jobID]
+	result := make([]domain.JobEvent, len(events))
+	for i, e := range events {
+		result[i] = *e
+	}
+	return result, nil
+}
+
+type memIngestionRepo struct{ p *Provider }
+
+func (r *memIngestionRepo) Record(_ context.Context, rec *domain.IngestionRecord) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.ingestions[rec.ID] = rec
+	return nil
+}
+
+func (r *memIngestionRepo) List(_ context.Context, sourceType string) ([]domain.IngestionRecord, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	var records []domain.IngestionRecord
+	for _, rec := range r.p.ingestions {
+		if sourceType != "" && rec.SourceType != sourceType {
+			continue
+		}
+		records = append(records, *rec)
+	}
+	return records, nil
+}
+
+type memWorkspaceRepo struct{ p *Provider }
+
+func (r *memWorkspaceRepo) Create(_ context.Context, w *domain.WorkspaceArticle) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.workspaces[w.ID] = w
+	return nil
+}
+
+func (r *memWorkspaceRepo) GetByID(_ context.Context, id string) (*domain.WorkspaceArticle, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+	w, ok := r.p.workspaces[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("workspace", id)
+	}
+	return w, nil
+}
+
+func (r *memWorkspaceRepo) List(_ context.Context, status *string) ([]domain.WorkspaceArticle, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	var articles []domain.WorkspaceArticle
+	for _, w := range r.p.workspaces {
+		if status != nil && w.Status != *status {
+			continue
+		}
+		articles = append(articles, *w)
+	}
+	return articles, nil
+}
+
+func (r *memWorkspaceRepo) TransitionStatus(_ context.Context, id string, newStatus, notes string) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	w, ok := r.p.workspaces[id]
+	if !ok {
+		return domain.NewNotFoundErr("workspace", id)
+	}
+	if !w.CanTransitionTo(newStatus) {
+		return domain.NewConflictErr(fmt.Sprintf("cannot transition from %s to %s", w.Status, newStatus))
+	}
+	w.Status = newStatus
+	w.StatusHistory = append(w.StatusHistory, newStatus)
+	w.Notes = notes
+	w.UpdatedAt = time.Now().UTC()
+	return nil
+}
