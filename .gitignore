@@ -17,3 +17,9 @@ DataCollection/.env
 ArticleWashing/workspace.yaml
 ArticleWashing/.env
 swap/
+ArticleWashing-Go/data/
+ArticleWashing-Go/bin/
+ArticleWashing-Go/*.db
+ArticleWashing-Go/*.log
+ArticleWashing-Go/config.json.bak
+ArticleWashing-Go/config.json.tmp
