@@ -1,0 +1,25 @@
+{
+  "code": 0,
+  "data": {
+    "list": [
+      {
+        "aid": 987654,
+        "bvid": "BV1xx411c7mD",
+        "title": "Annual animation festival premieres surprise short",
+        "desc": "Studio release climbs the popular chart.",
+        "owner": {
+          "name": "BiliNews"
+        }
+      },
+      {
+        "aid": 987655,
+        "bvid": "BV1xx411c7mE",
+        "title": "Open source game engine reaches 1.0",
+        "desc": "Developers celebrate a major milestone.",
+        "owner": {
+          "name": "GameDevCN"
+        }
+      }
+    ]
+  }
+}

@@ -123,6 +123,18 @@ func (r *articleWorkspaceRepo) TransitionStatus(ctx context.Context, id string, 
 	return nil
 }
 
+func (r *articleWorkspaceRepo) Delete(ctx context.Context, id string) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM workspace_articles WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete workspace article: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err == nil && rows == 0 {
+		return domain.NewNotFoundErr("workspace", id)
+	}
+	return nil
+}
+
 func scanWorkspaceArticle(row scanner) (*domain.ArticleWorkspaceRecord, error) {
 	var record domain.ArticleWorkspaceRecord
 	var statusHistory string

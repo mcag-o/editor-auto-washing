@@ -12,45 +12,65 @@ import (
 )
 
 var (
-	_ repo.ArticleRepo           = (*memArticleRepo)(nil)
-	_ repo.TemplateRepo          = (*memTemplateRepo)(nil)
-	_ repo.DraftRepo             = (*memDraftRepo)(nil)
-	_ repo.AssetRepo             = (*memAssetRepo)(nil)
-	_ repo.ReviewRepo            = (*memReviewRepo)(nil)
-	_ repo.PublishRepo           = (*memPublishRepo)(nil)
-	_ repo.JobRepo               = (*memJobRepo)(nil)
-	_ repo.JobEventRepo          = (*memJobEventRepo)(nil)
-	_ repo.IngestionRepo         = (*memIngestionRepo)(nil)
-	_ repo.WorkspaceRepo         = (*memWorkspaceRepo)(nil)
-	_ repo.BundleImportTxStarter = (*Provider)(nil)
+	_ repo.ArticleRepo                 = (*memArticleRepo)(nil)
+	_ repo.TemplateRepo                = (*memTemplateRepo)(nil)
+	_ repo.DraftRepo                   = (*memDraftRepo)(nil)
+	_ repo.AssetRepo                   = (*memAssetRepo)(nil)
+	_ repo.ReviewRepo                  = (*memReviewRepo)(nil)
+	_ repo.PublishRepo                 = (*memPublishRepo)(nil)
+	_ repo.JobRepo                     = (*memJobRepo)(nil)
+	_ repo.JobEventRepo                = (*memJobEventRepo)(nil)
+	_ repo.IngestionRepo               = (*memIngestionRepo)(nil)
+	_ repo.WorkspaceRepo               = (*memWorkspaceRepo)(nil)
+	_ repo.CollectorSourceRepo         = (*memCollectorSourceRepo)(nil)
+	_ repo.CollectorRunRepo            = (*memCollectorRunRepo)(nil)
+	_ repo.CollectorEntryRepo          = (*memCollectorEntryRepo)(nil)
+	_ repo.CollectorArticleRepo        = (*memCollectorArticleRepo)(nil)
+	_ repo.CollectorAttemptRepo        = (*memCollectorAttemptRepo)(nil)
+	_ repo.CollectorSchedulerStateRepo = (*memCollectorSchedulerRepo)(nil)
+	_ repo.BundleImportTxStarter       = (*Provider)(nil)
 )
 
 type Provider struct {
-	mu         sync.RWMutex
-	articles   map[string]*domain.ContentDocument
-	templates  map[string]*domain.TemplateAsset
-	drafts     map[string]*domain.ArticleDraft
-	assets     map[string]*domain.RenderedAssetRecord
-	reviews    map[string]*domain.ReviewTask
-	publishes  map[string]*domain.PublishRecord
-	jobs       map[string]*domain.JobRun
-	jobEvents  map[string][]*domain.JobEvent
-	ingestions map[string]*domain.IngestionRecord
-	workspaces map[string]*domain.ArticleWorkspaceRecord
+	mu                  sync.RWMutex
+	articles            map[string]*domain.ContentDocument
+	templates           map[string]*domain.TemplateAsset
+	drafts              map[string]*domain.ArticleDraft
+	assets              map[string]*domain.RenderedAssetRecord
+	reviews             map[string]*domain.ReviewTask
+	publishes           map[string]*domain.PublishRecord
+	jobs                map[string]*domain.JobRun
+	jobEvents           map[string][]*domain.JobEvent
+	ingestions          map[string]*domain.IngestionRecord
+	workspaces          map[string]*domain.ArticleWorkspaceRecord
+	collectorSources    map[string]*domain.CollectorSource
+	collectorRuns       map[string]*domain.CollectorRun
+	collectorSourceRuns map[string][]*domain.CollectorSourceRun
+	collectorEntries    map[string][]*domain.CollectorEntry
+	collectorArticles   map[string]*domain.CollectorArticle
+	collectorAttempts   map[string][]*domain.CollectorAttempt
+	collectorSchedulers map[string]*domain.CollectorSchedulerState
 }
 
 func NewProvider() *Provider {
 	return &Provider{
-		articles:   make(map[string]*domain.ContentDocument),
-		templates:  make(map[string]*domain.TemplateAsset),
-		drafts:     make(map[string]*domain.ArticleDraft),
-		assets:     make(map[string]*domain.RenderedAssetRecord),
-		reviews:    make(map[string]*domain.ReviewTask),
-		publishes:  make(map[string]*domain.PublishRecord),
-		jobs:       make(map[string]*domain.JobRun),
-		jobEvents:  make(map[string][]*domain.JobEvent),
-		ingestions: make(map[string]*domain.IngestionRecord),
-		workspaces: make(map[string]*domain.ArticleWorkspaceRecord),
+		articles:            make(map[string]*domain.ContentDocument),
+		templates:           make(map[string]*domain.TemplateAsset),
+		drafts:              make(map[string]*domain.ArticleDraft),
+		assets:              make(map[string]*domain.RenderedAssetRecord),
+		reviews:             make(map[string]*domain.ReviewTask),
+		publishes:           make(map[string]*domain.PublishRecord),
+		jobs:                make(map[string]*domain.JobRun),
+		jobEvents:           make(map[string][]*domain.JobEvent),
+		ingestions:          make(map[string]*domain.IngestionRecord),
+		workspaces:          make(map[string]*domain.ArticleWorkspaceRecord),
+		collectorSources:    make(map[string]*domain.CollectorSource),
+		collectorRuns:       make(map[string]*domain.CollectorRun),
+		collectorSourceRuns: make(map[string][]*domain.CollectorSourceRun),
+		collectorEntries:    make(map[string][]*domain.CollectorEntry),
+		collectorArticles:   make(map[string]*domain.CollectorArticle),
+		collectorAttempts:   make(map[string][]*domain.CollectorAttempt),
+		collectorSchedulers: make(map[string]*domain.CollectorSchedulerState),
 	}
 }
 
@@ -64,6 +84,20 @@ func (p *Provider) JobRepo() repo.JobRepo             { return &memJobRepo{p: p}
 func (p *Provider) JobEventRepo() repo.JobEventRepo   { return &memJobEventRepo{p: p} }
 func (p *Provider) IngestionRepo() repo.IngestionRepo { return &memIngestionRepo{p: p} }
 func (p *Provider) WorkspaceRepo() repo.WorkspaceRepo { return &memWorkspaceRepo{p: p} }
+func (p *Provider) CollectorSourceRepo() repo.CollectorSourceRepo {
+	return &memCollectorSourceRepo{p: p}
+}
+func (p *Provider) CollectorRunRepo() repo.CollectorRunRepo     { return &memCollectorRunRepo{p: p} }
+func (p *Provider) CollectorEntryRepo() repo.CollectorEntryRepo { return &memCollectorEntryRepo{p: p} }
+func (p *Provider) CollectorArticleRepo() repo.CollectorArticleRepo {
+	return &memCollectorArticleRepo{p: p}
+}
+func (p *Provider) CollectorAttemptRepo() repo.CollectorAttemptRepo {
+	return &memCollectorAttemptRepo{p: p}
+}
+func (p *Provider) CollectorSchedulerRepo() repo.CollectorSchedulerStateRepo {
+	return &memCollectorSchedulerRepo{p: p}
+}
 
 func (p *Provider) BeginBundleImport(_ context.Context) (repo.BundleImportTx, error) {
 	return p.BeginTx(), nil
@@ -592,5 +626,15 @@ func (r *memWorkspaceRepo) TransitionStatus(_ context.Context, id string, newSta
 	w.LifecycleHistory = append(w.LifecycleHistory, domain.ArticleWorkspaceLifecycleEntry{Status: newStatus, Notes: notes, CreatedAt: time.Now().UTC()})
 	w.Notes = notes
 	w.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *memWorkspaceRepo) Delete(_ context.Context, id string) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	if _, ok := r.p.workspaces[id]; !ok {
+		return domain.NewNotFoundErr("workspace", id)
+	}
+	delete(r.p.workspaces, id)
 	return nil
 }

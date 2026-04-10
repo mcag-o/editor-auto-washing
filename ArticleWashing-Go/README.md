@@ -1,6 +1,6 @@
 # ArticleWashing-Go
 
-> `ArticleWashing` 的 Go 主实现，当前已经覆盖工作区配置、bundle 导入、结构化排版、审核发布、作业与自动化主链路。
+> `ArticleWashing` 的 Go 主实现，当前已经覆盖工作区配置、Go 内置采集器、结构化排版、审核发布、作业与自动化主链路。
 
 ---
 
@@ -8,17 +8,17 @@
 
 `ArticleWashing-Go` 不是 Python 版的逐文件翻译，而是面向当前主链路的 Go 实现。
 
-当前已经完成的替代范围：
+当前已经完成的主链路替代范围：
 
 - workspace 驱动配置
-- `DataCollection` bundle ingestion
+- collector source registry / hotlist run / scheduler control
 - article workspace 生命周期
 - 结构化 draft / render / validate / asset persistence
 - review / publish gate / publish history
 - workflow / jobs / automation
 - HTTP API / CLI / 基础 TUI
 
-这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，`ArticleWashing-Go` 已可以替代 `ArticleWashing`。
+这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，`ArticleWashing-Go` 已可以作为当前默认主实现；但 collector 的对外运维面仍以 source registry、run listing、scheduler control 为主，detail fetch 与 bridge 目前主要还是内部服务能力。
 
 不包含的承诺：
 
@@ -45,7 +45,7 @@
 
 ### 2. Ingestion 与文章工作区
 
-- 导入 `DataCollection` 输出的 bundle 文件
+- 导入历史 bundle 文件，并承接 Go collector bridge 创建的 workspace article
 - 处理 `incoming / processed / failed`
 - 持久化 ingestion record
 - 持久化 article workspace record 与状态流转
@@ -57,6 +57,45 @@
 - `ArticleWashing-Go/infra/filesystem/bundle_router.go`
 - `ArticleWashing-Go/infra/sqlite/ingestion_repo.go`
 - `ArticleWashing-Go/infra/sqlite/article_workspace_repo.go`
+
+### 2.5. Go Collector 主链路
+
+- 内置 source registry，同步当前 Go 插件到 SQLite source repo
+- 支持 hotlist mainline：source -> run -> source run -> collector entries
+- 内部已实现 detail fetch mainline：entry -> collector article -> fetch attempts
+- 内部已实现 bridge mainline：collector article -> workspace article，且重复 push 幂等
+- 当前对外提供 collector scheduler `run-once / daemon / status / health / stop`
+
+当前默认注册 source：
+
+- `baidu`
+- `bilibili`
+- `github`
+- `stackoverflow`
+- `v2ex`
+- `weibo`
+
+其中当前能力边界是：
+
+- `baidu`、`github`、`v2ex` 已具备 hotlist + detail fetch
+- `bilibili`、`stackoverflow`、`weibo` 当前为 hotlist-only
+- 其余 `DataCollection/` 历史 source 尚未迁入 Go runtime
+
+需要区分三层语义：
+
+- 已实现的内部服务：`run_service`、`article_fetch_service`、`bridge_service`
+- 当前暴露的运维接口：source list/health、run list/detail、scheduler control
+- 仍待 cutover 完成的事项：detail fetch/bridge 的正式运维入口、按 source 的生产验证、未迁移 source 的迁移与回退编排
+
+相关代码：
+
+- `collector/service/registry.go`
+- `collector/service/run_service.go`
+- `collector/service/article_fetch_service.go`
+- `collector/service/bridge_service.go`
+- `collector/scheduler/service.go`
+- `service/collector_runtime.go`
+- `docs/collector-migration-matrix.md`
 
 ### 3. 结构化排版
 
@@ -191,6 +230,21 @@ go run ./cmd/cli automation stop --root .
 
 说明：CLI `automation daemon` 是前台阻塞模式；HTTP 的 `daemon` 是进程内异步启动模式。这是有意保持的“真实语义”。
 
+### Collector
+
+```bash
+go run ./cmd/cli collector sources list --root .
+go run ./cmd/cli collector sources health --root .
+go run ./cmd/cli collector runs list --root .
+go run ./cmd/cli collector scheduler run-once --root .
+go run ./cmd/cli collector scheduler daemon --root .
+go run ./cmd/cli collector scheduler status --root .
+go run ./cmd/cli collector scheduler health --root .
+go run ./cmd/cli collector scheduler stop --root .
+```
+
+说明：当前 collector CLI 暴露的是 source registry、run listing、scheduler control。detail fetch 与 bridge 虽已在运行时内部实现并有集成测试覆盖，但还不是独立的一线运维入口。
+
 ---
 
 ## HTTP API
@@ -246,6 +300,20 @@ go run ./cmd/cli automation stop --root .
 - `GET /automation/health`
 - `POST /automation/stop`
 
+### Collector
+
+- `GET /collector/sources`
+- `GET /collector/sources/health`
+- `GET /collector/runs`
+- `GET /collector/runs/:id`
+- `POST /collector/scheduler/run-once`
+- `POST /collector/scheduler/daemon`
+- `GET /collector/scheduler/status`
+- `GET /collector/scheduler/health`
+- `POST /collector/scheduler/stop`
+
+说明：当前 HTTP collector 面向运行状态观测与 scheduler 控制；detail fetch 和 bridge 没有作为独立 HTTP entrypoint 暴露。
+
 ---
 
 ## 存储与运行时
@@ -271,6 +339,7 @@ go test ./...
 覆盖范围包括：
 
 - workspace/config
+- collector hotlist/detail/bridge integration
 - ingestion/article workspace
 - formatting/render/validate/assets
 - review/publish
@@ -285,6 +354,8 @@ go test ./...
 ## 当前限制与边界
 
 - Go 版已经可以替代 Python 主链路，但不是历史兼容层逐字复刻
+- Go collector 仅覆盖当前已迁移 source；未迁移 source 仍需参考 `docs/collector-migration-matrix.md`
+- collector 内部 detail fetch / bridge 已实现，但正式 cutover 仍需要补足对外操作面与 source-by-source 验证
 - automation daemon 目前是单进程内模型，不是外部 supervisor 模型
 - TUI 范围有意收敛，不覆盖全部 automation 管理面
 - publish provider 当前仍以现有 provider boundary 为主，外部平台能力是否完整取决于具体 provider 实现
@@ -324,4 +395,4 @@ ArticleWashing-Go/
 
 - 已完成对 `ArticleWashing` 的主链路功能等价替代
 - 可以作为当前默认主实现使用
-- 文档、运维切换和最终远端发布是剩余的主要收尾事项
+- Go collector 已具备内部主链路验证基础，剩余事项集中在对外运维入口补齐、source-by-source 迁移验证与生产切换编排

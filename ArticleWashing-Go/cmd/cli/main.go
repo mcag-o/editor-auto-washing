@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	collectorscheduler "content-hub/collector/scheduler"
+	collectorservice "content-hub/collector/service"
 	"content-hub/domain"
 	workspaceinfra "content-hub/infra/workspace"
 	"content-hub/service"
@@ -9,7 +11,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -46,6 +51,17 @@ type automationCLIService interface {
 	Status(ctx context.Context) (*domain.AutomationStatusSnapshot, error)
 	Health(ctx context.Context) (*domain.AutomationHealthReport, error)
 	Stop(ctx context.Context) (*domain.AutomationStopResult, error)
+}
+
+type collectorCLIService interface {
+	ListSources(ctx context.Context) ([]domain.CollectorSource, error)
+	HealthSources(ctx context.Context) ([]domain.CollectorSourceHealthStatus, error)
+	ListRuns(ctx context.Context, limit int) ([]domain.CollectorRun, error)
+	RunOnce(ctx context.Context) (*domain.CollectorRunSummary, error)
+	RunDaemon(ctx context.Context) (*domain.CollectorSchedulerControlResult, error)
+	SchedulerStatus(ctx context.Context) (*domain.CollectorSchedulerStatus, error)
+	SchedulerHealth(ctx context.Context) (*domain.CollectorSchedulerHealthReport, error)
+	StopDaemon(ctx context.Context) (*domain.CollectorSchedulerControlResult, error)
 }
 
 type runtimeReviewPublishService struct {
@@ -116,13 +132,81 @@ var runtimeAutomationServiceFactory = func(root string) (automationCLIService, f
 	return &runtimeAutomationCLIService{root: root, svc: automationSvc}, cleanup, nil
 }
 
+type runtimeCollectorCLIService struct {
+	registry          *collectorservice.SourceRegistryService
+	runs              *collectorservice.RunService
+	scheduler         *collectorscheduler.Service
+	daemonStopTimeout time.Duration
+}
+
+func (s *runtimeCollectorCLIService) ListSources(ctx context.Context) ([]domain.CollectorSource, error) {
+	return s.registry.ListSources(ctx)
+}
+
+func (s *runtimeCollectorCLIService) HealthSources(ctx context.Context) ([]domain.CollectorSourceHealthStatus, error) {
+	return s.registry.Health(ctx)
+}
+
+func (s *runtimeCollectorCLIService) ListRuns(ctx context.Context, limit int) ([]domain.CollectorRun, error) {
+	return s.runs.ListRuns(ctx, limit)
+}
+
+func (s *runtimeCollectorCLIService) RunOnce(ctx context.Context) (*domain.CollectorRunSummary, error) {
+	return s.scheduler.RunOnce(ctx)
+}
+
+func (s *runtimeCollectorCLIService) RunDaemon(ctx context.Context) (*domain.CollectorSchedulerControlResult, error) {
+	_, err := s.scheduler.StartDaemon(ctx)
+	if err != nil {
+		return nil, err
+	}
+	<-ctx.Done()
+	stopTimeout := s.daemonStopTimeout
+	if stopTimeout <= 0 {
+		stopTimeout = 5 * time.Second
+	}
+	stopCtx, cancel := context.WithTimeout(context.Background(), stopTimeout)
+	defer cancel()
+	return s.scheduler.Stop(stopCtx)
+}
+
+func (s *runtimeCollectorCLIService) SchedulerStatus(ctx context.Context) (*domain.CollectorSchedulerStatus, error) {
+	return s.scheduler.Status(ctx)
+}
+
+func (s *runtimeCollectorCLIService) SchedulerHealth(ctx context.Context) (*domain.CollectorSchedulerHealthReport, error) {
+	return s.scheduler.Health(ctx)
+}
+
+func (s *runtimeCollectorCLIService) StopDaemon(ctx context.Context) (*domain.CollectorSchedulerControlResult, error) {
+	return s.scheduler.Stop(ctx)
+}
+
+var runtimeCollectorServiceFactory = func(root string) (collectorCLIService, func() error, error) {
+	repos, cleanup, err := service.BuildRuntimeRepos(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	collectorRuntime, err := service.BuildCollectorRuntime(context.Background(), repos, 30*time.Minute)
+	if err != nil {
+		_ = cleanup()
+		return nil, nil, err
+	}
+	return &runtimeCollectorCLIService{registry: collectorRuntime.RegistryService, runs: collectorRuntime.RunService, scheduler: collectorRuntime.SchedulerService, daemonStopTimeout: 5 * time.Second}, cleanup, nil
+}
+
+var collectorDaemonContextFactory = func() (context.Context, context.CancelFunc) {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	return ctx, cancel
+}
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: cli workspace <...> | ingestion <import|retry-failed> | formatting <render|validate> | automation <run-once|daemon|retry-failed|status|health|stop> [--root PATH]")
+		fmt.Fprintln(stderr, "usage: cli workspace <...> | ingestion <import|retry-failed> | formatting <render|validate> | automation <run-once|daemon|retry-failed|status|health|stop> | collector <sources|runs|scheduler> [--root PATH]")
 		return 2
 	}
 	if len(args) < 2 {
@@ -376,6 +460,108 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "unknown automation subcommand: %s\n", args[1])
 			return 2
 		}
+	case "collector":
+		svc, cleanup, err := runtimeCollectorServiceFactory(root)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		defer cleanup()
+		switch args[1] {
+		case "sources":
+			if len(args) < 3 {
+				fmt.Fprintln(stderr, "missing collector sources subcommand")
+				return 2
+			}
+			switch args[2] {
+			case "list":
+				items, err := svc.ListSources(context.Background())
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 1
+				}
+				fmt.Fprint(stdout, formatResolvedConfig(items))
+				return 0
+			case "health":
+				items, err := svc.HealthSources(context.Background())
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 1
+				}
+				fmt.Fprint(stdout, formatResolvedConfig(items))
+				return 0
+			default:
+				fmt.Fprintf(stderr, "unknown collector sources subcommand: %s\n", args[2])
+				return 2
+			}
+		case "runs":
+			if len(args) < 3 || args[2] != "list" {
+				fmt.Fprintf(stderr, "unknown collector runs subcommand: %s\n", safeArg(args, 2))
+				return 2
+			}
+			items, err := svc.ListRuns(context.Background(), 20)
+			if err != nil {
+				fmt.Fprintln(stderr, err.Error())
+				return 1
+			}
+			fmt.Fprint(stdout, formatResolvedConfig(items))
+			return 0
+		case "scheduler":
+			if len(args) < 3 {
+				fmt.Fprintln(stderr, "missing collector scheduler subcommand")
+				return 2
+			}
+			switch args[2] {
+			case "run-once":
+				result, err := svc.RunOnce(context.Background())
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 1
+				}
+				fmt.Fprint(stdout, formatResolvedConfig(result))
+				return 0
+			case "daemon":
+				daemonCtx, cancel := collectorDaemonContextFactory()
+				defer cancel()
+				result, err := svc.RunDaemon(daemonCtx)
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 1
+				}
+				fmt.Fprint(stdout, formatResolvedConfig(result))
+				return 0
+			case "status":
+				result, err := svc.SchedulerStatus(context.Background())
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 1
+				}
+				fmt.Fprint(stdout, formatResolvedConfig(result))
+				return 0
+			case "health":
+				result, err := svc.SchedulerHealth(context.Background())
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 1
+				}
+				fmt.Fprint(stdout, formatResolvedConfig(result))
+				return 0
+			case "stop":
+				result, err := svc.StopDaemon(context.Background())
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 1
+				}
+				fmt.Fprint(stdout, formatResolvedConfig(result))
+				return 0
+			default:
+				fmt.Fprintf(stderr, "unknown collector scheduler subcommand: %s\n", args[2])
+				return 2
+			}
+		default:
+			fmt.Fprintf(stderr, "unknown collector subcommand: %s\n", args[1])
+			return 2
+		}
 	default:
 		fmt.Fprintf(stderr, "unknown command: %s\n", args[0])
 		return 2
@@ -413,6 +599,13 @@ func parseReviewerNotesFlags(args []string) (string, string) {
 		}
 	}
 	return reviewer, notes
+}
+
+func safeArg(args []string, idx int) string {
+	if idx >= 0 && idx < len(args) {
+		return args[idx]
+	}
+	return ""
 }
 
 type cliPublishProvider struct{}

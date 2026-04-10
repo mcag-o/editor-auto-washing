@@ -1,0 +1,16 @@
+{
+  "data": {
+    "realtime": [
+      {
+        "word": "Mars colony launch date set",
+        "raw_hot": "981234",
+        "note": "Mission planners announce the first launch window"
+      },
+      {
+        "word": "Go collector fixture strategy",
+        "raw_hot": "765432",
+        "note": "Teams compare API and HTML parsing tests"
+      }
+    ]
+  }
+}

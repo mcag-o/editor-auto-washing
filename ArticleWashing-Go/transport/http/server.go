@@ -1,6 +1,7 @@
 package http
 
 import (
+	"content-hub/domain"
 	"content-hub/infra/config"
 	"content-hub/service"
 	"content-hub/transport/http/handlers"
@@ -24,19 +25,40 @@ type Server struct {
 }
 
 type Provider struct {
-	ContentSvc     *service.ContentService
-	TemplateSvc    *service.TemplateService
-	DraftSvc       *service.DraftService
-	FormattingSvc  *service.FormattingPipelineService
-	IngestionSvc   *service.IngestionPipelineService
-	AutomationSvc  *service.AutomationService
-	WorkspaceSvc   *service.WorkspaceArticleService
-	JobSvc         *service.JobService
-	ReviewSvc      *service.ReviewService
-	PublishSvc     *service.PublishGateService
-	WorkflowEngine *service.WorkflowEngine
-	ConfigLoader   *config.Loader
-	WorkspaceRoot  string
+	ContentSvc         *service.ContentService
+	TemplateSvc        *service.TemplateService
+	DraftSvc           *service.DraftService
+	FormattingSvc      *service.FormattingPipelineService
+	IngestionSvc       *service.IngestionPipelineService
+	AutomationSvc      *service.AutomationService
+	WorkspaceSvc       *service.WorkspaceArticleService
+	JobSvc             *service.JobService
+	ReviewSvc          *service.ReviewService
+	PublishSvc         *service.PublishGateService
+	CollectorSourceSvc collectorserviceLikeSource
+	CollectorRunSvc    collectorserviceLikeRun
+	CollectorScheduler collectorserviceLikeScheduler
+	WorkflowEngine     *service.WorkflowEngine
+	ConfigLoader       *config.Loader
+	WorkspaceRoot      string
+}
+
+type collectorserviceLikeSource interface {
+	ListSources(ctx context.Context) ([]domain.CollectorSource, error)
+	Health(ctx context.Context) ([]domain.CollectorSourceHealthStatus, error)
+}
+
+type collectorserviceLikeRun interface {
+	ListRuns(ctx context.Context, limit int) ([]domain.CollectorRun, error)
+	GetRun(ctx context.Context, runID string) (*domain.CollectorRunDetail, error)
+}
+
+type collectorserviceLikeScheduler interface {
+	RunOnce(ctx context.Context) (*domain.CollectorRunSummary, error)
+	StartDaemon(ctx context.Context) (*domain.CollectorSchedulerControlResult, error)
+	Status(ctx context.Context) (*domain.CollectorSchedulerStatus, error)
+	Health(ctx context.Context) (*domain.CollectorSchedulerHealthReport, error)
+	Stop(ctx context.Context) (*domain.CollectorSchedulerControlResult, error)
 }
 
 func NewServer(cfg config.Config, provider *Provider) *Server {
@@ -72,6 +94,9 @@ func (s *Server) registerRoutes() {
 	jobHandler := handlers.NewJobHandler(s.provider.JobSvc)
 	reviewHandler := handlers.NewReviewHandler(s.provider.ReviewSvc)
 	publishHandler := handlers.NewPublishHandler(s.provider.PublishSvc)
+	collectorSourcesHandler := handlers.NewCollectorSourcesHandler(s.provider.CollectorSourceSvc)
+	collectorRunsHandler := handlers.NewCollectorRunsHandler(s.provider.CollectorRunSvc)
+	collectorSchedulerHandler := handlers.NewCollectorSchedulerHandler(s.provider.CollectorScheduler)
 
 	s.engine.GET("/health", healthHandler.Health)
 	s.engine.GET("/ready", healthHandler.Ready)
@@ -121,6 +146,19 @@ func (s *Server) registerRoutes() {
 		automation.GET("/status", automationHandler.Status)
 		automation.GET("/health", automationHandler.Health)
 		automation.POST("/stop", automationHandler.Stop)
+	}
+
+	collector := s.engine.Group("/collector")
+	{
+		collector.GET("/sources", collectorSourcesHandler.List)
+		collector.GET("/sources/health", collectorSourcesHandler.Health)
+		collector.GET("/runs", collectorRunsHandler.List)
+		collector.GET("/runs/:id", collectorRunsHandler.Get)
+		collector.POST("/scheduler/run-once", collectorSchedulerHandler.RunOnce)
+		collector.POST("/scheduler/daemon", collectorSchedulerHandler.Daemon)
+		collector.GET("/scheduler/status", collectorSchedulerHandler.Status)
+		collector.GET("/scheduler/health", collectorSchedulerHandler.Health)
+		collector.POST("/scheduler/stop", collectorSchedulerHandler.Stop)
 	}
 
 	workspace := s.engine.Group("/workspace")

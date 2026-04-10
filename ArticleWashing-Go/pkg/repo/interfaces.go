@@ -77,6 +77,7 @@ type WorkspaceRepo interface {
 	List(ctx context.Context, status *string) ([]domain.ArticleWorkspaceRecord, error)
 	ListByIngestionID(ctx context.Context, ingestionID string) ([]domain.ArticleWorkspaceRecord, error)
 	TransitionStatus(ctx context.Context, id string, newStatus, notes string) error
+	Delete(ctx context.Context, id string) error
 }
 
 type BundleImportTx interface {

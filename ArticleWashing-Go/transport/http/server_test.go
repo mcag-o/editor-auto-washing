@@ -1,6 +1,8 @@
 package http
 
 import (
+	collectorscheduler "content-hub/collector/scheduler"
+	collectorservice "content-hub/collector/service"
 	"content-hub/domain"
 	"content-hub/infra/config"
 	"content-hub/infra/memory"
@@ -52,24 +54,33 @@ func newTestServer(t *testing.T) (*Server, *memory.Provider) {
 	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, workspaceinfra.WorkspaceConfigFileName), []byte("name: test\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, workspaceinfra.WorkspaceSecretsFileName), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
 	automationSvc := service.NewAutomationService(service.NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), ingestionSvc, jobSvc)
+	collectorRegistry, err := collectorservice.NewDefaultRegistry()
+	require.NoError(t, err)
+	collectorSourceSvc := collectorservice.NewSourceRegistryService(memProvider.CollectorSourceRepo(), collectorRegistry)
+	require.NoError(t, collectorSourceSvc.Sync(t.Context()))
+	collectorRunSvc := collectorservice.NewRunService(memProvider.CollectorSourceRepo(), memProvider.CollectorRunRepo(), memProvider.CollectorEntryRepo(), collectorRegistry)
+	collectorSchedulerSvc := collectorscheduler.NewService(memProvider.CollectorSchedulerRepo(), collectorRunSvc, 30*time.Minute)
 
 	loader := config.NewLoader("")
 	loader.SetCurrent(cfg)
 
 	provider := &Provider{
-		ContentSvc:     contentSvc,
-		TemplateSvc:    templateSvc,
-		DraftSvc:       draftSvc,
-		FormattingSvc:  formattingSvc,
-		IngestionSvc:   ingestionSvc,
-		AutomationSvc:  automationSvc,
-		WorkspaceSvc:   workspaceSvc,
-		JobSvc:         jobSvc,
-		ReviewSvc:      reviewSvc,
-		PublishSvc:     publishSvc,
-		WorkflowEngine: workflowEngine,
-		ConfigLoader:   loader,
-		WorkspaceRoot:  workspaceRoot,
+		ContentSvc:         contentSvc,
+		TemplateSvc:        templateSvc,
+		DraftSvc:           draftSvc,
+		FormattingSvc:      formattingSvc,
+		IngestionSvc:       ingestionSvc,
+		AutomationSvc:      automationSvc,
+		WorkspaceSvc:       workspaceSvc,
+		JobSvc:             jobSvc,
+		ReviewSvc:          reviewSvc,
+		PublishSvc:         publishSvc,
+		CollectorSourceSvc: collectorSourceSvc,
+		CollectorRunSvc:    collectorRunSvc,
+		CollectorScheduler: collectorSchedulerSvc,
+		WorkflowEngine:     workflowEngine,
+		ConfigLoader:       loader,
+		WorkspaceRoot:      workspaceRoot,
 	}
 
 	return NewServer(cfg, provider), memProvider
@@ -296,6 +307,72 @@ func TestAutomationEndpointsExposeRunOnceDaemonStatusHealthRetryFailedAndStop(t 
 	s.engine.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "stopped")
+}
+
+func TestCollectorEndpointsExposeSourcesRunsAndScheduler(t *testing.T) {
+	s, _ := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/collector/sources", nil)
+	w := httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "baidu")
+
+	req = httptest.NewRequest(http.MethodGet, "/collector/sources/health", nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "source_id")
+
+	req = httptest.NewRequest(http.MethodPost, "/collector/scheduler/run-once", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "run_id")
+
+	var runResp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &runResp))
+	runID, _ := runResp["run_id"].(string)
+	require.NotEmpty(t, runID)
+
+	req = httptest.NewRequest(http.MethodGet, "/collector/runs", nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), runID)
+
+	req = httptest.NewRequest(http.MethodGet, "/collector/runs/"+runID, nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "source_runs")
+
+	req = httptest.NewRequest(http.MethodGet, "/collector/scheduler/status", nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "state")
+
+	req = httptest.NewRequest(http.MethodGet, "/collector/scheduler/health", nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "healthy")
+
+	req = httptest.NewRequest(http.MethodPost, "/collector/scheduler/daemon", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "running")
+
+	req = httptest.NewRequest(http.MethodPost, "/collector/scheduler/stop", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "operator request")
 }
 
 func TestTraceIDHeader(t *testing.T) {

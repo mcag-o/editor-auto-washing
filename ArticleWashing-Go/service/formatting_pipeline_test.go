@@ -301,3 +301,7 @@ func (failingWorkspaceRepoForFormatting) ListByIngestionID(context.Context, stri
 func (f failingWorkspaceRepoForFormatting) TransitionStatus(context.Context, string, string, string) error {
 	return f.err
 }
+
+func (failingWorkspaceRepoForFormatting) Delete(context.Context, string) error {
+	return nil
+}

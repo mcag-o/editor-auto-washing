@@ -7,6 +7,7 @@ import (
 	httpserver "content-hub/transport/http"
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,7 +36,7 @@ func TestRunPropagatesServerStartupFailure(t *testing.T) {
 	buildRuntimeReposFn = func(root string) (*service.RuntimeRepos, func() error, error) {
 		provider := memory.NewProvider()
 		return &service.RuntimeRepos{
-			ArticleRepo: provider.ArticleRepo(), TemplateRepo: provider.TemplateRepo(), DraftRepo: provider.DraftRepo(), AssetRepo: provider.AssetRepo(), ReviewRepo: provider.ReviewRepo(), PublishRepo: provider.PublishRepo(), JobRepo: provider.JobRepo(), JobEventRepo: provider.JobEventRepo(), IngestionRepo: provider.IngestionRepo(), WorkspaceRepo: provider.WorkspaceRepo(), RenderedDir: t.TempDir(),
+			ArticleRepo: provider.ArticleRepo(), TemplateRepo: provider.TemplateRepo(), DraftRepo: provider.DraftRepo(), AssetRepo: provider.AssetRepo(), ReviewRepo: provider.ReviewRepo(), PublishRepo: provider.PublishRepo(), JobRepo: provider.JobRepo(), JobEventRepo: provider.JobEventRepo(), IngestionRepo: provider.IngestionRepo(), WorkspaceRepo: provider.WorkspaceRepo(), CollectorSourceRepo: provider.CollectorSourceRepo(), CollectorRunRepo: provider.CollectorRunRepo(), CollectorEntryRepo: provider.CollectorEntryRepo(), CollectorSchedulerRepo: provider.CollectorSchedulerRepo(), RenderedDir: t.TempDir(),
 		}, func() error { return nil }, nil
 	}
 	newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serverRunner {
@@ -46,6 +47,21 @@ func TestRunPropagatesServerStartupFailure(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "bind failed")
+}
+
+func TestBuildRuntimeReposExposesCollectorRepos(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "workspace.yaml"), []byte("name: runtime\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "secrets.yaml"), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
+
+	repos, cleanup, err := buildRuntimeRepos(root)
+	require.NoError(t, err)
+	defer cleanup()
+
+	assert.NotNil(t, repos.CollectorSourceRepo)
+	assert.NotNil(t, repos.CollectorRunRepo)
+	assert.NotNil(t, repos.CollectorEntryRepo)
+	assert.NotNil(t, repos.CollectorSchedulerRepo)
 }
 
 func TestRuntimeWorkflowEngineRegistersDefaultAutomationNodes(t *testing.T) {

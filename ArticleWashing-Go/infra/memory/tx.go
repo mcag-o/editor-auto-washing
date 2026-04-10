@@ -619,6 +619,16 @@ func (r *txWorkspaceRepo) TransitionStatus(_ context.Context, id string, newStat
 	return nil
 }
 
+func (r *txWorkspaceRepo) Delete(_ context.Context, id string) error {
+	r.tx.mu.Lock()
+	defer r.tx.mu.Unlock()
+	if _, ok := r.tx.workspaces[id]; !ok {
+		return domain.NewNotFoundErr("workspace", id)
+	}
+	delete(r.tx.workspaces, id)
+	return nil
+}
+
 func copyMapPtr[K comparable, V any](src map[K]*V, clone func(*V) *V) map[K]*V {
 	dst := make(map[K]*V, len(src))
 	for k, v := range src {

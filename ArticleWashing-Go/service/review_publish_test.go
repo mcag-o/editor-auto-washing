@@ -539,6 +539,10 @@ func (r failingWorkspaceRepoForReview) TransitionStatus(ctx context.Context, id 
 	return r.base.TransitionStatus(ctx, id, newStatus, notes)
 }
 
+func (r failingWorkspaceRepoForReview) Delete(ctx context.Context, id string) error {
+	return r.base.Delete(ctx, id)
+}
+
 type reviewRepoWithDeleteFailure struct {
 	base      repo.ReviewRepo
 	deleteErr error

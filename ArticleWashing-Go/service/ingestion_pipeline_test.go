@@ -457,6 +457,10 @@ func (f failingWorkspaceRepo) TransitionStatus(context.Context, string, string, 
 	return nil
 }
 
+func (f failingWorkspaceRepo) Delete(context.Context, string) error {
+	return nil
+}
+
 type failingProcessedRouter struct {
 	failedDir string
 }

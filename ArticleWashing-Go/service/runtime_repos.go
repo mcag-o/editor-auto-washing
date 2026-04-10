@@ -11,19 +11,25 @@ import (
 )
 
 type RuntimeRepos struct {
-	ArticleRepo           repo.ArticleRepo
-	TemplateRepo          repo.TemplateRepo
-	DraftRepo             repo.DraftRepo
-	AssetRepo             repo.AssetRepo
-	ReviewRepo            repo.ReviewRepo
-	Formatter             DraftFormatter
-	RenderedDir           string
-	PublishRepo           repo.PublishRepo
-	JobRepo               repo.JobRepo
-	JobEventRepo          repo.JobEventRepo
-	IngestionRepo         repo.IngestionRepo
-	WorkspaceRepo         repo.WorkspaceRepo
-	BundleImportTxStarter repo.BundleImportTxStarter
+	ArticleRepo            repo.ArticleRepo
+	TemplateRepo           repo.TemplateRepo
+	DraftRepo              repo.DraftRepo
+	AssetRepo              repo.AssetRepo
+	ReviewRepo             repo.ReviewRepo
+	Formatter              DraftFormatter
+	RenderedDir            string
+	PublishRepo            repo.PublishRepo
+	JobRepo                repo.JobRepo
+	JobEventRepo           repo.JobEventRepo
+	IngestionRepo          repo.IngestionRepo
+	WorkspaceRepo          repo.WorkspaceRepo
+	BundleImportTxStarter  repo.BundleImportTxStarter
+	CollectorSourceRepo    repo.CollectorSourceRepo
+	CollectorRunRepo       repo.CollectorRunRepo
+	CollectorEntryRepo     repo.CollectorEntryRepo
+	CollectorArticleRepo   repo.CollectorArticleRepo
+	CollectorAttemptRepo   repo.CollectorAttemptRepo
+	CollectorSchedulerRepo repo.CollectorSchedulerStateRepo
 }
 
 func BuildRuntimeRepos(root string) (*RuntimeRepos, func() error, error) {
@@ -46,18 +52,24 @@ func BuildRuntimeRepos(root string) (*RuntimeRepos, func() error, error) {
 	_ = resolved
 	wechatFormatter := formatter.NewWechatHtmlFormatter(resolved.Paths.TemplateDirs)
 	return &RuntimeRepos{
-		ArticleRepo:           sqliteProvider.ArticleRepo(),
-		TemplateRepo:          sqliteProvider.TemplateRepo(),
-		DraftRepo:             sqliteProvider.DraftRepo(),
-		AssetRepo:             sqliteProvider.AssetRepo(),
-		ReviewRepo:            sqliteProvider.ReviewRepo(),
-		Formatter:             wechatFormatter,
-		RenderedDir:           resolved.Paths.RenderedDir,
-		PublishRepo:           sqliteProvider.PublishRepo(),
-		JobRepo:               sqliteProvider.JobRepo(),
-		JobEventRepo:          sqliteProvider.JobEventRepo(),
-		IngestionRepo:         sqliteProvider.IngestionRepo(),
-		WorkspaceRepo:         sqliteProvider.WorkspaceRepo(),
-		BundleImportTxStarter: sqliteProvider,
+		ArticleRepo:            sqliteProvider.ArticleRepo(),
+		TemplateRepo:           sqliteProvider.TemplateRepo(),
+		DraftRepo:              sqliteProvider.DraftRepo(),
+		AssetRepo:              sqliteProvider.AssetRepo(),
+		ReviewRepo:             sqliteProvider.ReviewRepo(),
+		Formatter:              wechatFormatter,
+		RenderedDir:            resolved.Paths.RenderedDir,
+		PublishRepo:            sqliteProvider.PublishRepo(),
+		JobRepo:                sqliteProvider.JobRepo(),
+		JobEventRepo:           sqliteProvider.JobEventRepo(),
+		IngestionRepo:          sqliteProvider.IngestionRepo(),
+		WorkspaceRepo:          sqliteProvider.WorkspaceRepo(),
+		BundleImportTxStarter:  sqliteProvider,
+		CollectorSourceRepo:    sqliteProvider.CollectorSourceRepo(),
+		CollectorRunRepo:       sqliteProvider.CollectorRunRepo(),
+		CollectorEntryRepo:     sqliteProvider.CollectorEntryRepo(),
+		CollectorArticleRepo:   sqliteProvider.CollectorArticleRepo(),
+		CollectorAttemptRepo:   sqliteProvider.CollectorAttemptRepo(),
+		CollectorSchedulerRepo: sqliteProvider.CollectorSchedulerStateRepo(),
 	}, sqliteProvider.Close, nil
 }
