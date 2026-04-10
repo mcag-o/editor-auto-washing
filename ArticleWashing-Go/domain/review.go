@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+const (
+	ReviewStatusPending  = "review_pending"
+	ReviewStatusApproved = "approved"
+	ReviewStatusRejected = "review_rejected"
+)
+
 type ReviewTask struct {
 	ID             string    `json:"id"`
 	ArticleID      string    `json:"article_id"`
@@ -23,7 +29,7 @@ func NewReviewTask(articleID string, assetIDs []string, publishProfile string) *
 		ID:             id.New(),
 		ArticleID:      articleID,
 		AssetIDs:       assetIDs,
-		Status:         "review_pending",
+		Status:         ReviewStatusPending,
 		PublishProfile: publishProfile,
 		CreatedAt:      now,
 		UpdatedAt:      now,

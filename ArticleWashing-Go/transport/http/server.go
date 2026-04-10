@@ -7,6 +7,7 @@ import (
 	"content-hub/transport/http/middleware"
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -26,9 +27,16 @@ type Provider struct {
 	ContentSvc     *service.ContentService
 	TemplateSvc    *service.TemplateService
 	DraftSvc       *service.DraftService
+	FormattingSvc  *service.FormattingPipelineService
+	IngestionSvc   *service.IngestionPipelineService
+	AutomationSvc  *service.AutomationService
+	WorkspaceSvc   *service.WorkspaceArticleService
 	JobSvc         *service.JobService
+	ReviewSvc      *service.ReviewService
+	PublishSvc     *service.PublishGateService
 	WorkflowEngine *service.WorkflowEngine
 	ConfigLoader   *config.Loader
+	WorkspaceRoot  string
 }
 
 func NewServer(cfg config.Config, provider *Provider) *Server {
@@ -57,13 +65,18 @@ func (s *Server) registerRoutes() {
 	contentHandler := handlers.NewContentHandler(s.provider.ContentSvc)
 	templateHandler := handlers.NewTemplateHandler(s.provider.TemplateSvc)
 	draftHandler := handlers.NewDraftHandler(s.provider.DraftSvc)
+	formattingHandler := handlers.NewFormattingHandler(s.provider.FormattingSvc)
+	ingestionHandler := handlers.NewIngestionHandler(s.provider.IngestionSvc)
+	automationHandler := handlers.NewAutomationHandler(s.provider.AutomationSvc, s.provider.WorkspaceRoot)
+	workspaceHandler := handlers.NewWorkspaceHandler(s.provider.WorkspaceSvc)
 	jobHandler := handlers.NewJobHandler(s.provider.JobSvc)
+	reviewHandler := handlers.NewReviewHandler(s.provider.ReviewSvc)
+	publishHandler := handlers.NewPublishHandler(s.provider.PublishSvc)
 
 	s.engine.GET("/health", healthHandler.Health)
 	s.engine.GET("/ready", healthHandler.Ready)
 
 	s.engine.GET("/config", configHandler.Get)
-	s.engine.PATCH("/config", configHandler.Patch)
 
 	content := s.engine.Group("/content")
 	{
@@ -86,6 +99,33 @@ func (s *Server) registerRoutes() {
 	{
 		drafts.POST("", draftHandler.Create)
 		drafts.GET("/:id", draftHandler.GetByID)
+		drafts.POST("/:id/render", formattingHandler.Render)
+		drafts.POST("/:id/validate", formattingHandler.Validate)
+	}
+
+	s.engine.GET("/assets/:id", formattingHandler.GetAsset)
+
+	ingestion := s.engine.Group("/ingestion")
+	{
+		ingestion.POST("/import", ingestionHandler.Import)
+		ingestion.POST("/retry-failed", ingestionHandler.RetryFailed)
+		ingestion.GET("", ingestionHandler.List)
+		ingestion.GET("/:id", ingestionHandler.Status)
+	}
+
+	automation := s.engine.Group("/automation")
+	{
+		automation.POST("/run-once", automationHandler.RunOnce)
+		automation.POST("/daemon", automationHandler.Daemon)
+		automation.POST("/retry-failed", automationHandler.RetryFailed)
+		automation.GET("/status", automationHandler.Status)
+		automation.GET("/health", automationHandler.Health)
+		automation.POST("/stop", automationHandler.Stop)
+	}
+
+	workspace := s.engine.Group("/workspace")
+	{
+		workspace.GET("/articles", workspaceHandler.List)
 	}
 
 	jobs := s.engine.Group("/jobs")
@@ -95,6 +135,20 @@ func (s *Server) registerRoutes() {
 		jobs.GET("/:id", jobHandler.GetByID)
 		jobs.POST("/:id/cancel", jobHandler.Cancel)
 		jobs.GET("/:id/events", jobHandler.GetEvents)
+	}
+
+	reviews := s.engine.Group("/reviews")
+	{
+		reviews.POST("", reviewHandler.Create)
+		reviews.GET("", reviewHandler.List)
+		reviews.POST("/:id/approve", reviewHandler.Approve)
+		reviews.POST("/:id/reject", reviewHandler.Reject)
+	}
+
+	publish := s.engine.Group("/publish")
+	{
+		publish.POST("", publishHandler.Publish)
+		publish.GET("/history", publishHandler.History)
 	}
 
 	workflows := s.engine.Group("/workflows")
@@ -139,23 +193,37 @@ func corsMiddleware() gin.HandlerFunc {
 func (s *Server) Run() error {
 	addr := fmt.Sprintf("%s:%d", s.cfg.HTTP.Host, s.cfg.HTTP.Port)
 	fmt.Printf("server listening on %s\n", addr)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listen: %w", err)
+	}
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
+	return s.serveWithListener(listener, quit)
+}
+
+func (s *Server) serveWithListener(listener net.Listener, quit <-chan os.Signal) error {
 
 	httpServer := &http.Server{
-		Addr:         addr,
+		Addr:         listener.Addr().String(),
 		Handler:      s.engine,
 		ReadTimeout:  time.Duration(s.cfg.HTTP.ReadTimeoutSec) * time.Second,
 		WriteTimeout: time.Duration(s.cfg.HTTP.WriteTimeoutSec) * time.Second,
 	}
 
+	errCh := make(chan error, 1)
 	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
-		}
+		errCh <- httpServer.Serve(listener)
 	}()
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	select {
+	case err := <-errCh:
+		if err != nil && err != http.ErrServerClosed {
+			return fmt.Errorf("server error: %w", err)
+		}
+		return nil
+	case <-quit:
+	}
 
 	fmt.Println("shutting down server...")
 
@@ -164,6 +232,9 @@ func (s *Server) Run() error {
 
 	if err := httpServer.Shutdown(ctx); err != nil {
 		return fmt.Errorf("server forced to shutdown: %w", err)
+	}
+	if err := <-errCh; err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("server error: %w", err)
 	}
 
 	fmt.Println("server stopped gracefully")

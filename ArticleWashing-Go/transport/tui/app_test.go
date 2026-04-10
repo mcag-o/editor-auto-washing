@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -82,4 +83,34 @@ func TestViewQuit(t *testing.T) {
 	if view != "Shutting down...\n" {
 		t.Errorf("unexpected view: %q", view)
 	}
+}
+
+func TestArticlesTabUsesSupportedWorkspaceEndpoint(t *testing.T) {
+	api := NewAPIClient("http://localhost:8080")
+	app := NewApp(api)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	app = model.(*AppModel)
+
+	if app.tab != TabArticles {
+		t.Fatalf("expected tab to switch to articles, got %v", app.tab)
+	}
+	if cmd == nil {
+		t.Fatal("expected articles refresh command")
+	}
+	msg := cmd()
+	articlesMsg, ok := msg.(ArticlesMsg)
+	if !ok {
+		t.Fatalf("expected ArticlesMsg, got %T", msg)
+	}
+	if articlesMsg.Err == nil {
+		t.Fatal("expected unsupported endpoint failure until TUI endpoint is aligned")
+	}
+	if got := articlesMsg.Err.Error(); got == "" || containsUnsupportedArticlesPath(got) {
+		t.Fatalf("expected articles command to stop targeting /api/articles, got %q", got)
+	}
+}
+
+func containsUnsupportedArticlesPath(message string) bool {
+	return len(message) > 0 && strings.Contains(message, "/api/articles")
 }

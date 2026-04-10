@@ -23,6 +23,14 @@ func (e *WorkflowEngine) Register(name string, node WorkflowNode) {
 	e.nodes[name] = node
 }
 
+func (e *WorkflowEngine) RegisteredNames() []string {
+	result := make([]string, 0, len(e.nodes))
+	for name := range e.nodes {
+		result = append(result, name)
+	}
+	return result
+}
+
 func (e *WorkflowEngine) Execute(ctx context.Context, wf *domain.WorkflowDefinition, wc *domain.WorkflowContext) error {
 	for _, nodeName := range wf.Nodes {
 		node, ok := e.nodes[nodeName]

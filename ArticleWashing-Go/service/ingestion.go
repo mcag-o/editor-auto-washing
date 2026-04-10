@@ -5,6 +5,8 @@ import (
 	"content-hub/pkg/id"
 	"content-hub/pkg/repo"
 	"context"
+	"encoding/json"
+	"time"
 )
 
 type IngestionService struct {
@@ -16,11 +18,14 @@ func NewIngestionService(r repo.IngestionRepo) *IngestionService {
 }
 
 func (s *IngestionService) Record(ctx context.Context, t string, payload map[string]any) error {
+	encodedPayload, _ := json.Marshal(payload)
 	rec := &domain.IngestionRecord{
 		ID:         id.New(),
 		SourceType: t,
-		Payload:    payload,
-		Status:     "received",
+		Payload:    encodedPayload,
+		Status:     domain.IngestionStatusPending,
+		CreatedAt:  time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
 	}
 	return s.repo.Record(ctx, rec)
 }

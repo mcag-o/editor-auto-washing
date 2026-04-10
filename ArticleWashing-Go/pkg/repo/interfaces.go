@@ -30,9 +30,10 @@ type DraftRepo interface {
 }
 
 type AssetRepo interface {
-	Create(ctx context.Context, a map[string]any) error
-	GetByID(ctx context.Context, id string) (map[string]any, error)
-	List(ctx context.Context, articleID, platform string) ([]map[string]any, error)
+	Create(ctx context.Context, a *domain.RenderedAssetRecord) error
+	GetByID(ctx context.Context, id string) (*domain.RenderedAssetRecord, error)
+	List(ctx context.Context, articleID, platform string) ([]domain.RenderedAssetRecord, error)
+	Delete(ctx context.Context, id string) error
 }
 
 type ReviewRepo interface {
@@ -40,11 +41,13 @@ type ReviewRepo interface {
 	GetByID(ctx context.Context, id string) (*domain.ReviewTask, error)
 	ListByArticle(ctx context.Context, articleID string) ([]domain.ReviewTask, error)
 	UpdateStatus(ctx context.Context, id string, status, reviewer, notes string) error
+	Delete(ctx context.Context, id string) error
 }
 
 type PublishRepo interface {
 	Record(ctx context.Context, r *domain.PublishRecord) error
-	ListByArticle(ctx context.Context, title string) ([]domain.PublishRecord, error)
+	ListByArticle(ctx context.Context, articleID string) ([]domain.PublishRecord, error)
+	Delete(ctx context.Context, id string) error
 }
 
 type JobRepo interface {
@@ -52,23 +55,39 @@ type JobRepo interface {
 	GetByID(ctx context.Context, id string) (*domain.JobRun, error)
 	List(ctx context.Context, status *string) ([]domain.JobRun, error)
 	Update(ctx context.Context, id string, fn func(*domain.JobRun)) error
+	Delete(ctx context.Context, id string) error
 }
 
 type JobEventRepo interface {
 	Add(ctx context.Context, evt *domain.JobEvent) error
+	// ListByJob returns events in durable append order.
 	ListByJob(ctx context.Context, jobID string) ([]domain.JobEvent, error)
 }
 
 type IngestionRepo interface {
 	Record(ctx context.Context, r *domain.IngestionRecord) error
-	List(ctx context.Context, t string) ([]domain.IngestionRecord, error)
+	GetByID(ctx context.Context, id string) (*domain.IngestionRecord, error)
+	List(ctx context.Context, status string) ([]domain.IngestionRecord, error)
+	Update(ctx context.Context, id string, fn func(*domain.IngestionRecord)) error
 }
 
 type WorkspaceRepo interface {
-	Create(ctx context.Context, w *domain.WorkspaceArticle) error
-	GetByID(ctx context.Context, id string) (*domain.WorkspaceArticle, error)
-	List(ctx context.Context, status *string) ([]domain.WorkspaceArticle, error)
+	Create(ctx context.Context, w *domain.ArticleWorkspaceRecord) error
+	GetByID(ctx context.Context, id string) (*domain.ArticleWorkspaceRecord, error)
+	List(ctx context.Context, status *string) ([]domain.ArticleWorkspaceRecord, error)
+	ListByIngestionID(ctx context.Context, ingestionID string) ([]domain.ArticleWorkspaceRecord, error)
 	TransitionStatus(ctx context.Context, id string, newStatus, notes string) error
+}
+
+type BundleImportTx interface {
+	CreateWorkspaceArticle(ctx context.Context, record *domain.ArticleWorkspaceRecord) error
+	RecordIngestion(ctx context.Context, record *domain.IngestionRecord) error
+	Commit() error
+	Rollback() error
+}
+
+type BundleImportTxStarter interface {
+	BeginBundleImport(ctx context.Context) (BundleImportTx, error)
 }
 
 type LLMProvider interface {

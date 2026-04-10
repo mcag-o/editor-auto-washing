@@ -16,16 +16,18 @@ type MemoryTx struct {
 	articles   map[string]*domain.ContentDocument
 	templates  map[string]*domain.TemplateAsset
 	drafts     map[string]*domain.ArticleDraft
-	assets     map[string]map[string]any
+	assets     map[string]*domain.RenderedAssetRecord
 	reviews    map[string]*domain.ReviewTask
 	publishes  map[string]*domain.PublishRecord
 	jobs       map[string]*domain.JobRun
 	jobEvents  map[string][]*domain.JobEvent
 	ingestions map[string]*domain.IngestionRecord
-	workspaces map[string]*domain.WorkspaceArticle
+	workspaces map[string]*domain.ArticleWorkspaceRecord
 	provider   *Provider
 	rolled     bool
 }
+
+var _ repo.BundleImportTx = (*MemoryTx)(nil)
 
 func (p *Provider) BeginTx() *MemoryTx {
 	p.mu.RLock()
@@ -81,6 +83,14 @@ func (t *MemoryTx) Commit() error {
 func (t *MemoryTx) Rollback() error {
 	t.rolled = true
 	return nil
+}
+
+func (t *MemoryTx) CreateWorkspaceArticle(ctx context.Context, record *domain.ArticleWorkspaceRecord) error {
+	return t.WorkspaceRepo().Create(ctx, record)
+}
+
+func (t *MemoryTx) RecordIngestion(ctx context.Context, record *domain.IngestionRecord) error {
+	return t.IngestionRepo().Record(ctx, record)
 }
 
 type txArticleRepo struct{ tx *MemoryTx }
@@ -281,46 +291,54 @@ func (r *txDraftRepo) Update(_ context.Context, id string, fn func(*domain.Artic
 
 type txAssetRepo struct{ tx *MemoryTx }
 
-func (r *txAssetRepo) Create(_ context.Context, a map[string]any) error {
+func (r *txAssetRepo) Create(_ context.Context, a *domain.RenderedAssetRecord) error {
 	r.tx.mu.Lock()
 	defer r.tx.mu.Unlock()
-	id, _ := a["id"].(string)
-	if id == "" {
-		return fmt.Errorf("asset missing id")
+	if a == nil || a.AssetID == "" {
+		return domain.NewValidationErr("asset missing id", nil)
 	}
-	r.tx.assets[id] = a
+	r.tx.assets[a.AssetID] = cloneRenderedAsset(a)
 	return nil
 }
 
-func (r *txAssetRepo) GetByID(_ context.Context, id string) (map[string]any, error) {
+func (r *txAssetRepo) GetByID(_ context.Context, id string) (*domain.RenderedAssetRecord, error) {
 	r.tx.mu.RLock()
 	defer r.tx.mu.RUnlock()
 	a, ok := r.tx.assets[id]
 	if !ok {
 		return nil, domain.NewNotFoundErr("asset", id)
 	}
-	return a, nil
+	return cloneRenderedAsset(a), nil
 }
 
-func (r *txAssetRepo) List(_ context.Context, articleID, platform string) ([]map[string]any, error) {
+func (r *txAssetRepo) List(_ context.Context, articleID, platform string) ([]domain.RenderedAssetRecord, error) {
 	r.tx.mu.RLock()
 	defer r.tx.mu.RUnlock()
 
-	var assets []map[string]any
+	var assets []domain.RenderedAssetRecord
 	for _, a := range r.tx.assets {
-		if articleID != "" {
-			if aid, ok := a["article_id"].(string); !ok || aid != articleID {
-				continue
-			}
+		if articleID != "" && a.ArticleID != articleID {
+			continue
 		}
-		if platform != "" {
-			if p, ok := a["platform"].(string); !ok || p != platform {
-				continue
-			}
+		if platform != "" && a.Platform != platform {
+			continue
 		}
-		assets = append(assets, a)
+		assets = append(assets, *cloneRenderedAsset(a))
 	}
+	sort.Slice(assets, func(i, j int) bool {
+		return assets[i].CreatedAt.After(assets[j].CreatedAt)
+	})
 	return assets, nil
+}
+
+func (r *txAssetRepo) Delete(_ context.Context, id string) error {
+	r.tx.mu.Lock()
+	defer r.tx.mu.Unlock()
+	if _, ok := r.tx.assets[id]; !ok {
+		return domain.NewNotFoundErr("asset", id)
+	}
+	delete(r.tx.assets, id)
+	return nil
 }
 
 type txReviewRepo struct{ tx *MemoryTx }
@@ -339,7 +357,7 @@ func (r *txReviewRepo) GetByID(_ context.Context, id string) (*domain.ReviewTask
 	if !ok {
 		return nil, domain.NewNotFoundErr("review", id)
 	}
-	return rev, nil
+	return cloneReviewTask(rev), nil
 }
 
 func (r *txReviewRepo) ListByArticle(_ context.Context, articleID string) ([]domain.ReviewTask, error) {
@@ -369,26 +387,49 @@ func (r *txReviewRepo) UpdateStatus(_ context.Context, id string, status, review
 	return nil
 }
 
+func (r *txReviewRepo) Delete(_ context.Context, id string) error {
+	r.tx.mu.Lock()
+	defer r.tx.mu.Unlock()
+	if _, ok := r.tx.reviews[id]; !ok {
+		return domain.NewNotFoundErr("review", id)
+	}
+	delete(r.tx.reviews, id)
+	return nil
+}
+
 type txPublishRepo struct{ tx *MemoryTx }
 
 func (r *txPublishRepo) Record(_ context.Context, rec *domain.PublishRecord) error {
 	r.tx.mu.Lock()
 	defer r.tx.mu.Unlock()
-	r.tx.publishes[rec.ID] = rec
+	r.tx.publishes[rec.ID] = clonePublishRecord(rec)
 	return nil
 }
 
-func (r *txPublishRepo) ListByArticle(_ context.Context, title string) ([]domain.PublishRecord, error) {
+func (r *txPublishRepo) ListByArticle(_ context.Context, articleID string) ([]domain.PublishRecord, error) {
 	r.tx.mu.RLock()
 	defer r.tx.mu.RUnlock()
 
 	var records []domain.PublishRecord
 	for _, rec := range r.tx.publishes {
-		if rec.ArticleTitle == title {
-			records = append(records, *rec)
+		if rec.ArticleID == articleID {
+			records = append(records, *clonePublishRecord(rec))
 		}
 	}
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].CreatedAt.After(records[j].CreatedAt)
+	})
 	return records, nil
+}
+
+func (r *txPublishRepo) Delete(_ context.Context, id string) error {
+	r.tx.mu.Lock()
+	defer r.tx.mu.Unlock()
+	if _, ok := r.tx.publishes[id]; !ok {
+		return domain.NewNotFoundErr("publish_record", id)
+	}
+	delete(r.tx.publishes, id)
+	return nil
 }
 
 type txJobRepo struct{ tx *MemoryTx }
@@ -436,6 +477,17 @@ func (r *txJobRepo) Update(_ context.Context, id string, fn func(*domain.JobRun)
 	return nil
 }
 
+func (r *txJobRepo) Delete(_ context.Context, id string) error {
+	r.tx.mu.Lock()
+	defer r.tx.mu.Unlock()
+	if _, ok := r.tx.jobs[id]; !ok {
+		return domain.NewNotFoundErr("job", id)
+	}
+	delete(r.tx.jobs, id)
+	delete(r.tx.jobEvents, id)
+	return nil
+}
+
 type txJobEventRepo struct{ tx *MemoryTx }
 
 func (r *txJobEventRepo) Add(_ context.Context, evt *domain.JobEvent) error {
@@ -466,13 +518,23 @@ func (r *txIngestionRepo) Record(_ context.Context, rec *domain.IngestionRecord)
 	return nil
 }
 
-func (r *txIngestionRepo) List(_ context.Context, sourceType string) ([]domain.IngestionRecord, error) {
+func (r *txIngestionRepo) GetByID(_ context.Context, id string) (*domain.IngestionRecord, error) {
+	r.tx.mu.RLock()
+	defer r.tx.mu.RUnlock()
+	rec, ok := r.tx.ingestions[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("ingestion", id)
+	}
+	return rec, nil
+}
+
+func (r *txIngestionRepo) List(_ context.Context, status string) ([]domain.IngestionRecord, error) {
 	r.tx.mu.RLock()
 	defer r.tx.mu.RUnlock()
 
 	var records []domain.IngestionRecord
 	for _, rec := range r.tx.ingestions {
-		if sourceType != "" && rec.SourceType != sourceType {
+		if status != "" && rec.Status != status {
 			continue
 		}
 		records = append(records, *rec)
@@ -480,16 +542,28 @@ func (r *txIngestionRepo) List(_ context.Context, sourceType string) ([]domain.I
 	return records, nil
 }
 
+func (r *txIngestionRepo) Update(_ context.Context, id string, fn func(*domain.IngestionRecord)) error {
+	r.tx.mu.Lock()
+	defer r.tx.mu.Unlock()
+	rec, ok := r.tx.ingestions[id]
+	if !ok {
+		return domain.NewNotFoundErr("ingestion", id)
+	}
+	fn(rec)
+	rec.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
 type txWorkspaceRepo struct{ tx *MemoryTx }
 
-func (r *txWorkspaceRepo) Create(_ context.Context, w *domain.WorkspaceArticle) error {
+func (r *txWorkspaceRepo) Create(_ context.Context, w *domain.ArticleWorkspaceRecord) error {
 	r.tx.mu.Lock()
 	defer r.tx.mu.Unlock()
 	r.tx.workspaces[w.ID] = w
 	return nil
 }
 
-func (r *txWorkspaceRepo) GetByID(_ context.Context, id string) (*domain.WorkspaceArticle, error) {
+func (r *txWorkspaceRepo) GetByID(_ context.Context, id string) (*domain.ArticleWorkspaceRecord, error) {
 	r.tx.mu.RLock()
 	defer r.tx.mu.RUnlock()
 	w, ok := r.tx.workspaces[id]
@@ -499,13 +573,27 @@ func (r *txWorkspaceRepo) GetByID(_ context.Context, id string) (*domain.Workspa
 	return w, nil
 }
 
-func (r *txWorkspaceRepo) List(_ context.Context, status *string) ([]domain.WorkspaceArticle, error) {
+func (r *txWorkspaceRepo) List(_ context.Context, status *string) ([]domain.ArticleWorkspaceRecord, error) {
 	r.tx.mu.RLock()
 	defer r.tx.mu.RUnlock()
 
-	var articles []domain.WorkspaceArticle
+	var articles []domain.ArticleWorkspaceRecord
 	for _, w := range r.tx.workspaces {
 		if status != nil && w.Status != *status {
+			continue
+		}
+		articles = append(articles, *w)
+	}
+	return articles, nil
+}
+
+func (r *txWorkspaceRepo) ListByIngestionID(_ context.Context, ingestionID string) ([]domain.ArticleWorkspaceRecord, error) {
+	r.tx.mu.RLock()
+	defer r.tx.mu.RUnlock()
+
+	var articles []domain.ArticleWorkspaceRecord
+	for _, w := range r.tx.workspaces {
+		if w.Source.IngestionID != ingestionID {
 			continue
 		}
 		articles = append(articles, *w)
@@ -525,6 +613,7 @@ func (r *txWorkspaceRepo) TransitionStatus(_ context.Context, id string, newStat
 	}
 	w.Status = newStatus
 	w.StatusHistory = append(w.StatusHistory, newStatus)
+	w.LifecycleHistory = append(w.LifecycleHistory, domain.ArticleWorkspaceLifecycleEntry{Status: newStatus, Notes: notes, CreatedAt: time.Now().UTC()})
 	w.Notes = notes
 	w.UpdatedAt = time.Now().UTC()
 	return nil
@@ -538,14 +627,10 @@ func copyMapPtr[K comparable, V any](src map[K]*V, clone func(*V) *V) map[K]*V {
 	return dst
 }
 
-func copyMapMap(src map[string]map[string]any) map[string]map[string]any {
-	dst := make(map[string]map[string]any, len(src))
+func copyMapMap(src map[string]*domain.RenderedAssetRecord) map[string]*domain.RenderedAssetRecord {
+	dst := make(map[string]*domain.RenderedAssetRecord, len(src))
 	for k, v := range src {
-		cp := make(map[string]any, len(v))
-		for kk, vv := range v {
-			cp[kk] = vv
-		}
-		dst[k] = cp
+		dst[k] = cloneRenderedAsset(v)
 	}
 	return dst
 }
@@ -618,6 +703,15 @@ func clonePublishRecord(v *domain.PublishRecord) *domain.PublishRecord {
 	return &cp
 }
 
+func cloneRenderedAsset(v *domain.RenderedAssetRecord) *domain.RenderedAssetRecord {
+	if v == nil {
+		return nil
+	}
+	cp := *v
+	cp.Metadata = copyAnyMap(v.Metadata)
+	return &cp
+}
+
 func cloneJobRun(v *domain.JobRun) *domain.JobRun {
 	if v == nil {
 		return nil
@@ -631,16 +725,20 @@ func cloneIngestionRecord(v *domain.IngestionRecord) *domain.IngestionRecord {
 		return nil
 	}
 	cp := *v
-	cp.Payload = copyAnyMap(v.Payload)
+	if v.Payload != nil {
+		cp.Payload = append([]byte{}, v.Payload...)
+	}
 	return &cp
 }
 
-func cloneWorkspaceArticle(v *domain.WorkspaceArticle) *domain.WorkspaceArticle {
+func cloneWorkspaceArticle(v *domain.ArticleWorkspaceRecord) *domain.ArticleWorkspaceRecord {
 	if v == nil {
 		return nil
 	}
 	cp := *v
 	cp.StatusHistory = append([]string{}, v.StatusHistory...)
+	cp.LifecycleHistory = append([]domain.ArticleWorkspaceLifecycleEntry{}, v.LifecycleHistory...)
+	cp.Metadata = copyAnyMap(v.Metadata)
 	return &cp
 }
 

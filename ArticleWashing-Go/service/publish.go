@@ -4,6 +4,7 @@ import (
 	"content-hub/domain"
 	"content-hub/pkg/repo"
 	"context"
+	"strings"
 )
 
 type PublishService struct {
@@ -22,7 +23,10 @@ func (s *PublishService) Publish(ctx context.Context, req domain.PublishRequest)
 	}
 	result, err := p.Publish(ctx, req)
 	if err == nil {
-		record := domain.NewPublishRecord(req.Title, req.Platform, result.Success, result.Message, result.Metadata)
+		articleID := strings.TrimSpace(domain.DraftString(req.Metadata["article_id"]))
+		reviewID := strings.TrimSpace(domain.DraftString(req.Metadata["review_id"]))
+		assetID := strings.TrimSpace(domain.DraftString(req.Metadata["asset_id"]))
+		record := domain.NewPublishRecord(articleID, req.Title, reviewID, assetID, req.Platform, result.Success, result.Message, result.Metadata)
 		s.repo.Record(ctx, record)
 	}
 	return result, err

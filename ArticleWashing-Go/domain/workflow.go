@@ -10,12 +10,13 @@ type WorkflowContext struct {
 	ArtifactPath string
 	Payload      map[string]any
 	TraceID      string
+	Command      string
 }
 
 func DefaultWorkflowDefinition() *WorkflowDefinition {
 	return &WorkflowDefinition{
 		Name:  "default",
-		Nodes: []string{"generate", "persist"},
+		Nodes: []string{"automation_dispatch", "automation_snapshot"},
 	}
 }
 

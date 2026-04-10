@@ -60,14 +60,12 @@ func (h *JobHandler) GetByID(c *gin.Context) {
 
 func (h *JobHandler) Cancel(c *gin.Context) {
 	id := c.Param("id")
-
-	_, err := h.svc.GetJob(c.Request.Context(), id)
+	job, err := h.svc.Cancel(c.Request.Context(), id, "job cancelled")
 	if err != nil {
 		HandleError(c, err)
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{"cancelled": true, "job_id": id})
+	c.JSON(http.StatusOK, job)
 }
 
 func (h *JobHandler) GetEvents(c *gin.Context) {

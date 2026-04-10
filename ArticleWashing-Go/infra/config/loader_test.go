@@ -205,6 +205,34 @@ func TestLoaderOnChange(t *testing.T) {
 	assert.Equal(t, 9090, newCfg.HTTP.Port)
 }
 
+func TestLoaderOnChangeAllowsReentrantCurrentRead(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg1 := DefaultConfig()
+	data, _ := json.Marshal(cfg1)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	_, err := loader.Load()
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	loader.OnChange(func(old, new Config, changes Changes) {
+		_ = loader.Current()
+		close(done)
+	})
+
+	cfg2 := DefaultConfig()
+	cfg2.HTTP.Port = 9191
+	data, _ = json.Marshal(cfg2)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	_, err = loader.Reload()
+	require.NoError(t, err)
+	<-done
+}
+
 func TestLoaderApplyDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -224,4 +252,28 @@ func TestLoaderApplyDefaults(t *testing.T) {
 	assert.Equal(t, 3000, cfg.HTTP.Port)
 	assert.Equal(t, defaultHTTPHost, cfg.HTTP.Host)
 	assert.Equal(t, defaultLogLevel, cfg.Log.Level)
+}
+
+func TestLoaderSetCurrent(t *testing.T) {
+	loader := NewLoader("")
+	cfg := DefaultConfig()
+	cfg.HTTP.Port = 8181
+
+	loader.SetCurrent(cfg)
+
+	assert.Equal(t, 8181, loader.Current().HTTP.Port)
+	require.NotNil(t, loader.Get())
+	assert.Equal(t, 8181, loader.Get().HTTP.Port)
+}
+
+func TestLoaderGetReturnsCopy(t *testing.T) {
+	loader := NewLoader("")
+	cfg := DefaultConfig()
+	cfg.HTTP.Port = 8181
+	loader.SetCurrent(cfg)
+
+	loaded := loader.Get()
+	loaded.HTTP.Port = 9191
+
+	assert.Equal(t, 8181, loader.Current().HTTP.Port)
 }

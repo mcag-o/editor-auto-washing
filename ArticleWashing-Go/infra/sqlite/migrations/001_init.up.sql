@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS rendered_assets (
     id TEXT PRIMARY KEY,
     article_id TEXT NOT NULL,
     platform TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ready',
     asset_type TEXT NOT NULL,
     content TEXT NOT NULL DEFAULT '',
     metadata TEXT NOT NULL DEFAULT '{}',
@@ -80,7 +81,10 @@ CREATE INDEX IF NOT EXISTS idx_reviews_status ON review_tasks(status);
 -- Publish Records
 CREATE TABLE IF NOT EXISTS publish_records (
     id TEXT PRIMARY KEY,
+    article_id TEXT NOT NULL DEFAULT '',
     article_title TEXT NOT NULL,
+    review_id TEXT NOT NULL DEFAULT '',
+    asset_id TEXT NOT NULL DEFAULT '',
     platform TEXT NOT NULL,
     success INTEGER NOT NULL DEFAULT 0,
     message TEXT NOT NULL DEFAULT '',
@@ -88,6 +92,7 @@ CREATE TABLE IF NOT EXISTS publish_records (
     created_at TEXT NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_publish_article_id ON publish_records(article_id);
 CREATE INDEX IF NOT EXISTS idx_publish_article_title ON publish_records(article_title);
 CREATE INDEX IF NOT EXISTS idx_publish_platform ON publish_records(platform);
 
@@ -123,9 +128,17 @@ CREATE INDEX IF NOT EXISTS idx_job_events_job_id ON job_events(job_id);
 CREATE TABLE IF NOT EXISTS ingestions (
     id TEXT PRIMARY KEY,
     source_type TEXT NOT NULL,
+    bundle_file TEXT NOT NULL DEFAULT '',
+    original_location TEXT NOT NULL DEFAULT '',
+    routed_path TEXT NOT NULL DEFAULT '',
     payload TEXT NOT NULL DEFAULT '{}',
     status TEXT NOT NULL DEFAULT 'pending',
-    created_at TEXT NOT NULL
+    error_message TEXT NOT NULL DEFAULT '',
+    imported_items INTEGER NOT NULL DEFAULT 0,
+    created_articles INTEGER NOT NULL DEFAULT 0,
+    retried INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_ingestions_source_type ON ingestions(source_type);
@@ -135,8 +148,12 @@ CREATE INDEX IF NOT EXISTS idx_ingestions_status ON ingestions(status);
 CREATE TABLE IF NOT EXISTS workspace_articles (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'draft',
     status_history TEXT NOT NULL DEFAULT '[]',
+    lifecycle_history TEXT NOT NULL DEFAULT '[]',
+    source TEXT NOT NULL DEFAULT '{}',
+    metadata TEXT NOT NULL DEFAULT '{}',
     notes TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL

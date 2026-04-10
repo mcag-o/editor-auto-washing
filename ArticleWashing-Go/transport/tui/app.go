@@ -79,12 +79,12 @@ func fetchHealth(api *APIClient) tea.Msg {
 
 func fetchArticles(api *APIClient) tea.Msg {
 	var result struct {
-		Articles []map[string]any `json:"articles"`
+		Data []map[string]any `json:"data"`
 	}
-	if err := api.Get("/api/articles", &result); err != nil {
+	if err := api.Get("/workspace/articles", &result); err != nil {
 		return ArticlesMsg{Err: err}
 	}
-	return ArticlesMsg{Articles: result.Articles}
+	return ArticlesMsg{Articles: result.Data}
 }
 
 func fetchConfig(api *APIClient) tea.Msg {

@@ -1,0 +1,62 @@
+{
+  "bundleVersion": "1.0",
+  "generatedAt": "2026-04-09T12:00:00Z",
+  "sources": [
+    {
+      "sourceType": "hot_topics",
+      "platform": "weibo",
+      "canonicalPlatform": "weibo",
+      "displayName": "Weibo Hot Search",
+      "sourceUrl": "https://s.weibo.com/top/summary",
+      "fetchedAt": "2026-04-09T11:58:00Z",
+      "aliases": ["wb"],
+      "success": true,
+      "itemCount": 2,
+      "warnings": [],
+      "error": null
+    }
+  ],
+  "items": [
+    {
+      "sourceType": "hot_topics",
+      "platform": "weibo",
+      "canonicalPlatform": "weibo",
+      "title": "OpenAI launches new editor workflow",
+      "url": "https://example.com/posts/openai-editor-workflow",
+      "summary": "A new workflow improves article ingestion.",
+      "author": "Reporter A",
+      "publishTime": "2026-04-09T11:50:00Z",
+      "tags": ["ai", "workflow"],
+      "category": "technology",
+      "rank": 1,
+      "hot": "980000",
+      "metadata": {
+        "contentId": "wb-1"
+      },
+      "raw": {
+        "title": "OpenAI launches new editor workflow"
+      }
+    },
+    {
+      "sourceType": "hot_topics",
+      "platform": "weibo",
+      "canonicalPlatform": "weibo",
+      "title": "AI article teams adopt workspace lifecycle",
+      "url": "https://example.com/posts/workspace-lifecycle",
+      "summary": "Teams now track ingestion and review in one workspace.",
+      "author": "Reporter B",
+      "publishTime": "2026-04-09T11:52:00Z",
+      "tags": ["publishing"],
+      "category": "operations",
+      "rank": 2,
+      "hot": "650000",
+      "metadata": {
+        "contentId": "wb-2"
+      },
+      "raw": {
+        "title": "AI article teams adopt workspace lifecycle"
+      }
+    }
+  ],
+  "failures": []
+}

@@ -28,7 +28,6 @@ func NewLoader(path string) *Loader {
 
 func (l *Loader) Load() (Config, error) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 
 	data, err := os.ReadFile(l.path)
 	if err != nil {
@@ -36,13 +35,16 @@ func (l *Loader) Load() (Config, error) {
 			cfg := DefaultConfig()
 			cfg.ResolveSecrets()
 			l.current = cfg
+			l.mu.Unlock()
 			return cfg, nil
 		}
+		l.mu.Unlock()
 		return Config{}, fmt.Errorf("failed to read config file: %w", err)
 	}
 
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
+		l.mu.Unlock()
 		return Config{}, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
@@ -50,15 +52,18 @@ func (l *Loader) Load() (Config, error) {
 	cfg.ResolveSecrets()
 
 	if err := cfg.Validate(); err != nil {
+		l.mu.Unlock()
 		return Config{}, fmt.Errorf("config validation failed: %w", err)
 	}
 
 	oldConfig := l.current
 	l.current = cfg
+	listeners := append([]func(old, new Config, changes Changes){}, l.listeners...)
+	l.mu.Unlock()
 
 	if !isZeroConfig(oldConfig) {
 		changelog, _ := Diff(oldConfig, cfg)
-		for _, listener := range l.listeners {
+		for _, listener := range listeners {
 			listener(oldConfig, cfg, changelog)
 		}
 	}
@@ -83,10 +88,16 @@ func (l *Loader) Current() Config {
 	return l.current
 }
 
-func (l *Loader) Get() *Config {
+func (l *Loader) Get() Config {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	return &l.current
+	return l.current
+}
+
+func (l *Loader) SetCurrent(cfg Config) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.current = cfg
 }
 
 func (l *Loader) OnChange(fn func(old, new Config, changes Changes)) {

@@ -1,167 +1,112 @@
 package formatter
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"content-hub/domain"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestNewWechatHtmlFormatter(t *testing.T) {
-	f := NewWechatHtmlFormatter("./templates")
+func TestWechatHtmlFormatterRendersTemplateFromConfiguredRoots(t *testing.T) {
+	root := t.TempDir()
+	templateDir := filepath.Join(root, "templates")
+	require.NoError(t, os.MkdirAll(templateDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(templateDir, "daily-intelligence.html"), []byte(`<html><body><h1>{{TITLE}}</h1><div>{{BODY_SECTIONS}}</div><footer>{{CTA}}</footer></body></html>`), 0o644))
 
-	if f == nil {
-		t.Fatal("NewWechatHtmlFormatter returned nil")
-	}
-	if f.templateRoot != "./templates" {
-		t.Errorf("expected templateRoot %q, got %q", "./templates", f.templateRoot)
-	}
+	f := NewWechatHtmlFormatter([]string{templateDir})
+
+	html, err := f.Render(mustBuildValidDraft(), "daily-intelligence")
+	require.NoError(t, err)
+	assert.Contains(t, html, "<h1>市场快讯</h1>")
+	assert.Contains(t, html, "继续关注后续变化")
+	assert.NotContains(t, html, "{{TITLE}}")
 }
 
-func TestFormatWithValidArticle(t *testing.T) {
-	f := NewWechatHtmlFormatter("./templates")
+func TestWechatHtmlFormatterValidateDraftReportsMissingRequiredFields(t *testing.T) {
+	f := NewWechatHtmlFormatter(nil)
 
-	article := &domain.ArticleDraft{
-		Meta: map[string]any{
-			"title":  "Test Article",
-			"digest": "A test digest",
-			"author": "Test Author",
+	result := f.ValidateDraft(&domain.ArticleDraft{Template: "daily-intelligence"}, "daily-intelligence")
+
+	assert.Contains(t, result.Errors, "meta.title is required")
+	assert.Contains(t, result.Errors, "meta.digest is required")
+	assert.Contains(t, result.Errors, "meta.author is required")
+	assert.Contains(t, result.Errors, "headline.title is required")
+	assert.Contains(t, result.Errors, "headline.body is required")
+	assert.Contains(t, result.Errors, "sections must be a non-empty array")
+}
+
+func TestWechatHtmlFormatterValidateRenderedOutputDetectsUnresolvedPlaceholders(t *testing.T) {
+	f := NewWechatHtmlFormatter(nil)
+
+	errs := f.ValidateRenderedOutput("<html><body>{{TITLE}}</body></html>")
+
+	assert.Contains(t, errs, "rendered HTML still contains unresolved placeholders")
+}
+
+func TestWechatHtmlFormatterRenderFailsForMissingTemplate(t *testing.T) {
+	f := NewWechatHtmlFormatter([]string{t.TempDir()})
+
+	_, err := f.Render(mustBuildValidDraft(), "missing-template")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load template missing-template")
+}
+
+func TestWechatHtmlFormatterRenderFailsWhenTemplateLeavesPlaceholderOutput(t *testing.T) {
+	root := t.TempDir()
+	templateDir := filepath.Join(root, "templates")
+	require.NoError(t, os.MkdirAll(templateDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(templateDir, "broken.html"), []byte(`<html><body>{{TITLE}}{{UNUSED_PLACEHOLDER}}</body></html>`), 0o644))
+
+	f := NewWechatHtmlFormatter([]string{templateDir})
+
+	_, err := f.Render(mustBuildValidDraft(), "broken")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rendered HTML still contains unresolved placeholders")
+}
+
+func TestWechatHtmlFormatterRendersStructuredSections(t *testing.T) {
+	root := t.TempDir()
+	templateDir := filepath.Join(root, "templates")
+	require.NoError(t, os.MkdirAll(templateDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(templateDir, "daily-intelligence.html"), []byte(`<html><body>{{BODY_SECTIONS}}</body></html>`), 0o644))
+
+	f := NewWechatHtmlFormatter([]string{templateDir})
+
+	html, err := f.Render(mustBuildValidDraft(), "daily-intelligence")
+	require.NoError(t, err)
+	assert.True(t, strings.Contains(html, "政策动向") || strings.Contains(html, "市场焦点"))
+	assert.Contains(t, html, "板块延续轮动")
+}
+
+func mustBuildValidDraft() *domain.ArticleDraft {
+	draft := domain.NewArticleDraft("daily-intelligence")
+	draft.Meta["title"] = "市场快讯"
+	draft.Meta["digest"] = "盘前关注政策与板块轮动。"
+	draft.Meta["author"] = "研究编辑部"
+	draft.Headline["title"] = "政策窗口期开启"
+	draft.Headline["body"] = []string{"市场仍在等待增量信号。", "资金围绕高景气赛道轮动。"}
+	draft.Headline["source"] = "综合公开信息"
+	draft.Sections = []any{
+		map[string]any{
+			"en": "POLICY",
+			"cn": "政策动向",
+			"blocks": []map[string]any{{
+				"type":   "card",
+				"number": "1",
+				"title":  "板块延续轮动",
+				"body":   []string{"关注高股息与设备更新主线。"},
+				"source": "券商晨会",
+			}},
 		},
-		Headline: map[string]any{
-			"title":  "Headline Title",
-			"body":   "Headline Body",
-			"source": "Test Source",
-		},
-		Sections:   []any{"Section 1", "Section 2"},
-		Conclusion: "Test Conclusion",
-		CTA:        "Test CTA",
 	}
-
-	html, err := f.Format(article, "wechat")
-	if err != nil {
-		t.Fatalf("Format returned error: %v", err)
-	}
-
-	if html == "" {
-		t.Fatal("Format returned empty string")
-	}
-
-	if !strings.Contains(html, "Test Article") {
-		t.Error("output should contain title")
-	}
-	if !strings.Contains(html, "Headline Title") {
-		t.Error("output should contain headline title")
-	}
-	if !strings.Contains(html, "Test Conclusion") {
-		t.Error("output should contain conclusion")
-	}
-	if !strings.Contains(html, "Test CTA") {
-		t.Error("output should contain CTA")
-	}
-}
-
-func TestValidateMissingFields(t *testing.T) {
-	f := NewWechatHtmlFormatter("./templates")
-
-	article := &domain.ArticleDraft{
-		Meta:     map[string]any{},
-		Sections: []any{},
-	}
-
-	warnings := f.Validate(article)
-
-	if len(warnings) == 0 {
-		t.Fatal("expected warnings for incomplete article")
-	}
-
-	expectedWarnings := []string{"title is empty", "digest is empty", "no sections"}
-	for _, expected := range expectedWarnings {
-		found := false
-		for _, w := range warnings {
-			if w == expected {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("expected warning %q not found in %v", expected, warnings)
-		}
-	}
-}
-
-func TestValidateNilArticle(t *testing.T) {
-	f := NewWechatHtmlFormatter("./templates")
-
-	warnings := f.Validate(nil)
-
-	if len(warnings) == 0 {
-		t.Fatal("expected warnings for nil article")
-	}
-
-	if warnings[0] != "article is nil" {
-		t.Errorf("expected first warning %q, got %q", "article is nil", warnings[0])
-	}
-}
-
-func TestValidateValidArticle(t *testing.T) {
-	f := NewWechatHtmlFormatter("./templates")
-
-	article := &domain.ArticleDraft{
-		Meta: map[string]any{
-			"title":  "Complete Article",
-			"digest": "A complete digest",
-		},
-		Headline: map[string]any{
-			"title": "Headline",
-		},
-		Sections:   []any{"Section 1"},
-		Conclusion: "Conclusion text",
-		CTA:        "Call to action",
-	}
-
-	warnings := f.Validate(article)
-
-	if len(warnings) != 0 {
-		t.Errorf("expected 0 warnings for valid article, got %d: %v", len(warnings), warnings)
-	}
-}
-
-func TestFormatArticleWithAllFields(t *testing.T) {
-	f := NewWechatHtmlFormatter("./templates")
-
-	article := domain.NewArticleDraft("default")
-	article.Meta["title"] = "Full Article"
-	article.Meta["digest"] = "Full digest"
-	article.Meta["author"] = "Author Name"
-	article.Headline["title"] = "Breaking News"
-	article.Headline["body"] = "Details here"
-	article.Headline["source"] = "Source A"
-	article.Sections = append(article.Sections, "First section")
-	article.Sections = append(article.Sections, "Second section")
-	article.Conclusion = "In summary..."
-	article.CTA = "Subscribe now!"
-
-	html, err := f.Format(article, "wechat")
-	if err != nil {
-		t.Fatalf("Format returned error: %v", err)
-	}
-
-	checks := []string{
-		"Full Article",
-		"Full digest",
-		"Author Name",
-		"Breaking News",
-		"Details here",
-		"Source A",
-		"First section",
-		"Second section",
-		"In summary...",
-		"Subscribe now!",
-	}
-
-	for _, check := range checks {
-		if !strings.Contains(html, check) {
-			t.Errorf("output should contain %q", check)
-		}
-	}
+	draft.Conclusion = "关注量能变化与政策节奏。"
+	draft.CTA = "继续关注后续变化"
+	return draft
 }

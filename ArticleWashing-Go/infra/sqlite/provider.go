@@ -15,9 +15,17 @@ import (
 )
 
 type Provider struct {
-	db           *sql.DB
-	articleRepo  repo.ArticleRepo
-	templateRepo repo.TemplateRepo
+	db            *sql.DB
+	articleRepo   repo.ArticleRepo
+	templateRepo  repo.TemplateRepo
+	draftRepo     repo.DraftRepo
+	assetRepo     repo.AssetRepo
+	publishRepo   repo.PublishRepo
+	reviewRepo    repo.ReviewRepo
+	jobRepo       repo.JobRepo
+	jobEventRepo  repo.JobEventRepo
+	ingestionRepo repo.IngestionRepo
+	workspaceRepo repo.WorkspaceRepo
 }
 
 func NewProvider(dbPath string) (*Provider, error) {
@@ -48,6 +56,14 @@ func NewProvider(dbPath string) (*Provider, error) {
 
 	p.articleRepo = &articleRepo{db: db}
 	p.templateRepo = &templateRepo{db: db}
+	p.draftRepo = &draftRepo{db: db}
+	p.assetRepo = &assetRepo{db: db}
+	p.reviewRepo = &reviewRepo{db: db}
+	p.publishRepo = &publishRepo{db: db}
+	p.jobRepo = &jobRepo{db: db}
+	p.jobEventRepo = &jobEventRepo{db: db}
+	p.ingestionRepo = &ingestionRepo{db: db}
+	p.workspaceRepo = &articleWorkspaceRepo{db: db}
 
 	return p, nil
 }
@@ -66,6 +82,38 @@ func (p *Provider) ArticleRepo() repo.ArticleRepo {
 
 func (p *Provider) TemplateRepo() repo.TemplateRepo {
 	return p.templateRepo
+}
+
+func (p *Provider) DraftRepo() repo.DraftRepo {
+	return p.draftRepo
+}
+
+func (p *Provider) AssetRepo() repo.AssetRepo {
+	return p.assetRepo
+}
+
+func (p *Provider) PublishRepo() repo.PublishRepo {
+	return p.publishRepo
+}
+
+func (p *Provider) ReviewRepo() repo.ReviewRepo {
+	return p.reviewRepo
+}
+
+func (p *Provider) JobRepo() repo.JobRepo {
+	return p.jobRepo
+}
+
+func (p *Provider) JobEventRepo() repo.JobEventRepo {
+	return p.jobEventRepo
+}
+
+func (p *Provider) IngestionRepo() repo.IngestionRepo {
+	return p.ingestionRepo
+}
+
+func (p *Provider) WorkspaceRepo() repo.WorkspaceRepo {
+	return p.workspaceRepo
 }
 
 func (p *Provider) runMigrations(db *sql.DB, fsys fs.FS) error {
@@ -95,6 +143,9 @@ func (p *Provider) runMigrations(db *sql.DB, fsys fs.FS) error {
 				continue
 			}
 			if _, err := db.Exec(stmt); err != nil {
+				if strings.Contains(err.Error(), "duplicate column name") {
+					continue
+				}
 				return fmt.Errorf("exec migration %s: %w", file, err)
 			}
 		}
