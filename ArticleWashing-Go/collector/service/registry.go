@@ -3,20 +3,36 @@ package service
 import (
 	"content-hub/collector/plugin"
 	"content-hub/collector/plugin/sources"
+	"content-hub/infra/config"
 )
 
 func NewDefaultRegistry() (*plugin.Registry, error) {
+	return NewRegistryFromCollectorConfig(config.DefaultCollectorConfig())
+}
+
+func NewRegistryFromCollectorConfig(cfg config.CollectorConfig) (*plugin.Registry, error) {
 	registry := plugin.NewRegistry()
-	builders := []func() (plugin.SourcePlugin, error){
-		sources.NewBaidu,
-		sources.NewBilibili,
-		sources.NewGitHub,
-		sources.NewStackOverflow,
-		sources.NewV2EX,
-		sources.NewWeibo,
+	realBuilders := map[string]func() (plugin.SourcePlugin, error){
+		"baidu":         sources.NewBaidu,
+		"bilibili":      sources.NewBilibili,
+		"github":        sources.NewGitHub,
+		"stackoverflow": sources.NewStackOverflow,
+		"v2ex":          sources.NewV2EX,
+		"weibo":         sources.NewWeibo,
 	}
-	for _, build := range builders {
-		item, err := build()
+	for _, sourceID := range cfg.CanonicalSourceIDs() {
+		definition, ok := cfg.SourceOrDefault(sourceID)
+		if !ok {
+			continue
+		}
+		builder, hasRealImplementation := realBuilders[sourceID]
+		var item plugin.SourcePlugin
+		var err error
+		if hasRealImplementation {
+			item, err = builder()
+		} else {
+			item = sources.NewPlaceholder(definition, sourceID)
+		}
 		if err != nil {
 			return nil, err
 		}

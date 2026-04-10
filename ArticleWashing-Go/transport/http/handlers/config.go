@@ -18,7 +18,7 @@ func NewConfigHandler(loader *config.Loader) *ConfigHandler {
 
 func (h *ConfigHandler) Get(c *gin.Context) {
 	cfg := h.loader.Get()
-	if cfg == (config.Config{}) {
+	if isZeroConfig(cfg) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "config not loaded"})
 		return
 	}
@@ -28,8 +28,12 @@ func (h *ConfigHandler) Get(c *gin.Context) {
 
 func (h *ConfigHandler) MarshalJSON() ([]byte, error) {
 	cfg := h.loader.Get()
-	if cfg == (config.Config{}) {
+	if isZeroConfig(cfg) {
 		return json.Marshal(map[string]string{"error": "config not loaded"})
 	}
 	return json.Marshal(cfg.Redacted())
+}
+
+func isZeroConfig(cfg config.Config) bool {
+	return cfg.HTTP.Host == "" && cfg.HTTP.Port == 0
 }

@@ -5,9 +5,11 @@ import (
 	"content-hub/domain"
 	"content-hub/pkg/repo"
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"strings"
+	"time"
 )
 
 type SourceRegistryService struct {
@@ -21,14 +23,18 @@ func NewSourceRegistryService(sources repo.CollectorSourceRepo, registry *plugin
 
 func (s *SourceRegistryService) Sync(ctx context.Context) error {
 	for _, item := range s.registry.List() {
+		storedSource := domain.NewCollectorSource(item.SourceID(), item.DisplayName())
+		applyPluginMetadata(storedSource, item)
 		if _, err := s.sources.GetByID(ctx, item.SourceID()); err == nil {
+			if updateErr := s.sources.Update(ctx, storedSource); updateErr != nil {
+				return updateErr
+			}
 			continue
 		} else if !isNotFound(err) {
 			return err
 		}
 
-		source := domain.NewCollectorSource(item.SourceID(), item.DisplayName())
-		if err := s.sources.Create(ctx, source); err != nil && !isAlreadyExists(err) {
+		if err := s.sources.Create(ctx, storedSource); err != nil && !isAlreadyExists(err) {
 			return err
 		}
 	}
@@ -98,4 +104,48 @@ func pluginForSourceConfig(p plugin.SourcePlugin, source domain.CollectorSource)
 		return p
 	}
 	return configurable.WithSourceConfig(source)
+}
+
+func applyPluginMetadata(source *domain.CollectorSource, item plugin.SourcePlugin) {
+	source.DisplayName = item.DisplayName()
+	source.UpdatedAt = time.Now().UTC()
+	if describer, ok := item.(plugin.SourceDescriptor); ok {
+		descriptor := describer.Descriptor()
+		source.Enabled = descriptor.Enabled
+		source.ScheduleEnabled = descriptor.ScheduleEnabled
+		source.IntervalMinutes = descriptor.IntervalMinutes
+		source.TimeoutMS = descriptor.TimeoutMS
+		source.HotlistLimit = descriptor.HotlistLimit
+		source.DetailFetchEnabled = descriptor.DetailFetchEnabled
+		source.Concurrency = descriptor.Concurrency
+		source.AuthMode = descriptor.AuthMode
+		source.CookieSecretRef = descriptor.CookieSecretRef
+		source.HeaderSecretRef = descriptor.HeaderSecretRef
+		source.HeadersJSON = mustSourceJSON(descriptor.Headers)
+		source.RetryPolicyJSON = mustSourceJSON(descriptor.RetryPolicy)
+		source.OptionsJSON = mustSourceJSON(descriptor.Options)
+		source.Metadata = cloneMetadata(descriptor.Metadata)
+	}
+}
+
+func mustSourceJSON(value any) []byte {
+	if value == nil {
+		return []byte("{}")
+	}
+	data, err := json.Marshal(value)
+	if err != nil || len(data) == 0 {
+		return []byte("{}")
+	}
+	return data
+}
+
+func cloneMetadata(value map[string]any) map[string]any {
+	if len(value) == 0 {
+		return map[string]any{}
+	}
+	cloned := make(map[string]any, len(value))
+	for key, item := range value {
+		cloned[key] = item
+	}
+	return cloned
 }

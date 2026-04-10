@@ -40,7 +40,9 @@ func run() error {
 		cfg = runtimeCfg
 		loader.SetCurrent(cfg)
 	} else {
-		fallback := config.NewLoader("./config.json")
+		// 说明：这里继续保留独立配置文件回退路径，方便在未初始化 workspace 的场景下启动服务。
+		// 后续如果所有环境都完成 workspace 化，可以再统一收敛配置入口。
+		fallback := config.NewLoader("./config/config.json")
 		loadedCfg, loadErr := fallback.Load()
 		if loadErr != nil {
 			cfg = config.DefaultConfig()

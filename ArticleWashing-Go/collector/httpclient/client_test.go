@@ -4,8 +4,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"content-hub/collector/httpclient"
 
@@ -122,6 +124,43 @@ func TestClient_ReturnsRetryExhaustionDetailsFor5xx(t *testing.T) {
 	assert.ErrorContains(t, err, "GET")
 	assert.ErrorContains(t, err, "/unstable")
 	assert.ErrorContains(t, err, "status 502")
+}
+
+func TestClient_UsesExponentialBackoffBetweenRetryAttempts(t *testing.T) {
+	var attempts atomic.Int32
+	var waits []time.Duration
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := attempts.Add(1)
+		if attempt < 3 {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"error":"temporary upstream failure"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := httpclient.New(httpclient.Options{
+		BaseURL: server.URL,
+		RetryPolicy: httpclient.RetryPolicy{
+			MaxAttempts: 3,
+			Wait:        10 * time.Millisecond,
+		},
+		Sleep: func(_ <-chan time.Time, d time.Duration) {
+			waits = append(waits, d)
+		},
+	})
+	require.NoError(t, err)
+
+	resp, err := client.Do(t.Context(), httpclient.Request{Method: http.MethodGet, Path: "/backoff"})
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.EqualValues(t, 3, attempts.Load())
+	assert.True(t, slices.Equal(waits, []time.Duration{10 * time.Millisecond, 20 * time.Millisecond}), "unexpected waits: %v", waits)
+	assert.Greater(t, waits[1], waits[0])
+	assert.NotEqual(t, waits[0], waits[1])
 }
 
 func TestClient_NewRejectsInvalidBaseURL(t *testing.T) {

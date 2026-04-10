@@ -114,6 +114,30 @@ func (p *v2exPlugin) Capabilities() plugin.SourceCapabilities {
 	return plugin.SourceCapabilities{SupportsHotlist: true, SupportsArticle: true, AuthModes: []string{domain.CollectorAuthModeNone}}
 }
 
+// Descriptor 让 V2EX 这种已实现的 HTML 插件也能参与统一元数据落库。
+// 后续新增 HTML 平台时，优先参照这里和 placeholderPlugin 的组合方式实现。
+func (p *v2exPlugin) Descriptor() plugin.SourceDefinition {
+	return plugin.SourceDefinition{
+		Enabled:            true,
+		ScheduleEnabled:    true,
+		IntervalMinutes:    30,
+		TimeoutMS:          10000,
+		HotlistLimit:       50,
+		DetailFetchEnabled: true,
+		Concurrency:        1,
+		AuthMode:           domain.CollectorAuthModeNone,
+		Headers:            map[string]string{},
+		RetryPolicy:        map[string]any{},
+		Options: map[string]any{
+			"source_type": "html",
+			"source_url":  "https://www.v2ex.com/?tab=hot",
+		},
+		Metadata: map[string]any{
+			"implementation": "v2ex_html",
+		},
+	}
+}
+
 func parseV2EXHotlist(body []byte) ([]plugin.HotEntry, error) {
 	doc, err := htmlparser.Parse(body)
 	if err != nil {

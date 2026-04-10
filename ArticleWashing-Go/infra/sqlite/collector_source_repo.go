@@ -38,6 +38,18 @@ func (r *collectorSourceRepo) GetByID(ctx context.Context, id string) (*domain.C
 	return source, nil
 }
 
+func (r *collectorSourceRepo) Update(ctx context.Context, source *domain.CollectorSource) error {
+	metadata, err := json.Marshal(source.Metadata)
+	if err != nil {
+		return fmt.Errorf("marshal collector source metadata: %w", err)
+	}
+	_, err = r.db.ExecContext(ctx, `UPDATE collector_sources SET display_name = ?, enabled = ?, schedule_enabled = ?, interval_minutes = ?, auth_mode = ?, timeout_ms = ?, headers_json = ?, cookie_secret_ref = ?, header_secret_ref = ?, hotlist_limit = ?, detail_fetch_enabled = ?, concurrency = ?, retry_policy_json = ?, options_json = ?, metadata_json = ?, updated_at = ? WHERE id = ?`, source.DisplayName, boolToInt(source.Enabled), boolToInt(source.ScheduleEnabled), source.IntervalMinutes, source.AuthMode, source.TimeoutMS, string(source.HeadersJSON), source.CookieSecretRef, source.HeaderSecretRef, source.HotlistLimit, boolToInt(source.DetailFetchEnabled), source.Concurrency, string(source.RetryPolicyJSON), string(source.OptionsJSON), string(metadata), source.UpdatedAt.Format(time.RFC3339Nano), source.ID)
+	if err != nil {
+		return fmt.Errorf("update collector source: %w", err)
+	}
+	return nil
+}
+
 func (r *collectorSourceRepo) ListAll(ctx context.Context) ([]domain.CollectorSource, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT id, display_name, enabled, schedule_enabled, interval_minutes, auth_mode, timeout_ms, headers_json, cookie_secret_ref, header_secret_ref, hotlist_limit, detail_fetch_enabled, concurrency, retry_policy_json, options_json, metadata_json, created_at, updated_at FROM collector_sources ORDER BY id ASC`)
 	if err != nil {

@@ -15,6 +15,12 @@ type CollectorRuntime struct {
 	SchedulerService    *collectorscheduler.Service
 }
 
+// BuildCollectorRuntime 负责把平台注册、同步、任务服务和调度器组装成统一运行时。
+//
+// 当前重构重点：
+// 1. 平台元数据改由外部配置驱动，确保 22 个目标平台全部可见；
+// 2. 对尚未开发完成的平台，通过 placeholder plugin 落入统一 registry；
+// 3. 为后续把 detail fetch / bridge 暴露成正式运维入口保留稳定装配点。
 func BuildCollectorRuntime(ctx context.Context, repos *RuntimeRepos, interval time.Duration) (*CollectorRuntime, error) {
 	registry, err := collectorservice.NewDefaultRegistry()
 	if err != nil {

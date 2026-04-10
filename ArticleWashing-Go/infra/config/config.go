@@ -20,6 +20,7 @@ type Config struct {
 	Database  DatabaseConfig  `json:"database"`
 	Storage   StorageConfig   `json:"storage"`
 	Workflow  WorkflowConfig  `json:"workflow"`
+	Collector CollectorConfig `json:"collector"`
 	Platforms PlatformsConfig `json:"platforms"`
 	Secrets   SecretsConfig   `json:"secrets,omitempty"`
 	LLM       LLMConfig       `json:"llm"`
@@ -121,6 +122,7 @@ func DefaultConfig() Config {
 			RetryMaxAttempts:  3,
 			TimeoutSec:        300,
 		},
+		Collector: DefaultCollectorConfig(),
 		Platforms: PlatformsConfig{
 			Baidu:   PlatformEntry{Enabled: false},
 			WeChat:  PlatformEntry{Enabled: false},
@@ -183,6 +185,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Workflow.RetryMaxAttempts < 0 {
 		return fmt.Errorf("workflow.retry_max_attempts cannot be negative")
+	}
+	if err := c.Collector.Validate(); err != nil {
+		return err
+	}
+	if len(c.Collector.Sources) == 0 {
+		return fmt.Errorf("collector.sources cannot be empty")
 	}
 	return nil
 }

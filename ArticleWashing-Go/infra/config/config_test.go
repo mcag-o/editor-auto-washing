@@ -220,3 +220,14 @@ func TestMaskSecret(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultConfig_CollectorSourceCatalogIncludesTwentyTwoPlatforms(t *testing.T) {
+	cfg := DefaultConfig()
+
+	assert.Len(t, cfg.Collector.Sources, 22)
+	assert.Equal(t, "百度热搜", cfg.Collector.Sources["baidu"].DisplayName)
+	assert.Equal(t, "json-api", cfg.Collector.Sources["zhihu"].SourceType)
+	assert.Equal(t, "html", cfg.Collector.Sources["hackernews"].SourceType)
+	assert.Equal(t, "env.XUEQIU_COOKIE", cfg.Collector.Sources["xueqiu"].CookieSecretRef)
+	assert.Contains(t, cfg.Collector.Sources["36kr"].Aliases, "tskr")
+}

@@ -132,6 +132,29 @@ func (p *apiPlugin) Capabilities() plugin.SourceCapabilities {
 	}
 }
 
+// Descriptor 为 registry / SourceSync 提供最小可持久化描述。
+//
+// 说明：当前真实插件仍以代码为主驱动实现，后续如果要把更多运行时参数完全迁到外部配置，
+// 可以在这里继续增加字段映射，避免业务层再读取具体插件内部状态。
+func (p *apiPlugin) Descriptor() plugin.SourceDefinition {
+	return plugin.SourceDefinition{
+		Enabled:            true,
+		ScheduleEnabled:    true,
+		IntervalMinutes:    30,
+		TimeoutMS:          10000,
+		HotlistLimit:       50,
+		DetailFetchEnabled: p.articlePath != nil && p.normalizeBody != nil,
+		Concurrency:        1,
+		AuthMode:           "none",
+		Headers:            map[string]string{},
+		RetryPolicy:        map[string]any{},
+		Options:            map[string]any{},
+		Metadata: map[string]any{
+			"implementation": "api_plugin",
+		},
+	}
+}
+
 func marshalRawJSON(value any) ([]byte, error) {
 	body, err := json.Marshal(value)
 	if err != nil {

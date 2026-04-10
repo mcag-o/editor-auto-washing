@@ -165,6 +165,33 @@ func (p *weiboPlugin) Capabilities() plugin.SourceCapabilities {
 	return plugin.SourceCapabilities{SupportsHotlist: true, SupportsArticle: false, AuthModes: []string{domain.CollectorAuthModeCookie}}
 }
 
+// Descriptor 用于把微博平台的 Cookie 鉴权需求同步到持久化 source 配置。
+// 由于该平台仍处于 hotlist-only 阶段，这里显式保留 DetailFetchEnabled=false，
+// 便于后续开发者一眼识别“功能尚未补齐”的状态。
+func (p *weiboPlugin) Descriptor() plugin.SourceDefinition {
+	return plugin.SourceDefinition{
+		Enabled:            true,
+		ScheduleEnabled:    true,
+		IntervalMinutes:    30,
+		TimeoutMS:          10000,
+		HotlistLimit:       50,
+		DetailFetchEnabled: false,
+		Concurrency:        1,
+		AuthMode:           domain.CollectorAuthModeCookie,
+		CookieSecretRef:    p.cookieSecretRef,
+		Headers:            map[string]string{},
+		RetryPolicy:        map[string]any{},
+		Options: map[string]any{
+			"source_type": "json-api",
+			"source_url":  "https://weibo.com/ajax/side/hotSearch",
+			"status":      "partial",
+		},
+		Metadata: map[string]any{
+			"implementation": "weibo_cookie_hotlist",
+		},
+	}
+}
+
 func (p *weiboPlugin) WithSourceConfig(source domain.CollectorSource) plugin.SourcePlugin {
 	cookieSecretRef := strings.TrimSpace(source.CookieSecretRef)
 	if cookieSecretRef == "" {

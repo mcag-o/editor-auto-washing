@@ -33,6 +33,18 @@ func (r *memCollectorSourceRepo) GetByID(_ context.Context, id string) (*domain.
 	return &copyValue, nil
 }
 
+func (r *memCollectorSourceRepo) Update(_ context.Context, source *domain.CollectorSource) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	if _, ok := r.p.collectorSources[source.ID]; !ok {
+		return domain.NewNotFoundErr("collector_source", source.ID)
+	}
+	copyValue := *source
+	copyValue.UpdatedAt = time.Now().UTC()
+	r.p.collectorSources[source.ID] = &copyValue
+	return nil
+}
+
 func (r *memCollectorSourceRepo) ListAll(_ context.Context) ([]domain.CollectorSource, error) {
 	r.p.mu.RLock()
 	defer r.p.mu.RUnlock()

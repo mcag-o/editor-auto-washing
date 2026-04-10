@@ -8,6 +8,7 @@ import (
 type CollectorSourceRepo interface {
 	Create(ctx context.Context, source *domain.CollectorSource) error
 	GetByID(ctx context.Context, id string) (*domain.CollectorSource, error)
+	Update(ctx context.Context, source *domain.CollectorSource) error
 	ListAll(ctx context.Context) ([]domain.CollectorSource, error)
 	ListEnabled(ctx context.Context) ([]domain.CollectorSource, error)
 }

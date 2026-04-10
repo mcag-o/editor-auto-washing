@@ -23,6 +23,33 @@ type SourceConfigurablePlugin interface {
 	WithSourceConfig(source domain.CollectorSource) SourcePlugin
 }
 
+// SourceDescriptor 用于把平台元数据从插件层投影回 registry / 持久化层。
+//
+// 设计原因：
+// - 解决“平台注册信息硬编码在代码里、数据库记录又缺少外部配置语义”的问题；
+// - 让 placeholder 和真实插件都能返回统一描述，便于 Sync 时落库；
+// - 为后续把更多平台从骨架升级为正式实现提供稳定 contract。
+type SourceDescriptor interface {
+	Descriptor() SourceDefinition
+}
+
+type SourceDefinition struct {
+	Enabled            bool
+	ScheduleEnabled    bool
+	IntervalMinutes    int
+	TimeoutMS          int
+	HotlistLimit       int
+	DetailFetchEnabled bool
+	Concurrency        int
+	AuthMode           string
+	CookieSecretRef    string
+	HeaderSecretRef    string
+	Headers            map[string]string
+	RetryPolicy        map[string]any
+	Options            map[string]any
+	Metadata           map[string]any
+}
+
 type FetchHotlistRequest struct {
 	Limit   int
 	Headers map[string]string

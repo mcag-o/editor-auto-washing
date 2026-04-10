@@ -223,6 +223,27 @@ func applyDefaults(cfg *Config) {
 	if cfg.Workflow.TimeoutSec == 0 {
 		cfg.Workflow.TimeoutSec = def.Workflow.TimeoutSec
 	}
+	if cfg.Collector.DefaultIntervalMinutes == 0 {
+		cfg.Collector.DefaultIntervalMinutes = def.Collector.DefaultIntervalMinutes
+	}
+	if cfg.Collector.DefaultTimeoutMS == 0 {
+		cfg.Collector.DefaultTimeoutMS = def.Collector.DefaultTimeoutMS
+	}
+	if cfg.Collector.DefaultHotlistLimit == 0 {
+		cfg.Collector.DefaultHotlistLimit = def.Collector.DefaultHotlistLimit
+	}
+	if cfg.Collector.RetryPolicy.MaxAttempts == 0 {
+		cfg.Collector.RetryPolicy.MaxAttempts = def.Collector.RetryPolicy.MaxAttempts
+	}
+	if cfg.Collector.RetryPolicy.BaseWaitMS == 0 {
+		cfg.Collector.RetryPolicy.BaseWaitMS = def.Collector.RetryPolicy.BaseWaitMS
+	}
+	if cfg.Collector.RetryPolicy.MaxWaitMS == 0 {
+		cfg.Collector.RetryPolicy.MaxWaitMS = def.Collector.RetryPolicy.MaxWaitMS
+	}
+	if len(cfg.Collector.Sources) == 0 {
+		cfg.Collector.Sources = def.Collector.Sources
+	}
 	if cfg.Secrets.EnvPrefix == "" {
 		cfg.Secrets.EnvPrefix = def.Secrets.EnvPrefix
 	}

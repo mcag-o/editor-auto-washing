@@ -7,6 +7,8 @@ import (
 
 	"content-hub/collector/plugin"
 	"content-hub/collector/plugin/sources"
+	"content-hub/domain"
+	"content-hub/infra/config"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -74,6 +76,21 @@ func TestRegistry_RegisterIsAtomicOnAliasConflict(t *testing.T) {
 	assert.Equal(t, "github", items[0].SourceID())
 }
 
+func TestRegistry_RegistersPlaceholderPluginDescriptors(t *testing.T) {
+	reg := plugin.NewRegistry()
+	require.NoError(t, reg.Register(sources.NewPlaceholder(configCollectorDefinition(), "zhihu")))
+
+	resolved, err := reg.Get("zhihu")
+	require.NoError(t, err)
+	descriptorProvider, ok := resolved.(plugin.SourceDescriptor)
+	require.True(t, ok)
+	descriptor := descriptorProvider.Descriptor()
+	assert.False(t, descriptor.Enabled)
+	assert.Equal(t, domain.CollectorAuthModeNone, descriptor.AuthMode)
+	assert.Equal(t, "json-api", descriptor.Options["source_type"])
+	assert.Equal(t, "补齐知乎热榜实现与后续详情正文抽取", descriptor.Options["goal"])
+}
+
 type stubPlugin struct {
 	sourceID string
 	aliases  []string
@@ -101,4 +118,27 @@ func (s stubPlugin) HealthCheck(context.Context) (plugin.SourceHealth, error) {
 }
 func (s stubPlugin) Capabilities() plugin.SourceCapabilities {
 	return plugin.SourceCapabilities{SupportsHotlist: true}
+}
+
+func configCollectorDefinition() config.CollectorSourceDef {
+	return config.CollectorSourceDef{
+		DisplayName:         "知乎热榜",
+		Aliases:             []string{"zhihu"},
+		SourceType:          "json-api",
+		SourceURL:           "https://www.zhihu.com/api/v3/explore/guest/feeds",
+		Enabled:             false,
+		ScheduleEnabled:     false,
+		IntervalMinutes:     30,
+		TimeoutMS:           10000,
+		HotlistLimit:        50,
+		Concurrency:         1,
+		AuthMode:            domain.CollectorAuthModeNone,
+		Status:              "placeholder",
+		Goal:                "补齐知乎热榜实现与后续详情正文抽取",
+		Todo:                []string{"实现列表字段标准化", "确认详情抓取接口或页面回源方式"},
+		Notes:               []string{"适合作为下一批重点迁移平台之一。"},
+		MigrationReference:  "DataCollection/src/platforms/zhihu.js",
+		SupportsArticle:     true,
+		PlaceholderRequired: true,
+	}
 }
