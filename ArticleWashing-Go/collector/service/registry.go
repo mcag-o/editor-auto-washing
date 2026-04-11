@@ -98,9 +98,9 @@ func mergeResolvedDescriptor(base plugin.SourceDefinition, definition config.Col
 	base.HotlistLimit = resolved.HotlistLimit
 	base.DetailFetchEnabled = definition.DetailFetchEnabled
 	base.Concurrency = definition.Concurrency
-	base.AuthMode = definition.AuthMode
-	base.CookieSecretRef = definition.CookieSecretRef
-	base.HeaderSecretRef = definition.HeaderSecretRef
+	base.AuthMode = resolved.Auth.Mode
+	base.CookieSecretRef = resolved.Auth.CookieSecretRef
+	base.HeaderSecretRef = resolved.Auth.HeaderSecretRef
 	base.Headers = cloneResolvedHeaders(resolved.Headers)
 	base.RetryPolicy = map[string]any{
 		"max_attempts": resolved.RetryPolicy.MaxAttempts,

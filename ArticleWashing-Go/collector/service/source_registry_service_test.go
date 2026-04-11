@@ -237,6 +237,29 @@ func TestSourceRegistrySyncPersistsResolvedRetryMetadata(t *testing.T) {
 	assert.JSONEq(t, `{"detail_fetch_enabled":false,"goal":"补齐知乎热榜实现与后续详情正文抽取","placeholder_required":true,"source_type":"json-api","source_url":"https://www.zhihu.com/api/v3/explore/guest/feeds?limit=30&ws_qiangzhisafe=0","status":"placeholder","supports_article":true}`, string(stored.OptionsJSON))
 }
 
+func TestSourceRegistrySyncPersistsResolvedAuthModeFromAuthProfile(t *testing.T) {
+	provider := newCollectorProvider(t)
+	cfg := config.DefaultConfig().Collector
+	cfg.AuthProfiles["runtime_header"] = config.AuthProfileConfig{Mode: domain.CollectorAuthModeHeader, HeaderName: "Authorization", HeaderValuePrefix: "Bearer "}
+	zhihu := cfg.Sources["zhihu"]
+	zhihu.AuthProfile = "runtime_header"
+	zhihu.AuthMode = ""
+	zhihu.HeaderSecretRef = "env.ZHIHU_TOKEN"
+	cfg.Sources["zhihu"] = zhihu
+
+	registry, err := collectorsvc.NewRegistryFromCollectorConfig(cfg)
+	require.NoError(t, err)
+
+	svc := collectorsvc.NewSourceRegistryService(provider.CollectorSourceRepo(), registry)
+	require.NoError(t, svc.Sync(t.Context()))
+
+	stored, err := provider.CollectorSourceRepo().GetByID(t.Context(), "zhihu")
+	require.NoError(t, err)
+	assert.Equal(t, domain.CollectorAuthModeHeader, stored.AuthMode)
+	assert.Equal(t, "env.ZHIHU_TOKEN", stored.HeaderSecretRef)
+	assert.Empty(t, stored.CookieSecretRef)
+}
+
 func newRegistryWeiboPlugin(t *testing.T, customCookie string, statusCode int, fixture string, defaultHeaders map[string]string) plugin.SourcePlugin {
 	t.Helper()
 	client := newRegistryCookieClient(t, statusCode, fixture, customCookie, defaultHeaders)
