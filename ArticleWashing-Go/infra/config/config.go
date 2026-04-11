@@ -374,6 +374,9 @@ func (c *Config) Redacted() Config {
 	redacted.Platforms.Zhihu = redactPlatform(redacted.Platforms.Zhihu)
 	redacted.Platforms.Toutiao = redactPlatform(redacted.Platforms.Toutiao)
 	redacted.Platforms.CSDN = redactPlatform(redacted.Platforms.CSDN)
+	if redacted.LLM.APIKey != "" {
+		redacted.LLM.APIKey = maskSecret(redacted.LLM.APIKey)
+	}
 	return redacted
 }
 

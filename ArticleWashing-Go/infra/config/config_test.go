@@ -196,12 +196,15 @@ func TestConfigRedacted(t *testing.T) {
 	cfg.Platforms.Baidu.Cookie = "short"
 	cfg.Platforms.WeChat.Cookie = "this-is-a-very-long-cookie-value"
 	cfg.Platforms.Zhihu.Token = "1234567890abcdef"
+	cfg.LLM.APIKey = "sk-test-1234567890abcdef"
 
 	redacted := cfg.Redacted()
 
 	assert.Equal(t, "****", redacted.Platforms.Baidu.Cookie)
 	assert.Equal(t, "this************************alue", redacted.Platforms.WeChat.Cookie)
 	assert.Equal(t, "1234********cdef", redacted.Platforms.Zhihu.Token)
+	assert.Equal(t, "sk-t****************cdef", redacted.LLM.APIKey)
+	assert.Equal(t, cfg.LLM.Profiles["default_openai"].APIKeyRef, redacted.LLM.Profiles["default_openai"].APIKeyRef)
 }
 
 func TestMaskSecret(t *testing.T) {
