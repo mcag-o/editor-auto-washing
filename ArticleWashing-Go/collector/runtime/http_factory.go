@@ -17,6 +17,10 @@ func (f *HTTPFactory) Build(cfg ResolvedSourceRuntimeConfig, auth httpclient.Aut
 		RetryPolicy: httpclient.RetryPolicy{
 			MaxAttempts: cfg.RetryPolicy.MaxAttempts,
 			Wait:        cfg.RetryPolicy.Wait,
+			Backoff: httpclient.ExponentialBackoff{
+				BaseWait: cfg.RetryPolicy.Wait,
+				MaxWait:  cfg.RetryPolicy.MaxWait,
+			},
 		},
 	})
 }

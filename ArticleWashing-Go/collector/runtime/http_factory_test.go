@@ -35,6 +35,7 @@ func TestHTTPFactory_BuildsClientWithConfiguredTimeoutHeadersAndRetry(t *testing
 		RetryPolicy: RetryRuntimeConfig{
 			MaxAttempts: 4,
 			Wait:        750 * time.Millisecond,
+			MaxWait:     1500 * time.Millisecond,
 		},
 	}
 
@@ -42,6 +43,7 @@ func TestHTTPFactory_BuildsClientWithConfiguredTimeoutHeadersAndRetry(t *testing
 	require.NoError(t, err)
 	assert.NotNil(t, client)
 	assert.Equal(t, 12*time.Second, client.Timeout())
+	assert.Equal(t, 1500*time.Millisecond, client.Backoff().MaxWait)
 
 	resp, err := client.Do(t.Context(), httpclient.Request{Method: http.MethodGet, Path: "/hotlist", Phase: "hotlist"})
 	require.NoError(t, err)

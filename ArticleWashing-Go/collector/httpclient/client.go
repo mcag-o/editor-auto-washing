@@ -181,6 +181,13 @@ func (c *Client) Timeout() time.Duration {
 	return c.httpClient.Timeout
 }
 
+func (c *Client) Backoff() ExponentialBackoff {
+	if c == nil {
+		return ExponentialBackoff{}
+	}
+	return c.retryPolicy.Backoff
+}
+
 func (c *Client) CloneWithAuth(injector AuthInjector, defaultHeaders map[string]string) *Client {
 	if c == nil {
 		return nil
