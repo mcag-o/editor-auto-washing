@@ -13,6 +13,7 @@ import (
 	"content-hub/collector/httpclient"
 	"content-hub/collector/plugin"
 	"content-hub/collector/plugin/sources"
+	collectorruntime "content-hub/collector/runtime"
 	collectorsvc "content-hub/collector/service"
 	"content-hub/infra/config"
 	"content-hub/pkg/repo"
@@ -105,7 +106,8 @@ func TestSourceRegistryHealthUsesPersistedCookieSecretRef(t *testing.T) {
 	registry := plugin.NewRegistry()
 	require.NoError(t, registry.Register(pluginUnderTest))
 
-	svc := collectorsvc.NewSourceRegistryService(provider.CollectorSourceRepo(), registry)
+	cfg := config.DefaultConfig()
+	svc := collectorsvc.NewSourceRegistryServiceWithRuntime(provider.CollectorSourceRepo(), registry, cfg, registrySecretResolverStub{"env.WEIBO_COOKIE_ALT": "SUB=alt-cookie"})
 
 	statuses, err := svc.Health(t.Context())
 
@@ -120,6 +122,39 @@ func TestSourceRegistryHealthUsesPersistedCookieSecretRef(t *testing.T) {
 	assert.False(t, statuses[0].Capabilities.SupportsArticle)
 	assert.Equal(t, []string{domain.CollectorAuthModeCookie}, statuses[0].Capabilities.AuthModes)
 	assert.False(t, statuses[0].Health.CheckedAt.IsZero())
+}
+
+func TestSourceRegistryHealthFailsWhenRuntimeAuthSecretMissing(t *testing.T) {
+	provider := newCollectorProvider(t)
+	source := domain.NewCollectorSource("weibo", "微博热搜")
+	source.AuthMode = domain.CollectorAuthModeCookie
+	source.CookieSecretRef = "env.WEIBO_COOKIE_ALT"
+	require.NoError(t, provider.CollectorSourceRepo().Create(t.Context(), source))
+
+	registry := plugin.NewRegistry()
+	require.NoError(t, registry.Register(newRegistryWeiboPlugin(t, "SUB=alt-cookie", http.StatusOK, "weibo-hotlist.json")))
+
+	cfg := config.DefaultConfig()
+	svc := collectorsvc.NewSourceRegistryServiceWithRuntime(provider.CollectorSourceRepo(), registry, cfg, registrySecretResolverStub{})
+
+	statuses, err := svc.Health(t.Context())
+
+	require.NoError(t, err)
+	require.Len(t, statuses, 1)
+	assert.False(t, statuses[0].Health.OK)
+	assert.Equal(t, plugin.HealthCodeUnavailable, statuses[0].Health.Code)
+	assert.Contains(t, statuses[0].Health.Message, "env.WEIBO_COOKIE_ALT")
+	assert.Contains(t, statuses[0].Health.Message, "not found")
+}
+
+type registrySecretResolverStub map[string]string
+
+func (s registrySecretResolverStub) Resolve(ref string) (string, error) {
+	value, ok := s[ref]
+	if !ok {
+		return "", collectorruntime.ErrSecretNotFound(ref)
+	}
+	return value, nil
 }
 
 func TestSourceRegistrySyncPersistsPlaceholderMetadata(t *testing.T) {

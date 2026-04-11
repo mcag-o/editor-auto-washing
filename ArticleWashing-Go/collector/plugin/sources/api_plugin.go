@@ -156,6 +156,16 @@ func (p *apiPlugin) Descriptor() plugin.SourceDefinition {
 	}
 }
 
+func (p *apiPlugin) WithHTTPClient(client *httpclient.Client) plugin.SourcePlugin {
+	clone := *p
+	clone.client = client
+	return &clone
+}
+
+func (p *apiPlugin) HTTPClient() *httpclient.Client {
+	return p.client
+}
+
 func marshalRawJSON(value any) ([]byte, error) {
 	body, err := json.Marshal(value)
 	if err != nil {

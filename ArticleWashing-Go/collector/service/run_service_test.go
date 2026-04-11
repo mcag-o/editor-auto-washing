@@ -4,8 +4,10 @@ import (
 	"content-hub/collector/httpclient"
 	"content-hub/collector/plugin"
 	"content-hub/collector/plugin/sources"
+	collectorruntime "content-hub/collector/runtime"
 	collectorsvc "content-hub/collector/service"
 	"content-hub/domain"
+	"content-hub/infra/config"
 	"content-hub/infra/sqlite"
 	"context"
 	"fmt"
@@ -77,7 +79,8 @@ func TestRunService_UsesPersistedCookieSecretRefForSourcePlugin(t *testing.T) {
 	registry := plugin.NewRegistry()
 	require.NoError(t, registry.Register(newRunServiceWeiboPlugin(t, "SUB=alt-cookie", "weibo-hotlist.json")))
 
-	runSvc := collectorsvc.NewRunService(provider.CollectorSourceRepo(), provider.CollectorRunRepo(), provider.CollectorEntryRepo(), registry)
+	cfg := config.DefaultConfig()
+	runSvc := collectorsvc.NewRunServiceWithRuntime(provider.CollectorSourceRepo(), provider.CollectorRunRepo(), provider.CollectorEntryRepo(), registry, cfg, secretResolverStub{"env.WEIBO_COOKIE_ALT": "SUB=alt-cookie"})
 
 	result, err := runSvc.RunHotlist(t.Context(), "manual")
 
@@ -89,6 +92,43 @@ func TestRunService_UsesPersistedCookieSecretRefForSourcePlugin(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
 	assert.Equal(t, "Mars colony launch date set", entries[0].Title)
+}
+
+func TestRunService_FailsWhenRuntimeAuthSecretMissing(t *testing.T) {
+	provider := newCollectorProvider(t)
+	source := domain.NewCollectorSource("weibo", "微博热搜")
+	source.AuthMode = domain.CollectorAuthModeCookie
+	source.CookieSecretRef = "env.WEIBO_COOKIE_ALT"
+	require.NoError(t, provider.CollectorSourceRepo().Create(t.Context(), source))
+
+	registry := plugin.NewRegistry()
+	require.NoError(t, registry.Register(newRunServiceWeiboPlugin(t, "SUB=alt-cookie", "weibo-hotlist.json")))
+
+	cfg := config.DefaultConfig()
+	runSvc := collectorsvc.NewRunServiceWithRuntime(provider.CollectorSourceRepo(), provider.CollectorRunRepo(), provider.CollectorEntryRepo(), registry, cfg, secretResolverStub{})
+
+	result, err := runSvc.RunHotlist(t.Context(), "manual")
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.CollectorRunFailed, result.Status)
+	assert.Equal(t, 0, result.EntryCount)
+
+	detail, err := runSvc.GetRun(t.Context(), result.RunID)
+	require.NoError(t, err)
+	require.Len(t, detail.SourceRuns, 1)
+	assert.Contains(t, detail.SourceRuns[0].ErrorMessage, "env.WEIBO_COOKIE_ALT")
+	assert.Contains(t, detail.SourceRuns[0].ErrorMessage, "not found")
+	assert.Equal(t, domain.CollectorSourceRunFailed, detail.SourceRuns[0].Status)
+}
+
+type secretResolverStub map[string]string
+
+func (s secretResolverStub) Resolve(ref string) (string, error) {
+	value, ok := s[ref]
+	if !ok {
+		return "", collectorruntime.ErrSecretNotFound(ref)
+	}
+	return value, nil
 }
 
 func newRunServiceWeiboPlugin(t *testing.T, expectedCookie string, fixture string) plugin.SourcePlugin {

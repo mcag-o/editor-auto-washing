@@ -142,6 +142,14 @@ func (p *weiboPlugin) WithSourceConfig(source domain.CollectorSource) plugin.Sou
 	return &weiboPlugin{client: p.client}
 }
 
+func (p *weiboPlugin) WithHTTPClient(client *httpclient.Client) plugin.SourcePlugin {
+	return &weiboPlugin{client: client}
+}
+
+func (p *weiboPlugin) HTTPClient() *httpclient.Client {
+	return p.client
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		value = strings.TrimSpace(value)

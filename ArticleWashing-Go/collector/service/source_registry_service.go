@@ -2,7 +2,9 @@ package service
 
 import (
 	"content-hub/collector/plugin"
+	collectorruntime "content-hub/collector/runtime"
 	"content-hub/domain"
+	"content-hub/infra/config"
 	"content-hub/pkg/repo"
 	"context"
 	"encoding/json"
@@ -15,10 +17,15 @@ import (
 type SourceRegistryService struct {
 	sources  repo.CollectorSourceRepo
 	registry *plugin.Registry
+	runtime  *runtimePluginAdapter
 }
 
 func NewSourceRegistryService(sources repo.CollectorSourceRepo, registry *plugin.Registry) *SourceRegistryService {
 	return &SourceRegistryService{sources: sources, registry: registry}
+}
+
+func NewSourceRegistryServiceWithRuntime(sources repo.CollectorSourceRepo, registry *plugin.Registry, cfg config.Config, secrets collectorruntime.SecretResolver) *SourceRegistryService {
+	return &SourceRegistryService{sources: sources, registry: registry, runtime: newRuntimePluginAdapter(cfg, secrets)}
 }
 
 func (s *SourceRegistryService) Sync(ctx context.Context) error {
@@ -69,7 +76,16 @@ func (s *SourceRegistryService) Health(ctx context.Context) ([]domain.CollectorS
 			statuses = append(statuses, status)
 			continue
 		}
-		p = pluginForSourceConfig(p, item)
+		if s.runtime != nil {
+			p, pluginErr = s.runtime.configure(p, item)
+			if pluginErr != nil {
+				status.Health = domain.CollectorHealthInfo{OK: false, Code: plugin.HealthCodeUnavailable, Message: pluginErr.Error()}
+				statuses = append(statuses, status)
+				continue
+			}
+		} else {
+			p = pluginForSourceConfig(p, item)
+		}
 		caps := p.Capabilities()
 		status.Capabilities = domain.CollectorSourceCapabilities{
 			SupportsHotlist: caps.SupportsHotlist,

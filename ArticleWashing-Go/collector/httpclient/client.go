@@ -168,6 +168,16 @@ func HeaderAuthInjector(headers map[string]string) AuthInjector {
 	}
 }
 
+func (c *Client) CloneWithAuth(injector AuthInjector, defaultHeaders map[string]string) *Client {
+	if c == nil {
+		return nil
+	}
+	clone := *c
+	clone.defaultHeaders = cloneHeaders(defaultHeaders)
+	clone.authInjector = injector
+	return &clone
+}
+
 func (c *Client) resolveURL(path string, query url.Values) (string, error) {
 	base, err := url.Parse(c.baseURL)
 	if err != nil {
