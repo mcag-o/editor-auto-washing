@@ -297,6 +297,82 @@ func TestLoaderApplyDefaults_MergesBuiltInCollectorPolicyMaps(t *testing.T) {
 	assert.Equal(t, "header", cfg.Collector.AuthProfiles["custom_header"].Mode)
 }
 
+func TestLoaderApplyDefaults_PartiallyOverridesBuiltInRetryPolicy(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"retry_policies": map[string]any{
+				defaultCollectorRetryPolicyProfileID: map[string]any{
+					"max_attempts": 7,
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	policy := cfg.Collector.RetryPolicies[defaultCollectorRetryPolicyProfileID]
+	assert.Equal(t, 7, policy.MaxAttempts)
+	assert.Equal(t, 500, policy.BaseWaitMS)
+	assert.Equal(t, 5000, policy.MaxWaitMS)
+}
+
+func TestLoaderApplyDefaults_PartiallyOverridesBuiltInAuthProfile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"auth_profiles": map[string]any{
+				"cookie": map[string]any{
+					"mode": "cookie",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	profile := cfg.Collector.AuthProfiles["cookie"]
+	assert.Equal(t, "cookie", profile.Mode)
+}
+
+func TestLoaderApplyDefaults_PartiallyOverridesBuiltInHTTPClientProfile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"http_clients": map[string]any{
+				defaultCollectorHTTPClientProfileID: map[string]any{
+					"user_agent": "custom-agent/1.0",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	profile := cfg.Collector.HTTPClients[defaultCollectorHTTPClientProfileID]
+	assert.Equal(t, "custom-agent/1.0", profile.UserAgent)
+	assert.NotNil(t, profile.Headers)
+	assert.Empty(t, profile.Headers)
+}
+
 func TestLoaderSetCurrent(t *testing.T) {
 	loader := NewLoader("")
 	cfg := DefaultConfig()

@@ -244,9 +244,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Collector.Defaults.Concurrency == 0 {
 		cfg.Collector.Defaults.Concurrency = def.Collector.Defaults.Concurrency
 	}
-	cfg.Collector.HTTPClients = mergeNamedProfiles(def.Collector.HTTPClients, cfg.Collector.HTTPClients)
-	cfg.Collector.RetryPolicies = mergeNamedProfiles(def.Collector.RetryPolicies, cfg.Collector.RetryPolicies)
-	cfg.Collector.AuthProfiles = mergeNamedProfiles(def.Collector.AuthProfiles, cfg.Collector.AuthProfiles)
+	cfg.Collector.HTTPClients = mergeHTTPClientProfiles(def.Collector.HTTPClients, cfg.Collector.HTTPClients)
+	cfg.Collector.RetryPolicies = mergeRetryPolicyProfiles(def.Collector.RetryPolicies, cfg.Collector.RetryPolicies)
+	cfg.Collector.AuthProfiles = mergeAuthProfiles(def.Collector.AuthProfiles, cfg.Collector.AuthProfiles)
 	if len(cfg.Collector.Sources) == 0 {
 		cfg.Collector.Sources = def.Collector.Sources
 	}
@@ -277,16 +277,111 @@ func isZeroConfig(cfg Config) bool {
 	return cfg.HTTP.Host == "" && cfg.HTTP.Port == 0
 }
 
-func mergeNamedProfiles[T any](defaults map[string]T, overrides map[string]T) map[string]T {
+func mergeHTTPClientProfiles(defaults map[string]HTTPClientProfile, overrides map[string]HTTPClientProfile) map[string]HTTPClientProfile {
 	if len(defaults) == 0 && len(overrides) == 0 {
 		return nil
 	}
-	merged := make(map[string]T, len(defaults)+len(overrides))
+	merged := make(map[string]HTTPClientProfile, len(defaults)+len(overrides))
+	for key, value := range defaults {
+		merged[key] = cloneHTTPClientProfile(value)
+	}
+	for key, value := range overrides {
+		base, ok := merged[key]
+		if !ok {
+			merged[key] = cloneHTTPClientProfile(value)
+			continue
+		}
+		merged[key] = mergeHTTPClientProfile(base, value)
+	}
+	return merged
+}
+
+func mergeRetryPolicyProfiles(defaults map[string]RetryPolicyProfile, overrides map[string]RetryPolicyProfile) map[string]RetryPolicyProfile {
+	if len(defaults) == 0 && len(overrides) == 0 {
+		return nil
+	}
+	merged := make(map[string]RetryPolicyProfile, len(defaults)+len(overrides))
 	for key, value := range defaults {
 		merged[key] = value
 	}
 	for key, value := range overrides {
+		base, ok := merged[key]
+		if !ok {
+			merged[key] = value
+			continue
+		}
+		merged[key] = mergeRetryPolicyProfile(base, value)
+	}
+	return merged
+}
+
+func mergeAuthProfiles(defaults map[string]AuthProfileConfig, overrides map[string]AuthProfileConfig) map[string]AuthProfileConfig {
+	if len(defaults) == 0 && len(overrides) == 0 {
+		return nil
+	}
+	merged := make(map[string]AuthProfileConfig, len(defaults)+len(overrides))
+	for key, value := range defaults {
 		merged[key] = value
+	}
+	for key, value := range overrides {
+		base, ok := merged[key]
+		if !ok {
+			merged[key] = value
+			continue
+		}
+		merged[key] = mergeAuthProfile(base, value)
+	}
+	return merged
+}
+
+func cloneHTTPClientProfile(profile HTTPClientProfile) HTTPClientProfile {
+	cloned := HTTPClientProfile{
+		UserAgent: profile.UserAgent,
+	}
+	if profile.Headers != nil {
+		cloned.Headers = make(map[string]string, len(profile.Headers))
+		for key, value := range profile.Headers {
+			cloned.Headers[key] = value
+		}
+	}
+	return cloned
+}
+
+func mergeHTTPClientProfile(base HTTPClientProfile, override HTTPClientProfile) HTTPClientProfile {
+	merged := cloneHTTPClientProfile(base)
+	if override.UserAgent != "" {
+		merged.UserAgent = override.UserAgent
+	}
+	if override.Headers != nil {
+		merged.Headers = make(map[string]string, len(override.Headers))
+		for key, value := range override.Headers {
+			merged.Headers[key] = value
+		}
+	}
+	if merged.Headers == nil {
+		merged.Headers = map[string]string{}
+	}
+	return merged
+}
+
+func mergeRetryPolicyProfile(base RetryPolicyProfile, override RetryPolicyProfile) RetryPolicyProfile {
+	merged := base
+	if override.MaxAttempts != 0 {
+		merged.MaxAttempts = override.MaxAttempts
+	}
+	if override.BaseWaitMS != 0 {
+		merged.BaseWaitMS = override.BaseWaitMS
+	}
+	if override.MaxWaitMS != 0 {
+		merged.MaxWaitMS = override.MaxWaitMS
+	}
+	return merged
+}
+
+func mergeAuthProfile(base AuthProfileConfig, override AuthProfileConfig) AuthProfileConfig {
+	merged := base
+	if override.Mode != "" {
+		merged.Mode = override.Mode
 	}
 	return merged
 }
