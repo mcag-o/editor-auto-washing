@@ -101,12 +101,13 @@ func (b ExponentialBackoff) NextDelay(attempt int) time.Duration {
 		base = float64(math.MaxInt64)
 	}
 
-	capped := time.Duration(base)
+	delay := time.Duration(base)
+	delay = b.Jitter.Apply(delay)
 	if b.MaxWait > 0 {
-		capped = minDuration(capped, b.MaxWait)
+		delay = minDuration(delay, b.MaxWait)
 	}
 
-	return b.Jitter.Apply(capped)
+	return delay
 }
 
 type DefaultRetryClassifierOptions struct {

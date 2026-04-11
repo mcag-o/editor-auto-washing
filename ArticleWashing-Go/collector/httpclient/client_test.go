@@ -179,11 +179,23 @@ func TestRetryPolicy_UsesMaxWaitAndBoundedJitter(t *testing.T) {
 
 	d1 := policy.NextDelay(1)
 	d4 := policy.NextDelay(4)
+	overflowPolicy := httpclient.ExponentialBackoff{
+		BaseWait:   500 * time.Millisecond,
+		Multiplier: 2,
+		MaxWait:    2 * time.Second,
+		Jitter: httpclient.JitterConfig{
+			Mode:  httpclient.JitterBounded,
+			Ratio: 0.2,
+			Rand:  rand.New(rand.NewSource(0)),
+		},
+	}
+	d5 := overflowPolicy.NextDelay(5)
 
 	assert.GreaterOrEqual(t, d1, 400*time.Millisecond)
 	assert.LessOrEqual(t, d1, 600*time.Millisecond)
 	assert.GreaterOrEqual(t, d4, 1600*time.Millisecond)
 	assert.LessOrEqual(t, d4, 2*time.Second)
+	assert.Equal(t, 2*time.Second, d5)
 }
 
 func TestRetryClassifier_ClassifiesHTTPAndNetworkErrors(t *testing.T) {
