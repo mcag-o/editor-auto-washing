@@ -223,6 +223,20 @@ func TestSourceRegistrySyncPersistsPlaceholderMetadata(t *testing.T) {
 	assert.Contains(t, stored.Metadata["todo"], "实现列表字段标准化")
 }
 
+func TestSourceRegistrySyncPersistsResolvedRetryMetadata(t *testing.T) {
+	provider := newCollectorProvider(t)
+	registry, err := collectorsvc.NewRegistryFromCollectorConfig(config.DefaultConfig().Collector)
+	require.NoError(t, err)
+
+	svc := collectorsvc.NewSourceRegistryService(provider.CollectorSourceRepo(), registry)
+	require.NoError(t, svc.Sync(t.Context()))
+
+	stored, err := provider.CollectorSourceRepo().GetByID(t.Context(), "zhihu")
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"max_attempts":3,"wait":"500ms","max_wait":"5s"}`, string(stored.RetryPolicyJSON))
+	assert.JSONEq(t, `{"detail_fetch_enabled":false,"goal":"补齐知乎热榜实现与后续详情正文抽取","placeholder_required":true,"source_type":"json-api","source_url":"https://www.zhihu.com/api/v3/explore/guest/feeds?limit=30&ws_qiangzhisafe=0","status":"placeholder","supports_article":true}`, string(stored.OptionsJSON))
+}
+
 func newRegistryWeiboPlugin(t *testing.T, customCookie string, statusCode int, fixture string, defaultHeaders map[string]string) plugin.SourcePlugin {
 	t.Helper()
 	client := newRegistryCookieClient(t, statusCode, fixture, customCookie, defaultHeaders)

@@ -3,6 +3,7 @@ package service
 import (
 	collectorscheduler "content-hub/collector/scheduler"
 	collectorservice "content-hub/collector/service"
+	"content-hub/infra/config"
 	"context"
 	"time"
 )
@@ -22,7 +23,8 @@ type CollectorRuntime struct {
 // 2. 对尚未开发完成的平台，通过 placeholder plugin 落入统一 registry；
 // 3. 为后续把 detail fetch / bridge 暴露成正式运维入口保留稳定装配点。
 func BuildCollectorRuntime(ctx context.Context, repos *RuntimeRepos, interval time.Duration) (*CollectorRuntime, error) {
-	registry, err := collectorservice.NewDefaultRegistry()
+	collectorCfg := config.DefaultConfig().Collector
+	registry, err := collectorservice.NewRegistryFromCollectorConfig(collectorCfg)
 	if err != nil {
 		return nil, err
 	}
