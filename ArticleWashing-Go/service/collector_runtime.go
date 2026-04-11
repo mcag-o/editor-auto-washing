@@ -12,7 +12,7 @@ import (
 var buildCollectorRuntimeConfig = config.DefaultConfig
 
 var buildCollectorRuntimeSecretResolver = func() collectorruntime.SecretResolver {
-	return nil
+	return collectorruntime.NewEnvSecretResolver()
 }
 
 type CollectorRuntime struct {

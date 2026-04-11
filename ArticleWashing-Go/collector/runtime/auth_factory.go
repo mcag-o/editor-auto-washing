@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"content-hub/collector/httpclient"
@@ -67,4 +68,24 @@ func (f *AuthFactory) resolveRequired(ref string) (string, error) {
 
 func ErrSecretNotFound(ref string) error {
 	return fmt.Errorf("secret %s not found", strings.TrimSpace(ref))
+}
+
+type envSecretResolver struct{}
+
+func NewEnvSecretResolver() SecretResolver {
+	return envSecretResolver{}
+}
+
+func (envSecretResolver) Resolve(ref string) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", ErrSecretNotFound(ref)
+	}
+	if strings.HasPrefix(ref, "env.") {
+		if value := strings.TrimSpace(os.Getenv(strings.TrimPrefix(ref, "env."))); value != "" {
+			return value, nil
+		}
+		return "", ErrSecretNotFound(ref)
+	}
+	return "", ErrSecretNotFound(ref)
 }

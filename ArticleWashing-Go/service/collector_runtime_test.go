@@ -165,6 +165,58 @@ func TestBuildCollectorRuntime_RunServiceUsesResolvedRuntimeConfig(t *testing.T)
 	assert.Empty(t, detail.SourceRuns[0].ErrorMessage)
 }
 
+func TestBuildCollectorRuntime_DefaultSecretResolverUsesEnvRefs(t *testing.T) {
+	provider := memory.NewProvider()
+	repos := &RuntimeRepos{
+		CollectorSourceRepo:    provider.CollectorSourceRepo(),
+		CollectorRunRepo:       provider.CollectorRunRepo(),
+		CollectorEntryRepo:     provider.CollectorEntryRepo(),
+		CollectorArticleRepo:   provider.CollectorArticleRepo(),
+		CollectorAttemptRepo:   provider.CollectorAttemptRepo(),
+		CollectorSchedulerRepo: provider.CollectorSchedulerRepo(),
+		WorkspaceRepo:          provider.WorkspaceRepo(),
+	}
+
+	t.Setenv("WEIBO_COOKIE_ALT", "SUB=default-env-cookie")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "SUB=default-env-cookie", r.Header.Get("Cookie"))
+		body, err := os.ReadFile(filepath.Join("..", "testdata", "collector", "fixtures", "weibo-hotlist.json"))
+		require.NoError(t, err)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(server.Close)
+
+	restoreConfig := overrideCollectorRuntimeConfig(t, func() config.Config {
+		cfg := config.DefaultConfig()
+		for sourceID, source := range cfg.Collector.Sources {
+			source.Enabled = false
+			cfg.Collector.Sources[sourceID] = source
+		}
+		weibo := cfg.Collector.Sources["weibo"]
+		weibo.Enabled = true
+		weibo.SourceURL = server.URL
+		cfg.Collector.Sources["weibo"] = weibo
+		return cfg
+	})
+	defer restoreConfig()
+
+	runtime, err := BuildCollectorRuntime(t.Context(), repos, time.Minute)
+	require.NoError(t, err)
+
+	source, err := repos.CollectorSourceRepo.GetByID(t.Context(), "weibo")
+	require.NoError(t, err)
+	source.CookieSecretRef = "env.WEIBO_COOKIE_ALT"
+	require.NoError(t, repos.CollectorSourceRepo.Update(t.Context(), source))
+
+	result, err := runtime.RunService.RunHotlist(t.Context(), "manual")
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.CollectorRunSucceeded, result.Status)
+	assert.Equal(t, 2, result.EntryCount)
+}
+
 type collectorRuntimeSecretResolverStub map[string]string
 
 func (s collectorRuntimeSecretResolverStub) Resolve(ref string) (string, error) {
