@@ -325,3 +325,34 @@ func TestConfigValidate_RejectsMissingCollectorSourceAuthProfileReference(t *tes
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "collector.sources.zhihu.auth_profile")
 }
+
+func TestCollectorConfig_SourceOrDefault_DerivesAuthModeFromProfile(t *testing.T) {
+	cfg := DefaultCollectorConfig()
+	cfg.Sources["zhihu"] = CollectorSourceDef{
+		DisplayName: "知乎热榜",
+		SourceType:  "json-api",
+		SourceURL:   "https://www.zhihu.com/api/v3/explore/guest/feeds",
+		AuthProfile: "cookie",
+		AuthMode:    "none",
+	}
+
+	source, ok := cfg.SourceOrDefault("zhihu")
+	require.True(t, ok)
+	assert.Equal(t, "cookie", source.AuthProfile)
+	assert.Equal(t, "cookie", source.AuthMode)
+}
+
+func TestConfigValidate_RejectsCollectorSourceAuthModeProfileConflict(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Collector.Sources["zhihu"] = CollectorSourceDef{
+		DisplayName: "知乎热榜",
+		SourceType:  "json-api",
+		SourceURL:   "https://www.zhihu.com/api/v3/explore/guest/feeds",
+		AuthProfile: "cookie",
+		AuthMode:    "header",
+	}
+
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "collector.sources.zhihu.auth_mode")
+}

@@ -244,15 +244,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Collector.Defaults.Concurrency == 0 {
 		cfg.Collector.Defaults.Concurrency = def.Collector.Defaults.Concurrency
 	}
-	if len(cfg.Collector.HTTPClients) == 0 {
-		cfg.Collector.HTTPClients = def.Collector.HTTPClients
-	}
-	if len(cfg.Collector.RetryPolicies) == 0 {
-		cfg.Collector.RetryPolicies = def.Collector.RetryPolicies
-	}
-	if len(cfg.Collector.AuthProfiles) == 0 {
-		cfg.Collector.AuthProfiles = def.Collector.AuthProfiles
-	}
+	cfg.Collector.HTTPClients = mergeNamedProfiles(def.Collector.HTTPClients, cfg.Collector.HTTPClients)
+	cfg.Collector.RetryPolicies = mergeNamedProfiles(def.Collector.RetryPolicies, cfg.Collector.RetryPolicies)
+	cfg.Collector.AuthProfiles = mergeNamedProfiles(def.Collector.AuthProfiles, cfg.Collector.AuthProfiles)
 	if len(cfg.Collector.Sources) == 0 {
 		cfg.Collector.Sources = def.Collector.Sources
 	}
@@ -281,4 +275,18 @@ func applyDefaults(cfg *Config) {
 
 func isZeroConfig(cfg Config) bool {
 	return cfg.HTTP.Host == "" && cfg.HTTP.Port == 0
+}
+
+func mergeNamedProfiles[T any](defaults map[string]T, overrides map[string]T) map[string]T {
+	if len(defaults) == 0 && len(overrides) == 0 {
+		return nil
+	}
+	merged := make(map[string]T, len(defaults)+len(overrides))
+	for key, value := range defaults {
+		merged[key] = value
+	}
+	for key, value := range overrides {
+		merged[key] = value
+	}
+	return merged
 }

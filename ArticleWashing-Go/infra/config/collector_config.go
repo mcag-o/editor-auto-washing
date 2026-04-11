@@ -192,8 +192,12 @@ func (c CollectorConfig) Validate() error {
 			}
 		}
 		if source.AuthProfile != "" {
-			if _, ok := c.AuthProfiles[source.AuthProfile]; !ok {
+			profile, ok := c.AuthProfiles[source.AuthProfile]
+			if !ok {
 				return fmt.Errorf("collector.sources.%s.auth_profile references unknown profile %q", id, source.AuthProfile)
+			}
+			if mode := strings.TrimSpace(profile.Mode); mode != "" && strings.TrimSpace(source.AuthMode) != "" && source.AuthMode != mode {
+				return fmt.Errorf("collector.sources.%s.auth_mode conflicts with auth_profile %q", id, source.AuthProfile)
 			}
 		}
 	}
@@ -235,12 +239,10 @@ func (c CollectorConfig) SourceOrDefault(id string) (CollectorSourceDef, bool) {
 	if source.Concurrency <= 0 {
 		source.Concurrency = c.Defaults.Concurrency
 	}
-	if strings.TrimSpace(source.AuthMode) == "" {
-		if profile, ok := c.AuthProfiles[source.AuthProfile]; ok && strings.TrimSpace(profile.Mode) != "" {
-			source.AuthMode = profile.Mode
-		} else {
-			source.AuthMode = domain.CollectorAuthModeNone
-		}
+	if profile, ok := c.AuthProfiles[source.AuthProfile]; ok && strings.TrimSpace(profile.Mode) != "" {
+		source.AuthMode = profile.Mode
+	} else if strings.TrimSpace(source.AuthMode) == "" {
+		source.AuthMode = domain.CollectorAuthModeNone
 	}
 	if source.Headers == nil {
 		source.Headers = map[string]string{}

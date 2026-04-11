@@ -254,6 +254,49 @@ func TestLoaderApplyDefaults(t *testing.T) {
 	assert.Equal(t, defaultLogLevel, cfg.Log.Level)
 }
 
+func TestLoaderApplyDefaults_MergesBuiltInCollectorPolicyMaps(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"http_clients": map[string]any{
+				"custom_client": map[string]any{
+					"headers": map[string]any{"X-Test": "1"},
+				},
+			},
+			"retry_policies": map[string]any{
+				"custom_retry": map[string]any{
+					"max_attempts": 5,
+					"base_wait_ms": 100,
+					"max_wait_ms":  500,
+				},
+			},
+			"auth_profiles": map[string]any{
+				"custom_header": map[string]any{
+					"mode": "header",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	assert.Contains(t, cfg.Collector.HTTPClients, defaultCollectorHTTPClientProfileID)
+	assert.Contains(t, cfg.Collector.HTTPClients, "custom_client")
+	assert.Contains(t, cfg.Collector.RetryPolicies, defaultCollectorRetryPolicyProfileID)
+	assert.Contains(t, cfg.Collector.RetryPolicies, "custom_retry")
+	assert.Contains(t, cfg.Collector.AuthProfiles, defaultCollectorAuthProfileID)
+	assert.Contains(t, cfg.Collector.AuthProfiles, "custom_header")
+	assert.Equal(t, "1", cfg.Collector.HTTPClients["custom_client"].Headers["X-Test"])
+	assert.Equal(t, 5, cfg.Collector.RetryPolicies["custom_retry"].MaxAttempts)
+	assert.Equal(t, "header", cfg.Collector.AuthProfiles["custom_header"].Mode)
+}
+
 func TestLoaderSetCurrent(t *testing.T) {
 	loader := NewLoader("")
 	cfg := DefaultConfig()
