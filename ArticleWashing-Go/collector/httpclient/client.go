@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,6 +18,7 @@ type AuthInjector func(req *http.Request) error
 type RetryPolicy struct {
 	MaxAttempts int
 	Wait        time.Duration
+	Backoff     ExponentialBackoff
 }
 
 type Options struct {
@@ -32,16 +32,18 @@ type Options struct {
 }
 
 type Client struct {
-	baseURL        string
-	defaultHeaders map[string]string
-	authInjector   AuthInjector
-	retryPolicy    RetryPolicy
-	httpClient     *http.Client
-	sleepFn        func(<-chan time.Time, time.Duration)
+	baseURL         string
+	defaultHeaders  map[string]string
+	authInjector    AuthInjector
+	retryPolicy     RetryPolicy
+	retryClassifier RetryClassifier
+	httpClient      *http.Client
+	sleepFn         func(<-chan time.Time, time.Duration)
 }
 
 type Request struct {
 	Method  string
+	Phase   string
 	Path    string
 	Query   url.Values
 	Headers map[string]string
@@ -82,14 +84,16 @@ func New(opts Options) (*Client, error) {
 	if policy.MaxAttempts <= 0 {
 		policy.MaxAttempts = 1
 	}
+	policy.Backoff = resolveBackoff(policy)
 
 	return &Client{
-		baseURL:        strings.TrimRight(parsedBaseURL.String(), "/"),
-		defaultHeaders: cloneHeaders(opts.DefaultHeaders),
-		authInjector:   opts.AuthInjector,
-		retryPolicy:    policy,
-		httpClient:     httpClient,
-		sleepFn:        resolveSleepFn(opts.Sleep),
+		baseURL:         strings.TrimRight(parsedBaseURL.String(), "/"),
+		defaultHeaders:  cloneHeaders(opts.DefaultHeaders),
+		authInjector:    opts.AuthInjector,
+		retryPolicy:     policy,
+		retryClassifier: DefaultRetryClassifier(DefaultRetryClassifierConfig()),
+		httpClient:      httpClient,
+		sleepFn:         resolveSleepFn(opts.Sleep),
 	}, nil
 }
 
@@ -134,12 +138,14 @@ func (c *Client) Do(ctx context.Context, req Request) (*Response, error) {
 				return result, nil
 			}
 			lastErr = fmt.Errorf("request %s %s failed after %d attempts with status %d", method, requestURL, attempt, resp.StatusCode)
-			if !shouldRetry(resp.StatusCode) || attempt == c.retryPolicy.MaxAttempts {
-				return result, lastErr
-			}
 		}
 
-		wait := c.backoffDelay(attempt)
+		decision := c.retryClassifier.Classify(lastResp, lastErr, req.Phase)
+		if !decision.Retryable || attempt == c.retryPolicy.MaxAttempts {
+			return lastResp, lastErr
+		}
+
+		wait := c.retryPolicy.Backoff.NextDelay(attempt)
 		if attempt < c.retryPolicy.MaxAttempts && wait > 0 {
 			select {
 			case <-ctx.Done():
@@ -200,29 +206,15 @@ func applyHeaders(target http.Header, headers map[string]string) {
 	}
 }
 
-func shouldRetry(statusCode int) bool {
-	if statusCode == http.StatusRequestTimeout || statusCode == http.StatusTooManyRequests {
-		return true
+func resolveBackoff(policy RetryPolicy) ExponentialBackoff {
+	backoff := policy.Backoff
+	if backoff.BaseWait <= 0 {
+		backoff.BaseWait = policy.Wait
 	}
-	return statusCode >= http.StatusInternalServerError
-}
-
-func (c *Client) backoffDelay(attempt int) time.Duration {
-	if c.retryPolicy.Wait <= 0 {
-		return 0
+	if backoff.Multiplier <= 0 {
+		backoff.Multiplier = 2
 	}
-	// 这里改为指数退避，避免网络抖动期间所有请求以固定节奏同时重试，
-	// 从而放大上游故障或造成自身雪崩。
-	// 当前策略：base * 2^(attempt-1)，后续如需更强稳态表现，可再引入 jitter 与上限配置。
-	if attempt <= 1 {
-		return c.retryPolicy.Wait
-	}
-	scale := math.Pow(2, float64(attempt-1))
-	wait := float64(c.retryPolicy.Wait) * scale
-	if wait > float64(math.MaxInt64) {
-		return time.Duration(math.MaxInt64)
-	}
-	return time.Duration(wait)
+	return backoff
 }
 
 func resolveSleepFn(override func(<-chan time.Time, time.Duration)) func(<-chan time.Time, time.Duration) {

@@ -1,7 +1,9 @@
 package httpclient_test
 
 import (
+	"context"
 	"errors"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -161,6 +163,40 @@ func TestClient_UsesExponentialBackoffBetweenRetryAttempts(t *testing.T) {
 	assert.True(t, slices.Equal(waits, []time.Duration{10 * time.Millisecond, 20 * time.Millisecond}), "unexpected waits: %v", waits)
 	assert.Greater(t, waits[1], waits[0])
 	assert.NotEqual(t, waits[0], waits[1])
+}
+
+func TestRetryPolicy_UsesMaxWaitAndBoundedJitter(t *testing.T) {
+	policy := httpclient.ExponentialBackoff{
+		BaseWait:   500 * time.Millisecond,
+		Multiplier: 2,
+		MaxWait:    2 * time.Second,
+		Jitter: httpclient.JitterConfig{
+			Mode:  httpclient.JitterBounded,
+			Ratio: 0.2,
+			Rand:  rand.New(rand.NewSource(7)),
+		},
+	}
+
+	d1 := policy.NextDelay(1)
+	d4 := policy.NextDelay(4)
+
+	assert.GreaterOrEqual(t, d1, 400*time.Millisecond)
+	assert.LessOrEqual(t, d1, 600*time.Millisecond)
+	assert.GreaterOrEqual(t, d4, 1600*time.Millisecond)
+	assert.LessOrEqual(t, d4, 2*time.Second)
+}
+
+func TestRetryClassifier_ClassifiesHTTPAndNetworkErrors(t *testing.T) {
+	classifier := httpclient.DefaultRetryClassifier(httpclient.DefaultRetryClassifierConfig())
+
+	decision429 := classifier.Classify(&httpclient.Response{StatusCode: 429}, nil, "hotlist")
+	decision400 := classifier.Classify(&httpclient.Response{StatusCode: 400}, nil, "hotlist")
+	decisionTimeout := classifier.Classify(nil, context.DeadlineExceeded, "detail")
+
+	assert.True(t, decision429.Retryable)
+	assert.False(t, decision400.Retryable)
+	assert.True(t, decisionTimeout.Retryable)
+	assert.Equal(t, httpclient.ErrKindNetworkTimeout, decisionTimeout.Kind)
 }
 
 func TestClient_NewRejectsInvalidBaseURL(t *testing.T) {
