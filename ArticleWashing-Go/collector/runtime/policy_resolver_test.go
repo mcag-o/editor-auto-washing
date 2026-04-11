@@ -69,6 +69,7 @@ func TestPolicyResolver_MergesDefaultsProfilesAndSourceOverrides(t *testing.T) {
 		"goal":                 "补齐知乎抓取实现",
 		"placeholder_required": true,
 		"source_type":          "json-api",
+		"source_url":           "https://www.zhihu.com/api/v3/explore/guest/feeds",
 		"status":               "placeholder",
 		"supports_article":     true,
 	}, resolved.Options)
