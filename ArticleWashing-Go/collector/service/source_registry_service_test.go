@@ -143,16 +143,7 @@ func TestSourceRegistrySyncPersistsPlaceholderMetadata(t *testing.T) {
 func newRegistryWeiboPlugin(t *testing.T, customCookie string, statusCode int, fixture string) plugin.SourcePlugin {
 	t.Helper()
 	client := newRegistryCookieClient(t, statusCode, fixture, customCookie)
-	return sources.NewWeiboWithClient(client, "env.WEIBO_COOKIE", sources.SecretResolverFunc(func(ref string) (string, error) {
-		switch ref {
-		case "env.WEIBO_COOKIE_ALT":
-			return customCookie, nil
-		case "env.WEIBO_COOKIE":
-			return "", nil
-		default:
-			return "", nil
-		}
-	}))
+	return sources.NewWeiboWithClient(client)
 }
 
 func newRegistryCookieClient(t *testing.T, statusCode int, fixture string, expectedCookie string) *httpclient.Client {
@@ -169,7 +160,7 @@ func newRegistryCookieClient(t *testing.T, statusCode int, fixture string, expec
 	}))
 	t.Cleanup(server.Close)
 
-	client, err := httpclient.New(httpclient.Options{BaseURL: server.URL})
+	client, err := httpclient.New(httpclient.Options{BaseURL: server.URL, AuthInjector: httpclient.HeaderAuthInjector(map[string]string{"Cookie": expectedCookie})})
 	require.NoError(t, err)
 	return client
 }

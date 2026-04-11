@@ -102,18 +102,9 @@ func newRunServiceWeiboPlugin(t *testing.T, expectedCookie string, fixture strin
 	}))
 	t.Cleanup(server.Close)
 
-	client, err := httpclient.New(httpclient.Options{BaseURL: server.URL})
+	client, err := httpclient.New(httpclient.Options{BaseURL: server.URL, AuthInjector: httpclient.HeaderAuthInjector(map[string]string{"Cookie": expectedCookie})})
 	require.NoError(t, err)
-	return sources.NewWeiboWithClient(client, "env.WEIBO_COOKIE", sources.SecretResolverFunc(func(ref string) (string, error) {
-		switch ref {
-		case "env.WEIBO_COOKIE_ALT":
-			return expectedCookie, nil
-		case "env.WEIBO_COOKIE":
-			return "", nil
-		default:
-			return "", nil
-		}
-	}))
+	return sources.NewWeiboWithClient(client)
 }
 
 func newCollectorProvider(t *testing.T) *sqlite.Provider {

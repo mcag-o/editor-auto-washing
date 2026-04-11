@@ -35,3 +35,18 @@ func TestAuthFactory_RejectsMissingSecretRef(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "env.MISSING")
 }
+
+func TestAuthFactory_BuildsHeaderInjectorFromResolvedAuthConfig(t *testing.T) {
+	factory := NewAuthFactory(secretMapResolver{"env.API_TOKEN": "abc123"})
+	inj, err := factory.Build(ResolvedAuthConfig{
+		Mode:              "header",
+		HeaderSecretRef:   "env.API_TOKEN",
+		HeaderName:        "Authorization",
+		HeaderValuePrefix: "Bearer ",
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "https://example.com", nil)
+	require.NoError(t, inj(req))
+	assert.Equal(t, "Bearer abc123", req.Header.Get("Authorization"))
+}
