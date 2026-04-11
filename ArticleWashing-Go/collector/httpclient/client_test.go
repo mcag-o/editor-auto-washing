@@ -3,10 +3,12 @@ package httpclient_test
 import (
 	"context"
 	"errors"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,6 +18,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestClient_RetriesRetryableStatuses(t *testing.T) {
 	var attempts atomic.Int32
@@ -209,6 +217,54 @@ func TestRetryClassifier_ClassifiesHTTPAndNetworkErrors(t *testing.T) {
 	assert.False(t, decision400.Retryable)
 	assert.True(t, decisionTimeout.Retryable)
 	assert.Equal(t, httpclient.ErrKindNetworkTimeout, decisionTimeout.Kind)
+}
+
+func TestRetryPolicy_BoundedJitterClampsHighRatioToNonNegativeDelay(t *testing.T) {
+	policy := httpclient.ExponentialBackoff{
+		BaseWait:   500 * time.Millisecond,
+		Multiplier: 2,
+		Jitter: httpclient.JitterConfig{
+			Mode:  httpclient.JitterBounded,
+			Ratio: 2,
+			Rand:  rand.New(rand.NewSource(0)),
+		},
+	}
+
+	delay := policy.NextDelay(1)
+
+	assert.GreaterOrEqual(t, delay, time.Duration(0))
+	assert.LessOrEqual(t, delay, time.Second)
+}
+
+func TestClient_DoDoesNotRetryTransportErrorUsingStaleResponse(t *testing.T) {
+	var attempts atomic.Int32
+	transport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		attempt := attempts.Add(1)
+		if attempt == 1 {
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"error":"slow down"}`)),
+			}, nil
+		}
+		return nil, context.Canceled
+	})
+
+	client, err := httpclient.New(httpclient.Options{
+		BaseURL: "https://example.com",
+		RetryPolicy: httpclient.RetryPolicy{
+			MaxAttempts: 3,
+		},
+		HTTPClient: &http.Client{Transport: transport},
+	})
+	require.NoError(t, err)
+
+	resp, err := client.Do(t.Context(), httpclient.Request{Method: http.MethodGet, Path: "/stale"})
+
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	assert.EqualValues(t, 2, attempts.Load())
+	assert.ErrorContains(t, err, "after 2 attempts")
 }
 
 func TestClient_NewRejectsInvalidBaseURL(t *testing.T) {

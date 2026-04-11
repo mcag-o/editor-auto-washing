@@ -66,13 +66,19 @@ func (j JitterConfig) Apply(delay time.Duration) time.Duration {
 		ratio := j.Ratio
 		if ratio < 0 {
 			ratio = 0
+		} else if ratio > 1 {
+			ratio = 1
 		}
 		minV := float64(delay) * (1 - ratio)
 		maxV := float64(delay) * (1 + ratio)
 		if maxV < minV {
 			maxV = minV
 		}
-		return time.Duration(minV + j.randFloat64()*(maxV-minV))
+		jittered := time.Duration(minV + j.randFloat64()*(maxV-minV))
+		if jittered < 0 {
+			return 0
+		}
+		return jittered
 	default:
 		return delay
 	}

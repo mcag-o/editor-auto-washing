@@ -125,6 +125,7 @@ func (c *Client) Do(ctx context.Context, req Request) (*Response, error) {
 
 		resp, doErr := c.httpClient.Do(httpReq)
 		if doErr != nil {
+			lastResp = nil
 			lastErr = fmt.Errorf("request %s %s failed after %d attempts: %w", method, requestURL, attempt, doErr)
 		} else {
 			body, readErr := io.ReadAll(resp.Body)
