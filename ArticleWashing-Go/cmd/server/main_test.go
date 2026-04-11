@@ -6,6 +6,7 @@ import (
 	"content-hub/service"
 	httpserver "content-hub/transport/http"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,6 +48,76 @@ func TestRunPropagatesServerStartupFailure(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "bind failed")
+}
+
+func TestRunUsesStandaloneExternalConfigFallbackWhenWorkspaceConfigFails(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	t.Setenv("CONTENT_HUB_WORKSPACE_ROOT", workspaceRoot)
+	workingDir := t.TempDir()
+	t.Chdir(workingDir)
+	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, "workspace.yaml"), []byte("name: [\n"), 0o644))
+
+	configDir := filepath.Join(workingDir, "config")
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.json"), []byte(`{
+	  "llm": {
+	    "default_profile": "external_profile",
+	    "profiles": {
+	      "external_profile": {
+	        "provider": "openai",
+	        "api_key_ref": "env.OPENAI_API_KEY",
+	        "base_url_ref": "env.OPENAI_BASE_URL",
+	        "model": "gpt-4.1",
+	        "temperature": 0.2,
+	        "max_tokens": 4096,
+	        "timeout_sec": 60
+	      }
+	    }
+	  }
+	}`), 0o644))
+
+	originalBuild := buildRuntimeReposFn
+	originalNewServer := newHTTPServer
+	defer func() {
+		buildRuntimeReposFn = originalBuild
+		newHTTPServer = originalNewServer
+	}()
+	buildRuntimeReposFn = func(root string) (*service.RuntimeRepos, func() error, error) {
+		provider := memory.NewProvider()
+		return &service.RuntimeRepos{
+			ArticleRepo: provider.ArticleRepo(), TemplateRepo: provider.TemplateRepo(), DraftRepo: provider.DraftRepo(), AssetRepo: provider.AssetRepo(), ReviewRepo: provider.ReviewRepo(), PublishRepo: provider.PublishRepo(), JobRepo: provider.JobRepo(), JobEventRepo: provider.JobEventRepo(), IngestionRepo: provider.IngestionRepo(), WorkspaceRepo: provider.WorkspaceRepo(), CollectorSourceRepo: provider.CollectorSourceRepo(), CollectorRunRepo: provider.CollectorRunRepo(), CollectorEntryRepo: provider.CollectorEntryRepo(), CollectorSchedulerRepo: provider.CollectorSchedulerRepo(), RenderedDir: t.TempDir(),
+		}, func() error { return nil }, nil
+	}
+	newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serverRunner {
+		return failingServerRunner{err: fmt.Errorf("bind failed after standalone config load on %s", cfg.LLM.DefaultProfile)}
+	}
+
+	err := run()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bind failed after standalone config load on external_profile")
+	assert.NotContains(t, err.Error(), "load standalone config")
+}
+
+func TestRunReturnsStandaloneConfigLoadFailureWhenWorkspaceConfigFails(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	t.Setenv("CONTENT_HUB_WORKSPACE_ROOT", workspaceRoot)
+	workingDir := t.TempDir()
+	t.Chdir(workingDir)
+	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, "workspace.yaml"), []byte("name: [\n"), 0o644))
+
+	originalBuild := buildRuntimeReposFn
+	originalNewServer := newHTTPServer
+	defer func() {
+		buildRuntimeReposFn = originalBuild
+		newHTTPServer = originalNewServer
+	}()
+
+	err := run()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load standalone config")
+	assert.Contains(t, err.Error(), "failed to read config file")
 }
 
 func TestBuildRuntimeReposExposesCollectorRepos(t *testing.T) {

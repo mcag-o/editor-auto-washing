@@ -40,7 +40,11 @@ func run() error {
 		cfg = runtimeCfg
 		loader.SetCurrent(cfg)
 	} else {
-		fallback := config.NewLoader("./config/config.json")
+		fallbackPath := "./config/config.json"
+		if _, statErr := os.Stat(fallbackPath); statErr != nil {
+			return fmt.Errorf("load standalone config: failed to read config file: %w", statErr)
+		}
+		fallback := config.NewLoader(fallbackPath)
 		loadedCfg, loadErr := fallback.Load()
 		if loadErr != nil {
 			return fmt.Errorf("load standalone config: %w", loadErr)
