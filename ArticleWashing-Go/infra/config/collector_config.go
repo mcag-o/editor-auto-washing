@@ -133,21 +133,21 @@ func (c CollectorConfig) Validate() error {
 	if _, ok := c.HTTPClients[c.Defaults.HTTPClient]; !ok {
 		return fmt.Errorf("collector.defaults.http_client references unknown profile %q", c.Defaults.HTTPClient)
 	}
-	defaultRetry, ok := c.RetryPolicies[c.Defaults.RetryPolicy]
-	if !ok {
+	if _, ok := c.RetryPolicies[c.Defaults.RetryPolicy]; !ok {
 		return fmt.Errorf("collector.defaults.retry_policy references unknown profile %q", c.Defaults.RetryPolicy)
 	}
 	if _, ok := c.AuthProfiles[c.Defaults.AuthProfile]; !ok {
 		return fmt.Errorf("collector.defaults.auth_profile references unknown profile %q", c.Defaults.AuthProfile)
 	}
-	if defaultRetry.MaxAttempts <= 0 {
-		return fmt.Errorf("collector.retry_policies.%s.max_attempts must be positive", c.Defaults.RetryPolicy)
+	for name, policy := range c.RetryPolicies {
+		if err := validateRetryPolicyProfile(name, policy); err != nil {
+			return err
+		}
 	}
-	if defaultRetry.BaseWaitMS < 0 {
-		return fmt.Errorf("collector.retry_policies.%s.base_wait_ms cannot be negative", c.Defaults.RetryPolicy)
-	}
-	if defaultRetry.MaxWaitMS < defaultRetry.BaseWaitMS {
-		return fmt.Errorf("collector.retry_policies.%s.max_wait_ms cannot be smaller than base_wait_ms", c.Defaults.RetryPolicy)
+	for name, profile := range c.AuthProfiles {
+		if err := validateAuthProfile(name, profile); err != nil {
+			return err
+		}
 	}
 	if len(c.Sources) == 0 {
 		return fmt.Errorf("collector.sources cannot be empty")
@@ -177,18 +177,8 @@ func (c CollectorConfig) Validate() error {
 			}
 		}
 		if source.RetryPolicy != "" {
-			policy, ok := c.RetryPolicies[source.RetryPolicy]
-			if !ok {
+			if _, ok := c.RetryPolicies[source.RetryPolicy]; !ok {
 				return fmt.Errorf("collector.sources.%s.retry_policy references unknown profile %q", id, source.RetryPolicy)
-			}
-			if policy.MaxAttempts <= 0 {
-				return fmt.Errorf("collector.retry_policies.%s.max_attempts must be positive", source.RetryPolicy)
-			}
-			if policy.BaseWaitMS < 0 {
-				return fmt.Errorf("collector.retry_policies.%s.base_wait_ms cannot be negative", source.RetryPolicy)
-			}
-			if policy.MaxWaitMS < policy.BaseWaitMS {
-				return fmt.Errorf("collector.retry_policies.%s.max_wait_ms cannot be smaller than base_wait_ms", source.RetryPolicy)
 			}
 		}
 		if source.AuthProfile != "" {
@@ -200,6 +190,35 @@ func (c CollectorConfig) Validate() error {
 				return fmt.Errorf("collector.sources.%s.auth_mode conflicts with auth_profile %q", id, source.AuthProfile)
 			}
 		}
+	}
+	return nil
+}
+
+func validateRetryPolicyProfile(name string, policy RetryPolicyProfile) error {
+	if policy.MaxAttempts <= 0 {
+		return fmt.Errorf("collector.retry_policies.%s.max_attempts must be positive", name)
+	}
+	if policy.BaseWaitMS < 0 {
+		return fmt.Errorf("collector.retry_policies.%s.base_wait_ms cannot be negative", name)
+	}
+	if policy.MaxWaitMS < policy.BaseWaitMS {
+		return fmt.Errorf("collector.retry_policies.%s.max_wait_ms cannot be smaller than base_wait_ms", name)
+	}
+	return nil
+}
+
+func validateAuthProfile(name string, profile AuthProfileConfig) error {
+	mode := strings.TrimSpace(profile.Mode)
+	if mode == "" {
+		return fmt.Errorf("collector.auth_profiles.%s.mode cannot be empty", name)
+	}
+	validModes := map[string]bool{
+		domain.CollectorAuthModeNone:   true,
+		domain.CollectorAuthModeHeader: true,
+		domain.CollectorAuthModeCookie: true,
+	}
+	if !validModes[mode] {
+		return fmt.Errorf("collector.auth_profiles.%s.mode must be one of none,header,cookie", name)
 	}
 	return nil
 }

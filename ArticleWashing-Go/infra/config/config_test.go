@@ -356,3 +356,27 @@ func TestConfigValidate_RejectsCollectorSourceAuthModeProfileConflict(t *testing
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "collector.sources.zhihu.auth_mode")
 }
+
+func TestConfigValidate_RejectsInvalidUnreferencedCollectorRetryPolicy(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Collector.RetryPolicies["broken_retry"] = RetryPolicyProfile{
+		MaxAttempts: 0,
+		BaseWaitMS:  10,
+		MaxWaitMS:   20,
+	}
+
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "collector.retry_policies.broken_retry.max_attempts")
+}
+
+func TestConfigValidate_RejectsInvalidUnreferencedCollectorAuthProfileMode(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Collector.AuthProfiles["broken_auth"] = AuthProfileConfig{
+		Mode: "oauth",
+	}
+
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "collector.auth_profiles.broken_auth.mode")
+}
