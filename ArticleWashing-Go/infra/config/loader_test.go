@@ -42,6 +42,33 @@ func TestLoaderLoadExistingFile(t *testing.T) {
 	assert.Equal(t, "debug", loaded.Log.Level)
 }
 
+func TestLoader_LoadsLLMProfileRefsWithoutHardcodedSecrets(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{
+	  "llm": {
+	    "default_profile": "default_openai",
+	    "profiles": {
+	      "default_openai": {
+	        "provider": "openai",
+	        "api_key_ref": "env.OPENAI_API_KEY",
+	        "base_url_ref": "env.OPENAI_BASE_URL",
+	        "model": "gpt-4.1",
+	        "temperature": 0.2,
+	        "max_tokens": 4096,
+	        "timeout_sec": 60
+	      }
+	    }
+	  }
+	}`), 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "default_openai", cfg.LLM.DefaultProfile)
+	assert.Empty(t, cfg.LLM.Profiles["default_openai"].APIKey)
+}
+
 func TestLoaderLoadInvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -274,7 +301,8 @@ func TestLoaderApplyDefaults_MergesBuiltInCollectorPolicyMaps(t *testing.T) {
 			},
 			"auth_profiles": map[string]any{
 				"custom_header": map[string]any{
-					"mode": "header",
+					"mode":        "header",
+					"header_name": "X-Test-Auth",
 				},
 			},
 		},

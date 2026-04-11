@@ -258,11 +258,21 @@ func applyDefaults(cfg *Config, sourcePresence map[string]sourceFieldPresence) {
 	if cfg.Secrets.EnvPrefix == "" {
 		cfg.Secrets.EnvPrefix = def.Secrets.EnvPrefix
 	}
+	if cfg.LLM.DefaultProfile == "" {
+		cfg.LLM.DefaultProfile = def.LLM.DefaultProfile
+	}
+	cfg.LLM.Profiles = mergeLLMProfiles(def.LLM.Profiles, cfg.LLM.Profiles)
 	if cfg.LLM.Provider == "" {
 		cfg.LLM.Provider = def.LLM.Provider
 	}
+	if cfg.LLM.BaseURL == "" {
+		cfg.LLM.BaseURL = def.LLM.BaseURL
+	}
 	if cfg.LLM.Model == "" {
 		cfg.LLM.Model = def.LLM.Model
+	}
+	if cfg.LLM.Temperature == 0 {
+		cfg.LLM.Temperature = def.LLM.Temperature
 	}
 	if cfg.LLM.MaxTokens == 0 {
 		cfg.LLM.MaxTokens = def.LLM.MaxTokens
@@ -339,6 +349,25 @@ func mergeAuthProfiles(defaults map[string]AuthProfileConfig, overrides map[stri
 	return merged
 }
 
+func mergeLLMProfiles(defaults map[string]LLMProfileDef, overrides map[string]LLMProfileDef) map[string]LLMProfileDef {
+	if len(defaults) == 0 && len(overrides) == 0 {
+		return nil
+	}
+	merged := make(map[string]LLMProfileDef, len(defaults)+len(overrides))
+	for key, value := range defaults {
+		merged[key] = value
+	}
+	for key, value := range overrides {
+		base, ok := merged[key]
+		if !ok {
+			merged[key] = value
+			continue
+		}
+		merged[key] = mergeLLMProfile(base, value)
+	}
+	return merged
+}
+
 func cloneHTTPClientProfile(profile HTTPClientProfile) HTTPClientProfile {
 	cloned := HTTPClientProfile{
 		UserAgent: profile.UserAgent,
@@ -393,6 +422,38 @@ func mergeAuthProfile(base AuthProfileConfig, override AuthProfileConfig) AuthPr
 	}
 	if override.HeaderValuePrefix != "" {
 		merged.HeaderValuePrefix = override.HeaderValuePrefix
+	}
+	return merged
+}
+
+func mergeLLMProfile(base LLMProfileDef, override LLMProfileDef) LLMProfileDef {
+	merged := base
+	if override.Provider != "" {
+		merged.Provider = override.Provider
+	}
+	if override.APIKey != "" {
+		merged.APIKey = override.APIKey
+	}
+	if override.APIKeyRef != "" {
+		merged.APIKeyRef = override.APIKeyRef
+	}
+	if override.BaseURL != "" {
+		merged.BaseURL = override.BaseURL
+	}
+	if override.BaseURLRef != "" {
+		merged.BaseURLRef = override.BaseURLRef
+	}
+	if override.Model != "" {
+		merged.Model = override.Model
+	}
+	if override.Temperature != 0 {
+		merged.Temperature = override.Temperature
+	}
+	if override.MaxTokens != 0 {
+		merged.MaxTokens = override.MaxTokens
+	}
+	if override.TimeoutSec != 0 {
+		merged.TimeoutSec = override.TimeoutSec
 	}
 	return merged
 }

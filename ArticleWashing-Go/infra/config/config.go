@@ -64,9 +64,23 @@ type WorkflowConfig struct {
 }
 
 type LLMConfig struct {
+	DefaultProfile string                   `json:"default_profile,omitempty"`
+	Profiles       map[string]LLMProfileDef `json:"profiles,omitempty"`
+	Provider       string                   `json:"provider,omitempty"`
+	APIKey         string                   `json:"api_key,omitempty"`
+	BaseURL        string                   `json:"base_url,omitempty"`
+	Model          string                   `json:"model,omitempty"`
+	Temperature    float64                  `json:"temperature"`
+	MaxTokens      int                      `json:"max_tokens"`
+	TimeoutSec     int                      `json:"timeout_sec"`
+}
+
+type LLMProfileDef struct {
 	Provider    string  `json:"provider"`
 	APIKey      string  `json:"api_key,omitempty"`
-	BaseURL     string  `json:"base_url"`
+	APIKeyRef   string  `json:"api_key_ref,omitempty"`
+	BaseURL     string  `json:"base_url,omitempty"`
+	BaseURLRef  string  `json:"base_url_ref,omitempty"`
 	Model       string  `json:"model"`
 	Temperature float64 `json:"temperature"`
 	MaxTokens   int     `json:"max_tokens"`
@@ -138,6 +152,18 @@ func DefaultConfig() Config {
 			EnvPrefix: "CONTENTHUB",
 		},
 		LLM: LLMConfig{
+			DefaultProfile: "default_openai",
+			Profiles: map[string]LLMProfileDef{
+				"default_openai": {
+					Provider:    "openai",
+					APIKeyRef:   "env.OPENAI_API_KEY",
+					BaseURLRef:  "env.OPENAI_BASE_URL",
+					Model:       "gpt-4.1",
+					Temperature: 0.7,
+					MaxTokens:   4096,
+					TimeoutSec:  60,
+				},
+			},
 			Provider:    "openai",
 			Model:       "gpt-4",
 			Temperature: 0.7,
