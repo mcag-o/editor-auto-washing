@@ -32,7 +32,7 @@
 
 当前满足：1、5、6(部分)、7。不满足：2、3(部分)、4。
 
-补充说明：当前 Go collector runtime 的 transport、retry、auth 已通过 `config/config.json` 策略驱动；source-specific timeout、auth profile、retry policy、HTTP client selection 可通过配置切换，secret 通过外部引用提供，不再需要硬编码在 collector plugin 中。
+补充说明：当前 Go collector runtime 已引入面向 retry、auth 与 source-scoped HTTP 行为的配置层；resolved policy metadata 会在 source sync 时持久化，并用于当前 runtime-aware service path。standalone runtime/LLM 设置已外置到配置中，已实现路径中的 secret ref 不再硬编码在 active plugin flow 里。
 
 ---
 
