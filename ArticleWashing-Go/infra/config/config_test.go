@@ -231,3 +231,28 @@ func TestDefaultConfig_CollectorSourceCatalogIncludesTwentyTwoPlatforms(t *testi
 	assert.Equal(t, "env.XUEQIU_COOKIE", cfg.Collector.Sources["xueqiu"].CookieSecretRef)
 	assert.Contains(t, cfg.Collector.Sources["36kr"].Aliases, "tskr")
 }
+
+func TestDefaultConfig_CollectorPoliciesAreConfigDriven(t *testing.T) {
+	cfg := DefaultConfig()
+
+	assert.Contains(t, cfg.Collector.HTTPClients, "default_api_client")
+	assert.Contains(t, cfg.Collector.RetryPolicies, "default_api")
+	assert.Contains(t, cfg.Collector.AuthProfiles, "none")
+	assert.Equal(t, "default_api_client", cfg.Collector.Defaults.HTTPClient)
+	assert.Equal(t, "default_api", cfg.Collector.Defaults.RetryPolicy)
+	assert.Equal(t, "none", cfg.Collector.Defaults.AuthProfile)
+}
+
+func TestConfigValidate_RejectsMissingCollectorPolicyReference(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Collector.Sources["zhihu"] = CollectorSourceDef{
+		DisplayName: "知乎热榜",
+		SourceType:  "json-api",
+		SourceURL:   "https://www.zhihu.com/api/v3/explore/guest/feeds",
+		HTTPClient:  "missing-client",
+	}
+
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "collector.sources.zhihu.http_client")
+}

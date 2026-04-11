@@ -15,19 +15,36 @@ import (
 // 2. 与 ArticleWashing-Go 运行时直接兼容，避免后续再维护第二套平台清单；
 // 3. 对尚未实现的平台保留明确占位信息和中文说明，方便后续逐个平台落地。
 type CollectorConfig struct {
-	DefaultIntervalMinutes int                           `json:"default_interval_minutes"`
-	DefaultTimeoutMS       int                           `json:"default_timeout_ms"`
-	DefaultHotlistLimit    int                           `json:"default_hotlist_limit"`
-	RetryPolicy            CollectorRetryPolicyConfig    `json:"retry_policy"`
-	Sources                map[string]CollectorSourceDef `json:"sources"`
+	Defaults      CollectorDefaults             `json:"defaults"`
+	HTTPClients   map[string]HTTPClientProfile  `json:"http_clients"`
+	RetryPolicies map[string]RetryPolicyProfile `json:"retry_policies"`
+	AuthProfiles  map[string]AuthProfileConfig  `json:"auth_profiles"`
+	Sources       map[string]CollectorSourceDef `json:"sources"`
 }
 
-// CollectorRetryPolicyConfig 统一描述 HTTP 重试策略。
-// 当前先覆盖指数退避的基础参数，后续可继续扩展 jitter、按状态码分类等能力。
-type CollectorRetryPolicyConfig struct {
+type CollectorDefaults struct {
+	HTTPClient   string `json:"http_client"`
+	RetryPolicy  string `json:"retry_policy"`
+	AuthProfile  string `json:"auth_profile"`
+	TimeoutMS    int    `json:"timeout_ms"`
+	IntervalMins int    `json:"interval_minutes"`
+	HotlistLimit int    `json:"hotlist_limit"`
+	Concurrency  int    `json:"concurrency"`
+}
+
+type HTTPClientProfile struct {
+	UserAgent string            `json:"user_agent,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+}
+
+type RetryPolicyProfile struct {
 	MaxAttempts int `json:"max_attempts"`
 	BaseWaitMS  int `json:"base_wait_ms"`
 	MaxWaitMS   int `json:"max_wait_ms"`
+}
+
+type AuthProfileConfig struct {
+	Mode string `json:"mode"`
 }
 
 // CollectorSourceDef 是平台注册元数据的配置表达。
@@ -47,6 +64,9 @@ type CollectorSourceDef struct {
 	DetailFetchEnabled  bool              `json:"detail_fetch_enabled"`
 	Concurrency         int               `json:"concurrency"`
 	AuthMode            string            `json:"auth_mode"`
+	HTTPClient          string            `json:"http_client,omitempty"`
+	RetryPolicy         string            `json:"retry_policy,omitempty"`
+	AuthProfile         string            `json:"auth_profile,omitempty"`
 	CookieSecretRef     string            `json:"cookie_secret_ref,omitempty"`
 	HeaderSecretRef     string            `json:"header_secret_ref,omitempty"`
 	Headers             map[string]string `json:"headers,omitempty"`
@@ -61,36 +81,73 @@ type CollectorSourceDef struct {
 
 func DefaultCollectorConfig() CollectorConfig {
 	return CollectorConfig{
-		DefaultIntervalMinutes: 30,
-		DefaultTimeoutMS:       10000,
-		DefaultHotlistLimit:    50,
-		RetryPolicy: CollectorRetryPolicyConfig{
-			MaxAttempts: 3,
-			BaseWaitMS:  500,
-			MaxWaitMS:   5000,
+		Defaults: CollectorDefaults{
+			HTTPClient:   "default_api_client",
+			RetryPolicy:  "default_api",
+			AuthProfile:  domain.CollectorAuthModeNone,
+			TimeoutMS:    10000,
+			IntervalMins: 30,
+			HotlistLimit: 50,
+			Concurrency:  1,
+		},
+		HTTPClients: map[string]HTTPClientProfile{
+			"default_api_client": {
+				Headers: map[string]string{},
+			},
+		},
+		RetryPolicies: map[string]RetryPolicyProfile{
+			"default_api": {
+				MaxAttempts: 3,
+				BaseWaitMS:  500,
+				MaxWaitMS:   5000,
+			},
+		},
+		AuthProfiles: map[string]AuthProfileConfig{
+			"none": {
+				Mode: domain.CollectorAuthModeNone,
+			},
+			"header": {
+				Mode: domain.CollectorAuthModeHeader,
+			},
+			"cookie": {
+				Mode: domain.CollectorAuthModeCookie,
+			},
 		},
 		Sources: defaultCollectorSources(),
 	}
 }
 
 func (c CollectorConfig) Validate() error {
-	if c.DefaultIntervalMinutes <= 0 {
-		return fmt.Errorf("collector.default_interval_minutes must be positive")
+	if c.Defaults.IntervalMins <= 0 {
+		return fmt.Errorf("collector.defaults.interval_minutes must be positive")
 	}
-	if c.DefaultTimeoutMS <= 0 {
-		return fmt.Errorf("collector.default_timeout_ms must be positive")
+	if c.Defaults.TimeoutMS <= 0 {
+		return fmt.Errorf("collector.defaults.timeout_ms must be positive")
 	}
-	if c.DefaultHotlistLimit <= 0 {
-		return fmt.Errorf("collector.default_hotlist_limit must be positive")
+	if c.Defaults.HotlistLimit <= 0 {
+		return fmt.Errorf("collector.defaults.hotlist_limit must be positive")
 	}
-	if c.RetryPolicy.MaxAttempts <= 0 {
-		return fmt.Errorf("collector.retry_policy.max_attempts must be positive")
+	if c.Defaults.Concurrency <= 0 {
+		return fmt.Errorf("collector.defaults.concurrency must be positive")
 	}
-	if c.RetryPolicy.BaseWaitMS < 0 {
-		return fmt.Errorf("collector.retry_policy.base_wait_ms cannot be negative")
+	if _, ok := c.HTTPClients[c.Defaults.HTTPClient]; !ok {
+		return fmt.Errorf("collector.defaults.http_client references unknown profile %q", c.Defaults.HTTPClient)
 	}
-	if c.RetryPolicy.MaxWaitMS < c.RetryPolicy.BaseWaitMS {
-		return fmt.Errorf("collector.retry_policy.max_wait_ms cannot be smaller than base_wait_ms")
+	defaultRetry, ok := c.RetryPolicies[c.Defaults.RetryPolicy]
+	if !ok {
+		return fmt.Errorf("collector.defaults.retry_policy references unknown profile %q", c.Defaults.RetryPolicy)
+	}
+	if _, ok := c.AuthProfiles[c.Defaults.AuthProfile]; !ok {
+		return fmt.Errorf("collector.defaults.auth_profile references unknown profile %q", c.Defaults.AuthProfile)
+	}
+	if defaultRetry.MaxAttempts <= 0 {
+		return fmt.Errorf("collector.retry_policies.%s.max_attempts must be positive", c.Defaults.RetryPolicy)
+	}
+	if defaultRetry.BaseWaitMS < 0 {
+		return fmt.Errorf("collector.retry_policies.%s.base_wait_ms cannot be negative", c.Defaults.RetryPolicy)
+	}
+	if defaultRetry.MaxWaitMS < defaultRetry.BaseWaitMS {
+		return fmt.Errorf("collector.retry_policies.%s.max_wait_ms cannot be smaller than base_wait_ms", c.Defaults.RetryPolicy)
 	}
 	if len(c.Sources) == 0 {
 		return fmt.Errorf("collector.sources cannot be empty")
@@ -114,6 +171,31 @@ func (c CollectorConfig) Validate() error {
 		if source.Concurrency < 0 {
 			return fmt.Errorf("collector.sources.%s.concurrency cannot be negative", id)
 		}
+		if source.HTTPClient != "" {
+			if _, ok := c.HTTPClients[source.HTTPClient]; !ok {
+				return fmt.Errorf("collector.sources.%s.http_client references unknown profile %q", id, source.HTTPClient)
+			}
+		}
+		if source.RetryPolicy != "" {
+			policy, ok := c.RetryPolicies[source.RetryPolicy]
+			if !ok {
+				return fmt.Errorf("collector.sources.%s.retry_policy references unknown profile %q", id, source.RetryPolicy)
+			}
+			if policy.MaxAttempts <= 0 {
+				return fmt.Errorf("collector.retry_policies.%s.max_attempts must be positive", source.RetryPolicy)
+			}
+			if policy.BaseWaitMS < 0 {
+				return fmt.Errorf("collector.retry_policies.%s.base_wait_ms cannot be negative", source.RetryPolicy)
+			}
+			if policy.MaxWaitMS < policy.BaseWaitMS {
+				return fmt.Errorf("collector.retry_policies.%s.max_wait_ms cannot be smaller than base_wait_ms", source.RetryPolicy)
+			}
+		}
+		if source.AuthProfile != "" {
+			if _, ok := c.AuthProfiles[source.AuthProfile]; !ok {
+				return fmt.Errorf("collector.sources.%s.auth_profile references unknown profile %q", id, source.AuthProfile)
+			}
+		}
 	}
 	return nil
 }
@@ -132,20 +214,33 @@ func (c CollectorConfig) SourceOrDefault(id string) (CollectorSourceDef, bool) {
 	if !ok {
 		return CollectorSourceDef{}, false
 	}
+	if strings.TrimSpace(source.HTTPClient) == "" {
+		source.HTTPClient = c.Defaults.HTTPClient
+	}
+	if strings.TrimSpace(source.RetryPolicy) == "" {
+		source.RetryPolicy = c.Defaults.RetryPolicy
+	}
+	if strings.TrimSpace(source.AuthProfile) == "" {
+		source.AuthProfile = c.Defaults.AuthProfile
+	}
 	if source.IntervalMinutes <= 0 {
-		source.IntervalMinutes = c.DefaultIntervalMinutes
+		source.IntervalMinutes = c.Defaults.IntervalMins
 	}
 	if source.TimeoutMS <= 0 {
-		source.TimeoutMS = c.DefaultTimeoutMS
+		source.TimeoutMS = c.Defaults.TimeoutMS
 	}
 	if source.HotlistLimit <= 0 {
-		source.HotlistLimit = c.DefaultHotlistLimit
+		source.HotlistLimit = c.Defaults.HotlistLimit
 	}
 	if source.Concurrency <= 0 {
-		source.Concurrency = 1
+		source.Concurrency = c.Defaults.Concurrency
 	}
 	if strings.TrimSpace(source.AuthMode) == "" {
-		source.AuthMode = domain.CollectorAuthModeNone
+		if profile, ok := c.AuthProfiles[source.AuthProfile]; ok && strings.TrimSpace(profile.Mode) != "" {
+			source.AuthMode = profile.Mode
+		} else {
+			source.AuthMode = domain.CollectorAuthModeNone
+		}
 	}
 	if source.Headers == nil {
 		source.Headers = map[string]string{}
@@ -203,6 +298,9 @@ func collectorSourceDef(displayName string, aliases []string, sourceType string,
 		DetailFetchEnabled:  supportsArticle && enabled,
 		Concurrency:         1,
 		AuthMode:            authMode,
+		HTTPClient:          "default_api_client",
+		RetryPolicy:         "default_api",
+		AuthProfile:         authMode,
 		Status:              status,
 		Goal:                goal,
 		Todo:                append([]string(nil), todo...),

@@ -223,23 +223,35 @@ func applyDefaults(cfg *Config) {
 	if cfg.Workflow.TimeoutSec == 0 {
 		cfg.Workflow.TimeoutSec = def.Workflow.TimeoutSec
 	}
-	if cfg.Collector.DefaultIntervalMinutes == 0 {
-		cfg.Collector.DefaultIntervalMinutes = def.Collector.DefaultIntervalMinutes
+	if cfg.Collector.Defaults.HTTPClient == "" {
+		cfg.Collector.Defaults.HTTPClient = def.Collector.Defaults.HTTPClient
 	}
-	if cfg.Collector.DefaultTimeoutMS == 0 {
-		cfg.Collector.DefaultTimeoutMS = def.Collector.DefaultTimeoutMS
+	if cfg.Collector.Defaults.RetryPolicy == "" {
+		cfg.Collector.Defaults.RetryPolicy = def.Collector.Defaults.RetryPolicy
 	}
-	if cfg.Collector.DefaultHotlistLimit == 0 {
-		cfg.Collector.DefaultHotlistLimit = def.Collector.DefaultHotlistLimit
+	if cfg.Collector.Defaults.AuthProfile == "" {
+		cfg.Collector.Defaults.AuthProfile = def.Collector.Defaults.AuthProfile
 	}
-	if cfg.Collector.RetryPolicy.MaxAttempts == 0 {
-		cfg.Collector.RetryPolicy.MaxAttempts = def.Collector.RetryPolicy.MaxAttempts
+	if cfg.Collector.Defaults.IntervalMins == 0 {
+		cfg.Collector.Defaults.IntervalMins = def.Collector.Defaults.IntervalMins
 	}
-	if cfg.Collector.RetryPolicy.BaseWaitMS == 0 {
-		cfg.Collector.RetryPolicy.BaseWaitMS = def.Collector.RetryPolicy.BaseWaitMS
+	if cfg.Collector.Defaults.TimeoutMS == 0 {
+		cfg.Collector.Defaults.TimeoutMS = def.Collector.Defaults.TimeoutMS
 	}
-	if cfg.Collector.RetryPolicy.MaxWaitMS == 0 {
-		cfg.Collector.RetryPolicy.MaxWaitMS = def.Collector.RetryPolicy.MaxWaitMS
+	if cfg.Collector.Defaults.HotlistLimit == 0 {
+		cfg.Collector.Defaults.HotlistLimit = def.Collector.Defaults.HotlistLimit
+	}
+	if cfg.Collector.Defaults.Concurrency == 0 {
+		cfg.Collector.Defaults.Concurrency = def.Collector.Defaults.Concurrency
+	}
+	if len(cfg.Collector.HTTPClients) == 0 {
+		cfg.Collector.HTTPClients = def.Collector.HTTPClients
+	}
+	if len(cfg.Collector.RetryPolicies) == 0 {
+		cfg.Collector.RetryPolicies = def.Collector.RetryPolicies
+	}
+	if len(cfg.Collector.AuthProfiles) == 0 {
+		cfg.Collector.AuthProfiles = def.Collector.AuthProfiles
 	}
 	if len(cfg.Collector.Sources) == 0 {
 		cfg.Collector.Sources = def.Collector.Sources
