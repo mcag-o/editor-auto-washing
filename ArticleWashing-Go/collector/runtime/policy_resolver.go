@@ -8,16 +8,10 @@ import (
 	"content-hub/infra/config"
 )
 
-type SecretResolver interface {
-	Resolve(ref string) (string, error)
-}
+type PolicyResolver struct{}
 
-type PolicyResolver struct {
-	secrets SecretResolver
-}
-
-func NewPolicyResolver(secrets SecretResolver) *PolicyResolver {
-	return &PolicyResolver{secrets: secrets}
+func NewPolicyResolver() *PolicyResolver {
+	return &PolicyResolver{}
 }
 
 func (r *PolicyResolver) ResolveSource(cfg config.Config, sourceID string) (ResolvedSourceRuntimeConfig, error) {
@@ -78,10 +72,7 @@ func (r *PolicyResolver) buildResolvedSourceConfig(sourceID string, source confi
 		headers["User-Agent"] = userAgent
 	}
 
-	auth, err := r.resolveAuthConfig(source, authProfile)
-	if err != nil {
-		return ResolvedSourceRuntimeConfig{}, err
-	}
+	auth := resolveAuthConfig(source, authProfile)
 
 	return ResolvedSourceRuntimeConfig{
 		SourceID:     sourceID,
@@ -107,48 +98,19 @@ func (r *PolicyResolver) buildResolvedSourceConfig(sourceID string, source confi
 	}, nil
 }
 
-func (r *PolicyResolver) resolveAuthConfig(source config.CollectorSourceDef, authProfile config.AuthProfileConfig) (ResolvedAuthConfig, error) {
+func resolveAuthConfig(source config.CollectorSourceDef, authProfile config.AuthProfileConfig) ResolvedAuthConfig {
 	resolved := ResolvedAuthConfig{
 		Mode:              strings.TrimSpace(authProfile.Mode),
-		Headers:           map[string]string{},
 		HeaderName:        strings.TrimSpace(authProfile.HeaderName),
 		HeaderValuePrefix: authProfile.HeaderValuePrefix,
+		CookieSecretRef:   strings.TrimSpace(source.CookieSecretRef),
+		HeaderSecretRef:   strings.TrimSpace(source.HeaderSecretRef),
 	}
 
 	if resolved.Mode == "" {
 		resolved.Mode = strings.TrimSpace(source.AuthMode)
 	}
-
-	if ref := strings.TrimSpace(source.CookieSecretRef); ref != "" {
-		secret, err := r.resolveSecret(ref)
-		if err != nil {
-			return ResolvedAuthConfig{}, fmt.Errorf("resolve cookie secret %s: %w", ref, err)
-		}
-		resolved.Cookie = secret
-	}
-
-	if ref := strings.TrimSpace(source.HeaderSecretRef); ref != "" {
-		secret, err := r.resolveSecret(ref)
-		if err != nil {
-			return ResolvedAuthConfig{}, fmt.Errorf("resolve header secret %s: %w", ref, err)
-		}
-		if secret != "" {
-			headerName := resolved.HeaderName
-			if headerName == "" {
-				headerName = "Authorization"
-			}
-			resolved.Headers = map[string]string{headerName: resolved.HeaderValuePrefix + secret}
-		}
-	}
-
-	return resolved, nil
-}
-
-func (r *PolicyResolver) resolveSecret(ref string) (string, error) {
-	if r == nil || r.secrets == nil {
-		return "", nil
-	}
-	return r.secrets.Resolve(ref)
+	return resolved
 }
 
 func cloneHeaders(headers map[string]string) map[string]string {

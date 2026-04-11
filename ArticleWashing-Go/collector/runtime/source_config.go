@@ -10,10 +10,10 @@ type RetryRuntimeConfig struct {
 
 type ResolvedAuthConfig struct {
 	Mode              string
-	Cookie            string
-	Headers           map[string]string
 	HeaderName        string
 	HeaderValuePrefix string
+	CookieSecretRef   string
+	HeaderSecretRef   string
 }
 
 type ResolvedSourceRuntimeConfig struct {

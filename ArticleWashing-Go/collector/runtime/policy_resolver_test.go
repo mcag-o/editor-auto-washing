@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -11,16 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-type secretStubResolver map[string]string
-
-func (s secretStubResolver) Resolve(ref string) (string, error) {
-	value, ok := s[ref]
-	if !ok {
-		return "", fmt.Errorf("missing secret for %s", ref)
-	}
-	return value, nil
-}
 
 func TestPolicyResolver_MergesDefaultsProfilesAndSourceOverrides(t *testing.T) {
 	cfg := config.DefaultConfig()
@@ -54,7 +43,7 @@ func TestPolicyResolver_MergesDefaultsProfilesAndSourceOverrides(t *testing.T) {
 		Goal:                "补齐知乎抓取实现",
 	}
 
-	resolver := NewPolicyResolver(secretStubResolver{})
+	resolver := NewPolicyResolver()
 	resolved, err := resolver.ResolveSource(cfg, "zhihu")
 	require.NoError(t, err)
 	assert.Equal(t, 12000*time.Millisecond, resolved.Timeout)
@@ -71,8 +60,10 @@ func TestPolicyResolver_MergesDefaultsProfilesAndSourceOverrides(t *testing.T) {
 	assert.Equal(t, 750*time.Millisecond, resolved.RetryPolicy.Wait)
 	assert.Equal(t, 9*time.Second, resolved.RetryPolicy.MaxWait)
 	assert.Equal(t, domain.CollectorAuthModeNone, resolved.Auth.Mode)
-	assert.Empty(t, resolved.Auth.Cookie)
-	assert.Empty(t, resolved.Auth.Headers)
+	assert.Empty(t, resolved.Auth.CookieSecretRef)
+	assert.Empty(t, resolved.Auth.HeaderSecretRef)
+	assert.Empty(t, resolved.Auth.HeaderName)
+	assert.Empty(t, resolved.Auth.HeaderValuePrefix)
 	assert.Equal(t, map[string]any{
 		"detail_fetch_enabled": true,
 		"goal":                 "补齐知乎抓取实现",
@@ -83,8 +74,24 @@ func TestPolicyResolver_MergesDefaultsProfilesAndSourceOverrides(t *testing.T) {
 	}, resolved.Options)
 }
 
-func TestPolicyResolver_ResolvesHeaderAuthProfileSecrets(t *testing.T) {
+func TestPolicyResolver_InheritsDefaultProfilesWhenSourceOmitsRefs(t *testing.T) {
 	cfg := config.DefaultConfig()
+	cfg.Collector.Defaults.HTTPClient = "custom_client"
+	cfg.Collector.Defaults.RetryPolicy = "aggressive"
+	cfg.Collector.Defaults.AuthProfile = "token_header"
+	cfg.Collector.Defaults.TimeoutMS = 8000
+	cfg.Collector.Defaults.HotlistLimit = 40
+	cfg.Collector.HTTPClients["custom_client"] = config.HTTPClientProfile{
+		UserAgent: "default-agent/2.0",
+		Headers: map[string]string{
+			"X-Default": "from-default-profile",
+		},
+	}
+	cfg.Collector.RetryPolicies["aggressive"] = config.RetryPolicyProfile{
+		MaxAttempts: 4,
+		BaseWaitMS:  600,
+		MaxWaitMS:   2400,
+	}
 	cfg.Collector.AuthProfiles["token_header"] = config.AuthProfileConfig{
 		Mode:              domain.CollectorAuthModeHeader,
 		HeaderName:        "X-API-Key",
@@ -94,14 +101,31 @@ func TestPolicyResolver_ResolvesHeaderAuthProfileSecrets(t *testing.T) {
 		DisplayName:     "知乎热榜",
 		SourceType:      "json-api",
 		SourceURL:       "https://www.zhihu.com/api/v3/explore/guest/feeds",
-		AuthProfile:     "token_header",
 		HeaderSecretRef: "env.ZHIHU_TOKEN",
 	}
 
-	resolver := NewPolicyResolver(secretStubResolver{"env.ZHIHU_TOKEN": "secret-value"})
+	resolver := NewPolicyResolver()
 	resolved, err := resolver.ResolveSource(cfg, "zhihu")
 	require.NoError(t, err)
+	assert.Equal(t, 8*time.Second, resolved.Timeout)
+	assert.Equal(t, 40, resolved.HotlistLimit)
+	assert.Equal(t, map[string]string{
+		"User-Agent": "default-agent/2.0",
+		"X-Default":  "from-default-profile",
+	}, resolved.Headers)
+	assert.Equal(t, 4, resolved.RetryPolicy.MaxAttempts)
+	assert.Equal(t, 600*time.Millisecond, resolved.RetryPolicy.Wait)
+	assert.Equal(t, 2400*time.Millisecond, resolved.RetryPolicy.MaxWait)
 	assert.Equal(t, domain.CollectorAuthModeHeader, resolved.Auth.Mode)
-	assert.Equal(t, map[string]string{"X-API-Key": "Token secret-value"}, resolved.Auth.Headers)
-	assert.Empty(t, resolved.Auth.Cookie)
+	assert.Equal(t, "X-API-Key", resolved.Auth.HeaderName)
+	assert.Equal(t, "Token ", resolved.Auth.HeaderValuePrefix)
+	assert.Equal(t, "env.ZHIHU_TOKEN", resolved.Auth.HeaderSecretRef)
+	assert.Empty(t, resolved.Auth.CookieSecretRef)
+}
+
+func TestPolicyResolver_ReturnsErrorWhenSourceMissing(t *testing.T) {
+	resolver := NewPolicyResolver()
+	_, err := resolver.ResolveSource(config.DefaultConfig(), "missing")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "collector source missing not found")
 }
