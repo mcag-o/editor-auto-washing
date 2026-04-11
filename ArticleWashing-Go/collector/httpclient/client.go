@@ -22,13 +22,14 @@ type RetryPolicy struct {
 }
 
 type Options struct {
-	BaseURL        string
-	Timeout        time.Duration
-	RetryPolicy    RetryPolicy
-	DefaultHeaders map[string]string
-	AuthInjector   AuthInjector
-	HTTPClient     *http.Client
-	Sleep          func(<-chan time.Time, time.Duration)
+	BaseURL         string
+	Timeout         time.Duration
+	RetryPolicy     RetryPolicy
+	RetryClassifier RetryClassifier
+	DefaultHeaders  map[string]string
+	AuthInjector    AuthInjector
+	HTTPClient      *http.Client
+	Sleep           func(<-chan time.Time, time.Duration)
 }
 
 type Client struct {
@@ -86,12 +87,17 @@ func New(opts Options) (*Client, error) {
 	}
 	policy.Backoff = resolveBackoff(policy)
 
+	classifier := opts.RetryClassifier
+	if classifier == nil {
+		classifier = DefaultRetryClassifier(DefaultRetryClassifierConfig())
+	}
+
 	return &Client{
 		baseURL:         strings.TrimRight(parsedBaseURL.String(), "/"),
 		defaultHeaders:  cloneHeaders(opts.DefaultHeaders),
 		authInjector:    opts.AuthInjector,
 		retryPolicy:     policy,
-		retryClassifier: DefaultRetryClassifier(DefaultRetryClassifierConfig()),
+		retryClassifier: classifier,
 		httpClient:      httpClient,
 		sleepFn:         resolveSleepFn(opts.Sleep),
 	}, nil
@@ -166,6 +172,13 @@ func HeaderAuthInjector(headers map[string]string) AuthInjector {
 		applyHeaders(req.Header, cloned)
 		return nil
 	}
+}
+
+func (c *Client) Timeout() time.Duration {
+	if c == nil || c.httpClient == nil {
+		return 0
+	}
+	return c.httpClient.Timeout
 }
 
 func (c *Client) CloneWithAuth(injector AuthInjector, defaultHeaders map[string]string) *Client {
