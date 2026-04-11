@@ -77,10 +77,26 @@ func TestRunService_UsesPersistedCookieSecretRefForSourcePlugin(t *testing.T) {
 	source.HeadersJSON = []byte(`{"X-Source-Header":"from-source"}`)
 	require.NoError(t, provider.CollectorSourceRepo().Create(t.Context(), source))
 
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "SUB=alt-cookie", r.Header.Get("Cookie"))
+		assert.Equal(t, "from-plugin", r.Header.Get("X-Plugin-Header"))
+		assert.Equal(t, "from-source", r.Header.Get("X-Source-Header"))
+		body, err := os.ReadFile(filepath.Join("..", "..", "testdata", "collector", "fixtures", "weibo-hotlist.json"))
+		require.NoError(t, err)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(server.Close)
+
 	registry := plugin.NewRegistry()
-	require.NoError(t, registry.Register(newRunServiceWeiboPlugin(t, "SUB=alt-cookie", "weibo-hotlist.json", map[string]string{"X-Plugin-Header": "from-plugin"})))
+	require.NoError(t, registry.Register(newRunServiceWeiboPluginWithBaseURL(t, "http://127.0.0.1:1", nil)))
 
 	cfg := config.DefaultConfig()
+	cfg.Collector.HTTPClients["runtime_weibo_client"] = config.HTTPClientProfile{Headers: map[string]string{"X-Plugin-Header": "from-plugin"}}
+	weibo := cfg.Collector.Sources["weibo"]
+	weibo.SourceURL = server.URL
+	weibo.HTTPClient = "runtime_weibo_client"
+	cfg.Collector.Sources["weibo"] = weibo
 	runSvc := collectorsvc.NewRunServiceWithRuntime(provider.CollectorSourceRepo(), provider.CollectorRunRepo(), provider.CollectorEntryRepo(), registry, cfg, secretResolverStub{"env.WEIBO_COOKIE_ALT": "SUB=alt-cookie"})
 
 	result, err := runSvc.RunHotlist(t.Context(), "manual")
@@ -122,6 +138,54 @@ func TestRunService_FailsWhenRuntimeAuthSecretMissing(t *testing.T) {
 	assert.Equal(t, domain.CollectorSourceRunFailed, detail.SourceRuns[0].Status)
 }
 
+func TestRunService_RuntimeBuildsConfiguredClientForAuthSources(t *testing.T) {
+	provider := newCollectorProvider(t)
+	source := domain.NewCollectorSource("weibo", "微博热搜")
+	source.AuthMode = domain.CollectorAuthModeCookie
+	source.CookieSecretRef = "env.WEIBO_COOKIE_ALT"
+	source.HeadersJSON = []byte(`{"X-Source-Header":"from-source"}`)
+	require.NoError(t, provider.CollectorSourceRepo().Create(t.Context(), source))
+
+	var attempts int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		assert.Equal(t, "SUB=alt-cookie", r.Header.Get("Cookie"))
+		assert.Equal(t, "from-source", r.Header.Get("X-Source-Header"))
+		if attempts == 1 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		body, err := os.ReadFile(filepath.Join("..", "..", "testdata", "collector", "fixtures", "weibo-hotlist.json"))
+		require.NoError(t, err)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(server.Close)
+
+	registry := plugin.NewRegistry()
+	require.NoError(t, registry.Register(newRunServiceWeiboPluginWithBaseURL(t, "http://127.0.0.1:1", map[string]string{"X-Plugin-Header": "from-plugin"})))
+
+	cfg := config.DefaultConfig()
+	cfg.Collector.RetryPolicies["runtime_retry"] = config.RetryPolicyProfile{MaxAttempts: 2, BaseWaitMS: 1, MaxWaitMS: 1}
+	weibo := cfg.Collector.Sources["weibo"]
+	weibo.SourceURL = server.URL
+	weibo.RetryPolicy = "runtime_retry"
+	cfg.Collector.Sources["weibo"] = weibo
+
+	runSvc := collectorsvc.NewRunServiceWithRuntime(provider.CollectorSourceRepo(), provider.CollectorRunRepo(), provider.CollectorEntryRepo(), registry, cfg, secretResolverStub{"env.WEIBO_COOKIE_ALT": "SUB=alt-cookie"})
+
+	result, err := runSvc.RunHotlist(t.Context(), "manual")
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.CollectorRunSucceeded, result.Status)
+	assert.Equal(t, 2, result.EntryCount)
+	assert.Equal(t, 2, attempts)
+
+	entries, err := provider.CollectorEntryRepo().ListByRunID(t.Context(), result.RunID)
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+}
+
 type secretResolverStub map[string]string
 
 func (s secretResolverStub) Resolve(ref string) (string, error) {
@@ -148,6 +212,13 @@ func newRunServiceWeiboPlugin(t *testing.T, expectedCookie string, fixture strin
 	t.Cleanup(server.Close)
 
 	client, err := httpclient.New(httpclient.Options{BaseURL: server.URL, DefaultHeaders: defaultHeaders})
+	require.NoError(t, err)
+	return sources.NewWeiboWithClient(client)
+}
+
+func newRunServiceWeiboPluginWithBaseURL(t *testing.T, baseURL string, defaultHeaders map[string]string) plugin.SourcePlugin {
+	t.Helper()
+	client, err := httpclient.New(httpclient.Options{BaseURL: baseURL, DefaultHeaders: defaultHeaders})
 	require.NoError(t, err)
 	return sources.NewWeiboWithClient(client)
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"content-hub/collector/plugin"
 	collectorruntime "content-hub/collector/runtime"
@@ -14,6 +15,7 @@ type runtimePluginAdapter struct {
 	cfg      config.Config
 	policies *collectorruntime.PolicyResolver
 	auth     *collectorruntime.AuthFactory
+	http     *collectorruntime.HTTPFactory
 	enabled  bool
 }
 
@@ -25,6 +27,7 @@ func newRuntimePluginAdapter(cfg config.Config, secrets collectorruntime.SecretR
 		cfg:      cfg,
 		policies: collectorruntime.NewPolicyResolver(),
 		auth:     collectorruntime.NewAuthFactory(secrets),
+		http:     collectorruntime.NewHTTPFactory(),
 		enabled:  true,
 	}
 }
@@ -32,9 +35,6 @@ func newRuntimePluginAdapter(cfg config.Config, secrets collectorruntime.SecretR
 func (a *runtimePluginAdapter) configure(p plugin.SourcePlugin, source domain.CollectorSource) (plugin.SourcePlugin, error) {
 	p = pluginForSourceConfig(p, source)
 	if a == nil || !a.enabled {
-		return p, nil
-	}
-	if source.AuthMode == "" || source.AuthMode == domain.CollectorAuthModeNone {
 		return p, nil
 	}
 	if _, ok := a.cfg.Collector.SourceOrDefault(source.ID); !ok {
@@ -48,19 +48,18 @@ func (a *runtimePluginAdapter) configure(p plugin.SourcePlugin, source domain.Co
 	if err != nil {
 		return nil, err
 	}
-	injector, err := a.auth.Build(resolved.Auth)
+	var injector func(req *http.Request) error
+	if a.auth != nil {
+		built, buildErr := a.auth.Build(resolved.Auth)
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		injector = built
+	}
+	client, err := a.http.Build(resolved, injector)
 	if err != nil {
 		return nil, err
 	}
-	clientAccessor, ok := p.(plugin.SourceHTTPClientAccessor)
-	if !ok {
-		return nil, fmt.Errorf("plugin %s does not expose runtime http client access", source.ID)
-	}
-	baseClient := clientAccessor.HTTPClient()
-	if baseClient == nil {
-		return nil, fmt.Errorf("plugin %s has no http client configured", source.ID)
-	}
-	client := baseClient.CloneWithAuth(injector, resolved.Headers)
 	return clientConfigurable.WithHTTPClient(client), nil
 }
 

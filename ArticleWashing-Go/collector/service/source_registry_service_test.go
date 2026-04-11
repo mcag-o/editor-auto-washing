@@ -103,11 +103,28 @@ func TestSourceRegistryHealthUsesPersistedCookieSecretRef(t *testing.T) {
 	source.HeadersJSON = []byte(`{"X-Source-Header":"from-source"}`)
 	require.NoError(t, provider.CollectorSourceRepo().Create(t.Context(), source))
 
-	pluginUnderTest := newRegistryWeiboPlugin(t, "SUB=alt-cookie", http.StatusOK, "weibo-hotlist.json", map[string]string{"X-Plugin-Header": "from-plugin"})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "SUB=alt-cookie", r.Header.Get("Cookie"))
+		assert.Equal(t, "from-plugin", r.Header.Get("X-Plugin-Header"))
+		assert.Equal(t, "from-source", r.Header.Get("X-Source-Header"))
+		body, err := os.ReadFile(filepath.Join("..", "..", "testdata", "collector", "fixtures", "weibo-hotlist.json"))
+		require.NoError(t, err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(server.Close)
+
+	pluginUnderTest := newRegistryWeiboPluginWithBaseURL(t, "http://127.0.0.1:1")
 	registry := plugin.NewRegistry()
 	require.NoError(t, registry.Register(pluginUnderTest))
 
 	cfg := config.DefaultConfig()
+	cfg.Collector.HTTPClients["runtime_weibo_client"] = config.HTTPClientProfile{Headers: map[string]string{"X-Plugin-Header": "from-plugin"}}
+	weibo := cfg.Collector.Sources["weibo"]
+	weibo.SourceURL = server.URL
+	weibo.HTTPClient = "runtime_weibo_client"
+	cfg.Collector.Sources["weibo"] = weibo
 	svc := collectorsvc.NewSourceRegistryServiceWithRuntime(provider.CollectorSourceRepo(), registry, cfg, registrySecretResolverStub{"env.WEIBO_COOKIE_ALT": "SUB=alt-cookie"})
 
 	statuses, err := svc.Health(t.Context())
@@ -148,6 +165,36 @@ func TestSourceRegistryHealthFailsWhenRuntimeAuthSecretMissing(t *testing.T) {
 	assert.Contains(t, statuses[0].Health.Message, "not found")
 }
 
+func TestSourceRegistryHealthUsesRuntimeConfiguredClientForNonAuthSources(t *testing.T) {
+	provider := newCollectorProvider(t)
+	source := domain.NewCollectorSource("baidu", "百度热搜")
+	source.Enabled = true
+	require.NoError(t, provider.CollectorSourceRepo().Create(t.Context(), source))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"cards":[{"content":[{"word":"OpenAI","query":"AI","url":"https://example.com/openai","hotScore":"123","rank":1,"newsId":"n1"}]}]}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	registry := plugin.NewRegistry()
+	require.NoError(t, registry.Register(newRegistryBaiduPluginWithBaseURL(t, "http://127.0.0.1:1")))
+
+	cfg := config.DefaultConfig()
+	baidu := cfg.Collector.Sources["baidu"]
+	baidu.SourceURL = server.URL + "/api/board?platform=wise&tab=realtime"
+	cfg.Collector.Sources["baidu"] = baidu
+
+	svc := collectorsvc.NewSourceRegistryServiceWithRuntime(provider.CollectorSourceRepo(), registry, cfg, registrySecretResolverStub{})
+
+	statuses, err := svc.Health(t.Context())
+
+	require.NoError(t, err)
+	require.Len(t, statuses, 1)
+	assert.True(t, statuses[0].Health.OK)
+	assert.Equal(t, plugin.HealthCodeHealthy, statuses[0].Health.Code)
+}
+
 type registrySecretResolverStub map[string]string
 
 func (s registrySecretResolverStub) Resolve(ref string) (string, error) {
@@ -180,6 +227,20 @@ func newRegistryWeiboPlugin(t *testing.T, customCookie string, statusCode int, f
 	t.Helper()
 	client := newRegistryCookieClient(t, statusCode, fixture, customCookie, defaultHeaders)
 	return sources.NewWeiboWithClient(client)
+}
+
+func newRegistryWeiboPluginWithBaseURL(t *testing.T, baseURL string) plugin.SourcePlugin {
+	t.Helper()
+	client, err := httpclient.New(httpclient.Options{BaseURL: baseURL})
+	require.NoError(t, err)
+	return sources.NewWeiboWithClient(client)
+}
+
+func newRegistryBaiduPluginWithBaseURL(t *testing.T, baseURL string) plugin.SourcePlugin {
+	t.Helper()
+	client, err := httpclient.New(httpclient.Options{BaseURL: baseURL})
+	require.NoError(t, err)
+	return sources.NewBaiduWithClient(client)
 }
 
 func newRegistryCookieClient(t *testing.T, statusCode int, fixture string, expectedCookie string, defaultHeaders map[string]string) *httpclient.Client {
