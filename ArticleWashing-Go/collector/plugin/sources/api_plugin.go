@@ -9,6 +9,7 @@ import (
 
 	"content-hub/collector/httpclient"
 	"content-hub/collector/plugin"
+	"content-hub/domain"
 )
 
 type apiPlugin struct {
@@ -128,7 +129,7 @@ func (p *apiPlugin) Capabilities() plugin.SourceCapabilities {
 	return plugin.SourceCapabilities{
 		SupportsHotlist: true,
 		SupportsArticle: p.articlePath != nil && p.normalizeBody != nil,
-		AuthModes:       []string{"none", "header"},
+		AuthModes:       []string{domain.CollectorAuthModeNone, domain.CollectorAuthModeHeader},
 	}
 }
 
@@ -145,7 +146,7 @@ func (p *apiPlugin) Descriptor() plugin.SourceDefinition {
 		HotlistLimit:       50,
 		DetailFetchEnabled: p.articlePath != nil && p.normalizeBody != nil,
 		Concurrency:        1,
-		AuthMode:           "none",
+		AuthMode:           domain.CollectorAuthModeNone,
 		Headers:            map[string]string{},
 		RetryPolicy:        map[string]any{},
 		Options:            map[string]any{},

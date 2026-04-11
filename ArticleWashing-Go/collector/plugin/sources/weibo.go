@@ -178,7 +178,6 @@ func (p *weiboPlugin) Descriptor() plugin.SourceDefinition {
 		DetailFetchEnabled: false,
 		Concurrency:        1,
 		AuthMode:           domain.CollectorAuthModeCookie,
-		CookieSecretRef:    p.cookieSecretRef,
 		Headers:            map[string]string{},
 		RetryPolicy:        map[string]any{},
 		Options: map[string]any{
