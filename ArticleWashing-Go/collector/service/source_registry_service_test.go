@@ -100,9 +100,10 @@ func TestSourceRegistryHealthUsesPersistedCookieSecretRef(t *testing.T) {
 	source := domain.NewCollectorSource("weibo", "微博热搜")
 	source.AuthMode = domain.CollectorAuthModeCookie
 	source.CookieSecretRef = "env.WEIBO_COOKIE_ALT"
+	source.HeadersJSON = []byte(`{"X-Source-Header":"from-source"}`)
 	require.NoError(t, provider.CollectorSourceRepo().Create(t.Context(), source))
 
-	pluginUnderTest := newRegistryWeiboPlugin(t, "SUB=alt-cookie", http.StatusOK, "weibo-hotlist.json")
+	pluginUnderTest := newRegistryWeiboPlugin(t, "SUB=alt-cookie", http.StatusOK, "weibo-hotlist.json", map[string]string{"X-Plugin-Header": "from-plugin"})
 	registry := plugin.NewRegistry()
 	require.NoError(t, registry.Register(pluginUnderTest))
 
@@ -132,7 +133,7 @@ func TestSourceRegistryHealthFailsWhenRuntimeAuthSecretMissing(t *testing.T) {
 	require.NoError(t, provider.CollectorSourceRepo().Create(t.Context(), source))
 
 	registry := plugin.NewRegistry()
-	require.NoError(t, registry.Register(newRegistryWeiboPlugin(t, "SUB=alt-cookie", http.StatusOK, "weibo-hotlist.json")))
+	require.NoError(t, registry.Register(newRegistryWeiboPlugin(t, "SUB=alt-cookie", http.StatusOK, "weibo-hotlist.json", map[string]string{"X-Plugin-Header": "from-plugin"})))
 
 	cfg := config.DefaultConfig()
 	svc := collectorsvc.NewSourceRegistryServiceWithRuntime(provider.CollectorSourceRepo(), registry, cfg, registrySecretResolverStub{})
@@ -175,18 +176,22 @@ func TestSourceRegistrySyncPersistsPlaceholderMetadata(t *testing.T) {
 	assert.Contains(t, stored.Metadata["todo"], "实现列表字段标准化")
 }
 
-func newRegistryWeiboPlugin(t *testing.T, customCookie string, statusCode int, fixture string) plugin.SourcePlugin {
+func newRegistryWeiboPlugin(t *testing.T, customCookie string, statusCode int, fixture string, defaultHeaders map[string]string) plugin.SourcePlugin {
 	t.Helper()
-	client := newRegistryCookieClient(t, statusCode, fixture, customCookie)
+	client := newRegistryCookieClient(t, statusCode, fixture, customCookie, defaultHeaders)
 	return sources.NewWeiboWithClient(client)
 }
 
-func newRegistryCookieClient(t *testing.T, statusCode int, fixture string, expectedCookie string) *httpclient.Client {
+func newRegistryCookieClient(t *testing.T, statusCode int, fixture string, expectedCookie string, defaultHeaders map[string]string) *httpclient.Client {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if expectedCookie != "" {
 			assert.Equal(t, expectedCookie, r.Header.Get("Cookie"))
 		}
+		for key, value := range defaultHeaders {
+			assert.Equal(t, value, r.Header.Get(key))
+		}
+		assert.Equal(t, "from-source", r.Header.Get("X-Source-Header"))
 		body, err := os.ReadFile(filepath.Join("..", "..", "testdata", "collector", "fixtures", fixture))
 		require.NoError(t, err)
 		w.Header().Set("Content-Type", "application/json")
@@ -195,7 +200,7 @@ func newRegistryCookieClient(t *testing.T, statusCode int, fixture string, expec
 	}))
 	t.Cleanup(server.Close)
 
-	client, err := httpclient.New(httpclient.Options{BaseURL: server.URL, AuthInjector: httpclient.HeaderAuthInjector(map[string]string{"Cookie": expectedCookie})})
+	client, err := httpclient.New(httpclient.Options{BaseURL: server.URL, DefaultHeaders: defaultHeaders})
 	require.NoError(t, err)
 	return client
 }

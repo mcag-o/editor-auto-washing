@@ -173,7 +173,11 @@ func (c *Client) CloneWithAuth(injector AuthInjector, defaultHeaders map[string]
 		return nil
 	}
 	clone := *c
-	clone.defaultHeaders = cloneHeaders(defaultHeaders)
+	mergedHeaders := cloneHeaders(c.defaultHeaders)
+	for key, value := range defaultHeaders {
+		mergedHeaders[key] = value
+	}
+	clone.defaultHeaders = mergedHeaders
 	clone.authInjector = injector
 	return &clone
 }
