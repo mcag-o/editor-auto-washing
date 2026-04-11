@@ -1,9 +1,11 @@
 package service
 
 import (
+	"content-hub/collector/httpclient"
 	"content-hub/collector/plugin"
 	"content-hub/collector/plugin/sources"
 	collectorruntime "content-hub/collector/runtime"
+	"content-hub/domain"
 	"content-hub/infra/config"
 )
 
@@ -40,7 +42,7 @@ func NewRegistryFromCollectorConfig(cfg config.CollectorConfig) (*plugin.Registr
 		} else {
 			item = sources.NewPlaceholder(definition, sourceID)
 		}
-		item, err = withResolvedSourceDescriptor(runtimeCfg, resolver, item)
+		item, err = withResolvedSourceDescriptor(runtimeCfg, resolver, definition, item)
 		if err != nil {
 			return nil, err
 		}
@@ -51,7 +53,7 @@ func NewRegistryFromCollectorConfig(cfg config.CollectorConfig) (*plugin.Registr
 	return registry, nil
 }
 
-func withResolvedSourceDescriptor(cfg config.Config, resolver *collectorruntime.PolicyResolver, item plugin.SourcePlugin) (plugin.SourcePlugin, error) {
+func withResolvedSourceDescriptor(cfg config.Config, resolver *collectorruntime.PolicyResolver, definition config.CollectorSourceDef, item plugin.SourcePlugin) (plugin.SourcePlugin, error) {
 	describer, ok := item.(plugin.SourceDescriptor)
 	if !ok {
 		return item, nil
@@ -60,7 +62,7 @@ func withResolvedSourceDescriptor(cfg config.Config, resolver *collectorruntime.
 	if err != nil {
 		return nil, err
 	}
-	return resolvedDescriptorPlugin{SourcePlugin: item, descriptor: mergeResolvedDescriptor(describer.Descriptor(), resolved)}, nil
+	return resolvedDescriptorPlugin{SourcePlugin: item, descriptor: mergeResolvedDescriptor(describer.Descriptor(), definition, resolved)}, nil
 }
 
 type resolvedDescriptorPlugin struct {
@@ -72,9 +74,33 @@ func (p resolvedDescriptorPlugin) Descriptor() plugin.SourceDefinition {
 	return p.descriptor
 }
 
-func mergeResolvedDescriptor(base plugin.SourceDefinition, resolved collectorruntime.ResolvedSourceRuntimeConfig) plugin.SourceDefinition {
+func (p resolvedDescriptorPlugin) WithSourceConfig(source domain.CollectorSource) plugin.SourcePlugin {
+	configurable, ok := p.SourcePlugin.(plugin.SourceConfigurablePlugin)
+	if !ok {
+		return p
+	}
+	return resolvedDescriptorPlugin{SourcePlugin: configurable.WithSourceConfig(source), descriptor: p.descriptor}
+}
+
+func (p resolvedDescriptorPlugin) WithHTTPClient(client *httpclient.Client) plugin.SourcePlugin {
+	configurable, ok := p.SourcePlugin.(plugin.SourceHTTPClientConfigurable)
+	if !ok {
+		return p
+	}
+	return resolvedDescriptorPlugin{SourcePlugin: configurable.WithHTTPClient(client), descriptor: p.descriptor}
+}
+
+func mergeResolvedDescriptor(base plugin.SourceDefinition, definition config.CollectorSourceDef, resolved collectorruntime.ResolvedSourceRuntimeConfig) plugin.SourceDefinition {
+	base.Enabled = definition.Enabled
+	base.ScheduleEnabled = definition.ScheduleEnabled
+	base.IntervalMinutes = definition.IntervalMinutes
 	base.TimeoutMS = int(resolved.Timeout / 1e6)
 	base.HotlistLimit = resolved.HotlistLimit
+	base.DetailFetchEnabled = definition.DetailFetchEnabled
+	base.Concurrency = definition.Concurrency
+	base.AuthMode = definition.AuthMode
+	base.CookieSecretRef = definition.CookieSecretRef
+	base.HeaderSecretRef = definition.HeaderSecretRef
 	base.Headers = cloneResolvedHeaders(resolved.Headers)
 	base.RetryPolicy = map[string]any{
 		"max_attempts": resolved.RetryPolicy.MaxAttempts,
