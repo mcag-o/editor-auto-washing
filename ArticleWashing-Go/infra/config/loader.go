@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 )
 
@@ -48,7 +49,13 @@ func (l *Loader) Load() (Config, error) {
 		return Config{}, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	applyDefaults(&cfg)
+	presence, err := collectSourceFieldPresence(data)
+	if err != nil {
+		l.mu.Unlock()
+		return Config{}, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	applyDefaults(&cfg, presence)
 	cfg.ResolveSecrets()
 
 	if err := cfg.Validate(); err != nil {
@@ -170,7 +177,7 @@ func (l *Loader) saveLocked(cfg Config) error {
 	return nil
 }
 
-func applyDefaults(cfg *Config) {
+func applyDefaults(cfg *Config, sourcePresence map[string]sourceFieldPresence) {
 	def := DefaultConfig()
 	if cfg.HTTP.Host == "" {
 		cfg.HTTP.Host = def.HTTP.Host
@@ -247,7 +254,7 @@ func applyDefaults(cfg *Config) {
 	cfg.Collector.HTTPClients = mergeHTTPClientProfiles(def.Collector.HTTPClients, cfg.Collector.HTTPClients)
 	cfg.Collector.RetryPolicies = mergeRetryPolicyProfiles(def.Collector.RetryPolicies, cfg.Collector.RetryPolicies)
 	cfg.Collector.AuthProfiles = mergeAuthProfiles(def.Collector.AuthProfiles, cfg.Collector.AuthProfiles)
-	cfg.Collector.Sources = mergeCollectorSources(def.Collector.Sources, cfg.Collector.Sources)
+	cfg.Collector.Sources = mergeCollectorSources(def.Collector.Sources, cfg.Collector.Sources, sourcePresence)
 	if cfg.Secrets.EnvPrefix == "" {
 		cfg.Secrets.EnvPrefix = def.Secrets.EnvPrefix
 	}
@@ -384,7 +391,43 @@ func mergeAuthProfile(base AuthProfileConfig, override AuthProfileConfig) AuthPr
 	return merged
 }
 
-func mergeCollectorSources(defaults map[string]CollectorSourceDef, overrides map[string]CollectorSourceDef) map[string]CollectorSourceDef {
+type sourceFieldPresence struct {
+	boolFields   map[string]bool
+	stringFields map[string]bool
+}
+
+func collectSourceFieldPresence(data []byte) (map[string]sourceFieldPresence, error) {
+	var raw struct {
+		Collector struct {
+			Sources map[string]map[string]json.RawMessage `json:"sources"`
+		} `json:"collector"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	if len(raw.Collector.Sources) == 0 {
+		return nil, nil
+	}
+	presence := make(map[string]sourceFieldPresence, len(raw.Collector.Sources))
+	for sourceID, fields := range raw.Collector.Sources {
+		item := sourceFieldPresence{
+			boolFields:   map[string]bool{},
+			stringFields: map[string]bool{},
+		}
+		for fieldName := range fields {
+			switch fieldName {
+			case "enabled", "schedule_enabled", "detail_fetch_enabled", "supports_article", "placeholder_required":
+				item.boolFields[fieldName] = true
+			case "auth_mode", "auth_profile":
+				item.stringFields[fieldName] = true
+			}
+		}
+		presence[sourceID] = item
+	}
+	return presence, nil
+}
+
+func mergeCollectorSources(defaults map[string]CollectorSourceDef, overrides map[string]CollectorSourceDef, presence map[string]sourceFieldPresence) map[string]CollectorSourceDef {
 	if len(defaults) == 0 && len(overrides) == 0 {
 		return nil
 	}
@@ -398,7 +441,7 @@ func mergeCollectorSources(defaults map[string]CollectorSourceDef, overrides map
 			merged[key] = cloneCollectorSourceDef(value)
 			continue
 		}
-		merged[key] = mergeCollectorSourceDef(base, value)
+		merged[key] = mergeCollectorSourceDef(base, value, presence[key])
 	}
 	return merged
 }
@@ -423,7 +466,7 @@ func cloneCollectorSourceDef(source CollectorSourceDef) CollectorSourceDef {
 	return cloned
 }
 
-func mergeCollectorSourceDef(base CollectorSourceDef, override CollectorSourceDef) CollectorSourceDef {
+func mergeCollectorSourceDef(base CollectorSourceDef, override CollectorSourceDef, presence sourceFieldPresence) CollectorSourceDef {
 	merged := cloneCollectorSourceDef(base)
 	if override.DisplayName != "" {
 		merged.DisplayName = override.DisplayName
@@ -437,8 +480,12 @@ func mergeCollectorSourceDef(base CollectorSourceDef, override CollectorSourceDe
 	if override.SourceURL != "" {
 		merged.SourceURL = override.SourceURL
 	}
-	merged.Enabled = override.Enabled
-	merged.ScheduleEnabled = override.ScheduleEnabled
+	if presence.boolFields["enabled"] {
+		merged.Enabled = override.Enabled
+	}
+	if presence.boolFields["schedule_enabled"] {
+		merged.ScheduleEnabled = override.ScheduleEnabled
+	}
 	if override.IntervalMinutes != 0 {
 		merged.IntervalMinutes = override.IntervalMinutes
 	}
@@ -448,12 +495,16 @@ func mergeCollectorSourceDef(base CollectorSourceDef, override CollectorSourceDe
 	if override.HotlistLimit != 0 {
 		merged.HotlistLimit = override.HotlistLimit
 	}
-	merged.DetailFetchEnabled = override.DetailFetchEnabled
+	if presence.boolFields["detail_fetch_enabled"] {
+		merged.DetailFetchEnabled = override.DetailFetchEnabled
+	}
 	if override.Concurrency != 0 {
 		merged.Concurrency = override.Concurrency
 	}
-	if override.AuthMode != "" {
-		merged.AuthMode = override.AuthMode
+	if presence.stringFields["auth_mode"] {
+		merged.AuthMode = strings.TrimSpace(override.AuthMode)
+	} else if presence.stringFields["auth_profile"] {
+		merged.AuthMode = ""
 	}
 	if override.HTTPClient != "" {
 		merged.HTTPClient = override.HTTPClient
@@ -461,7 +512,9 @@ func mergeCollectorSourceDef(base CollectorSourceDef, override CollectorSourceDe
 	if override.RetryPolicy != "" {
 		merged.RetryPolicy = override.RetryPolicy
 	}
-	if override.AuthProfile != "" {
+	if presence.stringFields["auth_profile"] {
+		merged.AuthProfile = strings.TrimSpace(override.AuthProfile)
+	} else if override.AuthProfile != "" {
 		merged.AuthProfile = override.AuthProfile
 	}
 	if override.CookieSecretRef != "" {
@@ -491,7 +544,11 @@ func mergeCollectorSourceDef(base CollectorSourceDef, override CollectorSourceDe
 	if override.MigrationReference != "" {
 		merged.MigrationReference = override.MigrationReference
 	}
-	merged.SupportsArticle = override.SupportsArticle
-	merged.PlaceholderRequired = override.PlaceholderRequired
+	if presence.boolFields["supports_article"] {
+		merged.SupportsArticle = override.SupportsArticle
+	}
+	if presence.boolFields["placeholder_required"] {
+		merged.PlaceholderRequired = override.PlaceholderRequired
+	}
 	return merged
 }

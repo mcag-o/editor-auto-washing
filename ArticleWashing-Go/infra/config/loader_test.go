@@ -435,6 +435,59 @@ func TestLoaderApplyDefaults_SourceOverrideCanDisableBuiltInBooleanFields(t *tes
 	assert.Equal(t, "百度热搜", baidu.DisplayName)
 }
 
+func TestLoaderApplyDefaults_SourceOverridePreservesOmittedBooleanFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"sources": map[string]any{
+				"baidu": map[string]any{
+					"display_name": "百度热搜-自定义",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	baidu := cfg.Collector.Sources["baidu"]
+	assert.Equal(t, "百度热搜-自定义", baidu.DisplayName)
+	assert.True(t, baidu.Enabled)
+	assert.True(t, baidu.ScheduleEnabled)
+	assert.True(t, baidu.DetailFetchEnabled)
+}
+
+func TestLoaderApplyDefaults_SourceOverrideWithAuthProfileDoesNotKeepStaleAuthMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"sources": map[string]any{
+				"zhihu": map[string]any{
+					"auth_profile": "cookie",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	zhihu, ok := cfg.Collector.SourceOrDefault("zhihu")
+	require.True(t, ok)
+	assert.Equal(t, "cookie", zhihu.AuthProfile)
+	assert.Equal(t, "cookie", zhihu.AuthMode)
+}
+
 func TestLoaderSetCurrent(t *testing.T) {
 	loader := NewLoader("")
 	cfg := DefaultConfig()
