@@ -258,32 +258,30 @@ func TestHTMLSource_FetchArticleNormalizesFixture(t *testing.T) {
 	assert.NotEmpty(t, normalized.RawJSON)
 }
 
-func TestCookieSource_HealthCheckReportsAuthExpired(t *testing.T) {
-	pluginUnderTest := newCookieSourceWithFixture(t, "env.WEIBO_COOKIE", "stale-cookie", http.StatusUnauthorized, "weibo-auth-failure.json")
+func TestCookieSource_HealthCheckDoesNotAssumePluginLocalAuthState(t *testing.T) {
+	pluginUnderTest := newCookieSourceWithFixture(t, http.StatusOK, "weibo-auth-failure.json", "SUB=collector-cookie", "")
 
 	health, err := pluginUnderTest.HealthCheck(t.Context())
 
-	require.NoError(t, err)
+	require.Error(t, err)
 	assert.False(t, health.OK)
-	assert.Equal(t, "auth_expired", health.Code)
-	assert.Contains(t, health.Message, "expired")
+	assert.Equal(t, "unavailable", health.Code)
 }
 
-func TestCookieSource_HealthCheckReportsAuthMissing(t *testing.T) {
-	pluginUnderTest := newCookieSourceWithFixture(t, "env.WEIBO_COOKIE", "", http.StatusOK, "weibo-hotlist.json")
-
-	health, err := pluginUnderTest.HealthCheck(t.Context())
-
-	require.NoError(t, err)
-	assert.False(t, health.OK)
-	assert.Equal(t, "auth_missing", health.Code)
-	assert.Contains(t, health.Message, "missing")
-}
-
-func TestCookieSource_FetchHotlistInjectsCookie(t *testing.T) {
-	pluginUnderTest := newCookieSourceWithFixture(t, "env.WEIBO_COOKIE", "SUB=collector-cookie", http.StatusOK, "weibo-hotlist.json")
+func TestCookieSource_FetchHotlistDoesNotInjectCookieWithoutRuntimeAuth(t *testing.T) {
+	pluginUnderTest := newCookieSourceWithFixture(t, http.StatusOK, "weibo-hotlist.json", "SUB=collector-cookie", "")
 
 	entries, err := pluginUnderTest.FetchHotlist(t.Context(), plugin.FetchHotlistRequest{})
+
+	require.Error(t, err)
+	assert.Nil(t, entries)
+	assert.ErrorContains(t, err, "fetch hotlist for weibo")
+}
+
+func TestCookieSource_FetchHotlistUsesRuntimeProvidedCookieHeader(t *testing.T) {
+	pluginUnderTest := newCookieSourceWithFixture(t, http.StatusOK, "weibo-hotlist.json", "SUB=collector-cookie", "")
+
+	entries, err := pluginUnderTest.FetchHotlist(t.Context(), plugin.FetchHotlistRequest{Headers: map[string]string{"Cookie": "SUB=collector-cookie"}})
 
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
@@ -292,18 +290,8 @@ func TestCookieSource_FetchHotlistInjectsCookie(t *testing.T) {
 	assert.Equal(t, "https://s.weibo.com/weibo?q=%23Mars+colony+launch+date+set%23", entries[0].CanonicalURL)
 }
 
-func TestCookieSource_FetchHotlistShortCircuitsWhenCookieMissing(t *testing.T) {
-	pluginUnderTest := newCookieSourceWithFixture(t, "env.WEIBO_COOKIE", "", http.StatusOK, "weibo-hotlist.json")
-
-	entries, err := pluginUnderTest.FetchHotlist(t.Context(), plugin.FetchHotlistRequest{})
-
-	require.Error(t, err)
-	assert.Nil(t, entries)
-	assert.ErrorContains(t, err, "missing cookie secret")
-}
-
-func TestCookieSource_HealthCheckReportsHealthyWhenCookieWorks(t *testing.T) {
-	pluginUnderTest := newCookieSourceWithFixture(t, "env.WEIBO_COOKIE", "SUB=collector-cookie", http.StatusOK, "weibo-hotlist.json")
+func TestCookieSource_HealthCheckUsesRuntimeProvidedCookieHeader(t *testing.T) {
+	pluginUnderTest := newCookieSourceWithFixture(t, http.StatusOK, "weibo-hotlist.json", "SUB=collector-cookie", "SUB=collector-cookie")
 
 	health, err := pluginUnderTest.HealthCheck(t.Context())
 
@@ -318,22 +306,18 @@ func newPluginWithHTMLFixtures(t *testing.T, fixtures map[string]string, builder
 	return builder(client)
 }
 
-func newCookieSourceWithFixture(t *testing.T, secretRef, secretValue string, statusCode int, fixture string) plugin.SourcePlugin {
+func newCookieSourceWithFixture(t *testing.T, statusCode int, fixture string, requiredCookie string, runtimeCookie string) plugin.SourcePlugin {
 	t.Helper()
-	client := fakeCookieHTTPClientFromFixture(t, statusCode, fixture, secretValue)
-	return sources.NewWeiboWithClient(client, secretRef, sources.SecretResolverFunc(func(ref string) (string, error) {
-		if ref != secretRef {
-			return "", nil
-		}
-		return secretValue, nil
-	}))
+	client := fakeCookieHTTPClientFromFixture(t, statusCode, fixture, requiredCookie, runtimeCookie)
+	return sources.NewWeiboWithClient(client)
 }
 
-func fakeCookieHTTPClientFromFixture(t *testing.T, statusCode int, fixture string, expectedCookie string) *httpclient.Client {
+func fakeCookieHTTPClientFromFixture(t *testing.T, statusCode int, fixture string, requiredCookie string, runtimeCookie string) *httpclient.Client {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if expectedCookie != "" {
-			assert.Equal(t, expectedCookie, r.Header.Get("Cookie"))
+		if requiredCookie != "" && r.Header.Get("Cookie") != requiredCookie {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
 		}
 		body, err := readCollectorFixture(t, fixture)
 		require.NoError(t, err)
@@ -343,7 +327,11 @@ func fakeCookieHTTPClientFromFixture(t *testing.T, statusCode int, fixture strin
 	}))
 	t.Cleanup(server.Close)
 
-	client, err := httpclient.New(httpclient.Options{BaseURL: server.URL})
+	options := httpclient.Options{BaseURL: server.URL}
+	if runtimeCookie != "" {
+		options.AuthInjector = httpclient.HeaderAuthInjector(map[string]string{"Cookie": runtimeCookie})
+	}
+	client, err := httpclient.New(options)
 	require.NoError(t, err)
 	return client
 }

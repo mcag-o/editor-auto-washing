@@ -1,10 +1,14 @@
 package httpclient_test
 
 import (
+	"context"
 	"errors"
+	"io"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +18,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestClient_RetriesRetryableStatuses(t *testing.T) {
 	var attempts atomic.Int32
@@ -161,6 +171,100 @@ func TestClient_UsesExponentialBackoffBetweenRetryAttempts(t *testing.T) {
 	assert.True(t, slices.Equal(waits, []time.Duration{10 * time.Millisecond, 20 * time.Millisecond}), "unexpected waits: %v", waits)
 	assert.Greater(t, waits[1], waits[0])
 	assert.NotEqual(t, waits[0], waits[1])
+}
+
+func TestRetryPolicy_UsesMaxWaitAndBoundedJitter(t *testing.T) {
+	policy := httpclient.ExponentialBackoff{
+		BaseWait:   500 * time.Millisecond,
+		Multiplier: 2,
+		MaxWait:    2 * time.Second,
+		Jitter: httpclient.JitterConfig{
+			Mode:  httpclient.JitterBounded,
+			Ratio: 0.2,
+			Rand:  rand.New(rand.NewSource(7)),
+		},
+	}
+
+	d1 := policy.NextDelay(1)
+	d4 := policy.NextDelay(4)
+	overflowPolicy := httpclient.ExponentialBackoff{
+		BaseWait:   500 * time.Millisecond,
+		Multiplier: 2,
+		MaxWait:    2 * time.Second,
+		Jitter: httpclient.JitterConfig{
+			Mode:  httpclient.JitterBounded,
+			Ratio: 0.2,
+			Rand:  rand.New(rand.NewSource(0)),
+		},
+	}
+	d5 := overflowPolicy.NextDelay(5)
+
+	assert.GreaterOrEqual(t, d1, 400*time.Millisecond)
+	assert.LessOrEqual(t, d1, 600*time.Millisecond)
+	assert.GreaterOrEqual(t, d4, 1600*time.Millisecond)
+	assert.LessOrEqual(t, d4, 2*time.Second)
+	assert.Equal(t, 2*time.Second, d5)
+}
+
+func TestRetryClassifier_ClassifiesHTTPAndNetworkErrors(t *testing.T) {
+	classifier := httpclient.DefaultRetryClassifier(httpclient.DefaultRetryClassifierConfig())
+
+	decision429 := classifier.Classify(&httpclient.Response{StatusCode: 429}, nil, "hotlist")
+	decision400 := classifier.Classify(&httpclient.Response{StatusCode: 400}, nil, "hotlist")
+	decisionTimeout := classifier.Classify(nil, context.DeadlineExceeded, "detail")
+
+	assert.True(t, decision429.Retryable)
+	assert.False(t, decision400.Retryable)
+	assert.True(t, decisionTimeout.Retryable)
+	assert.Equal(t, httpclient.ErrKindNetworkTimeout, decisionTimeout.Kind)
+}
+
+func TestRetryPolicy_BoundedJitterClampsHighRatioToNonNegativeDelay(t *testing.T) {
+	policy := httpclient.ExponentialBackoff{
+		BaseWait:   500 * time.Millisecond,
+		Multiplier: 2,
+		Jitter: httpclient.JitterConfig{
+			Mode:  httpclient.JitterBounded,
+			Ratio: 2,
+			Rand:  rand.New(rand.NewSource(0)),
+		},
+	}
+
+	delay := policy.NextDelay(1)
+
+	assert.GreaterOrEqual(t, delay, time.Duration(0))
+	assert.LessOrEqual(t, delay, time.Second)
+}
+
+func TestClient_DoDoesNotRetryTransportErrorUsingStaleResponse(t *testing.T) {
+	var attempts atomic.Int32
+	transport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		attempt := attempts.Add(1)
+		if attempt == 1 {
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"error":"slow down"}`)),
+			}, nil
+		}
+		return nil, context.Canceled
+	})
+
+	client, err := httpclient.New(httpclient.Options{
+		BaseURL: "https://example.com",
+		RetryPolicy: httpclient.RetryPolicy{
+			MaxAttempts: 3,
+		},
+		HTTPClient: &http.Client{Transport: transport},
+	})
+	require.NoError(t, err)
+
+	resp, err := client.Do(t.Context(), httpclient.Request{Method: http.MethodGet, Path: "/stale"})
+
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	assert.EqualValues(t, 2, attempts.Load())
+	assert.ErrorContains(t, err, "after 2 attempts")
 }
 
 func TestClient_NewRejectsInvalidBaseURL(t *testing.T) {

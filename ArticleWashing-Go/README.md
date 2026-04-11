@@ -245,6 +245,8 @@ go run ./cmd/cli collector scheduler stop --root .
 
 说明：当前 collector CLI 暴露的是 source registry、run listing、scheduler control。detail fetch 与 bridge 虽已在运行时内部实现并有集成测试覆盖，但还不是独立的一线运维入口。
 
+补充说明：collector runtime 现在引入了面向 retry、auth 与 source-scoped HTTP 行为的配置层；resolved policy metadata 会在 source sync 时持久化，并用于当前 runtime-aware service path。standalone runtime/LLM 设置已外置到配置中，已实现路径中的 secret ref 也不再硬编码在 active plugin flow 里。
+
 ---
 
 ## HTTP API

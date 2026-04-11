@@ -42,6 +42,65 @@ func TestLoaderLoadExistingFile(t *testing.T) {
 	assert.Equal(t, "debug", loaded.Log.Level)
 }
 
+func TestLoader_LoadsLLMProfileRefsWithoutHardcodedSecrets(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	t.Setenv("OPENAI_API_KEY", "env-openai-key")
+	t.Setenv("OPENAI_BASE_URL", "https://llm.example.test")
+	require.NoError(t, os.WriteFile(path, []byte(`{
+	  "llm": {
+	    "default_profile": "default_openai",
+	    "profiles": {
+	      "default_openai": {
+	        "provider": "openai",
+	        "api_key_ref": "env.OPENAI_API_KEY",
+	        "base_url_ref": "env.OPENAI_BASE_URL",
+	        "model": "gpt-4.1",
+	        "temperature": 0.2,
+	        "max_tokens": 4096,
+	        "timeout_sec": 60
+	      }
+	    }
+	  }
+	}`), 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "default_openai", cfg.LLM.DefaultProfile)
+	assert.Equal(t, "openai", cfg.LLM.Provider)
+	assert.Equal(t, "env-openai-key", cfg.LLM.APIKey)
+	assert.Equal(t, "https://llm.example.test", cfg.LLM.BaseURL)
+	assert.Equal(t, "gpt-4.1", cfg.LLM.Model)
+	assert.Empty(t, cfg.LLM.Profiles["default_openai"].APIKey)
+}
+
+func TestLoaderLoadRejectsMissingDefaultLLMProfile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{
+	  "llm": {
+	    "default_profile": "missing",
+	    "profiles": {
+	      "default_openai": {
+	        "provider": "openai",
+	        "model": "gpt-4.1",
+	        "temperature": 0.2,
+	        "max_tokens": 4096,
+	        "timeout_sec": 60
+	      }
+	    }
+	  }
+	}`), 0o644))
+
+	loader := NewLoader(path)
+	_, err := loader.Load()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "config validation failed")
+	assert.Contains(t, err.Error(), "llm.default_profile")
+}
+
 func TestLoaderLoadInvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -252,6 +311,267 @@ func TestLoaderApplyDefaults(t *testing.T) {
 	assert.Equal(t, 3000, cfg.HTTP.Port)
 	assert.Equal(t, defaultHTTPHost, cfg.HTTP.Host)
 	assert.Equal(t, defaultLogLevel, cfg.Log.Level)
+}
+
+func TestLoaderApplyDefaults_MergesBuiltInCollectorPolicyMaps(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"http_clients": map[string]any{
+				"custom_client": map[string]any{
+					"headers": map[string]any{"X-Test": "1"},
+				},
+			},
+			"retry_policies": map[string]any{
+				"custom_retry": map[string]any{
+					"max_attempts": 5,
+					"base_wait_ms": 100,
+					"max_wait_ms":  500,
+				},
+			},
+			"auth_profiles": map[string]any{
+				"custom_header": map[string]any{
+					"mode":        "header",
+					"header_name": "X-Test-Auth",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	assert.Contains(t, cfg.Collector.HTTPClients, defaultCollectorHTTPClientProfileID)
+	assert.Contains(t, cfg.Collector.HTTPClients, "custom_client")
+	assert.Contains(t, cfg.Collector.RetryPolicies, defaultCollectorRetryPolicyProfileID)
+	assert.Contains(t, cfg.Collector.RetryPolicies, "custom_retry")
+	assert.Contains(t, cfg.Collector.AuthProfiles, defaultCollectorAuthProfileID)
+	assert.Contains(t, cfg.Collector.AuthProfiles, "custom_header")
+	assert.Equal(t, "1", cfg.Collector.HTTPClients["custom_client"].Headers["X-Test"])
+	assert.Equal(t, 5, cfg.Collector.RetryPolicies["custom_retry"].MaxAttempts)
+	assert.Equal(t, "header", cfg.Collector.AuthProfiles["custom_header"].Mode)
+}
+
+func TestLoaderApplyDefaults_PartiallyOverridesBuiltInRetryPolicy(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"retry_policies": map[string]any{
+				defaultCollectorRetryPolicyProfileID: map[string]any{
+					"max_attempts": 7,
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	policy := cfg.Collector.RetryPolicies[defaultCollectorRetryPolicyProfileID]
+	assert.Equal(t, 7, policy.MaxAttempts)
+	assert.Equal(t, 500, policy.BaseWaitMS)
+	assert.Equal(t, 5000, policy.MaxWaitMS)
+}
+
+func TestLoaderApplyDefaults_PartiallyOverridesBuiltInAuthProfile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"auth_profiles": map[string]any{
+				"cookie": map[string]any{
+					"mode": "cookie",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	profile := cfg.Collector.AuthProfiles["cookie"]
+	assert.Equal(t, "cookie", profile.Mode)
+}
+
+func TestLoaderApplyDefaults_MergesExtendedAuthProfileFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"auth_profiles": map[string]any{
+				"header": map[string]any{
+					"header_value_prefix": "Bearer ",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	profile := cfg.Collector.AuthProfiles["header"]
+	assert.Equal(t, "header", profile.Mode)
+	assert.Equal(t, "Authorization", profile.HeaderName)
+	assert.Equal(t, "Bearer ", profile.HeaderValuePrefix)
+}
+
+func TestLoaderApplyDefaults_PartiallyOverridesBuiltInHTTPClientProfile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"http_clients": map[string]any{
+				defaultCollectorHTTPClientProfileID: map[string]any{
+					"user_agent": "custom-agent/1.0",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	profile := cfg.Collector.HTTPClients[defaultCollectorHTTPClientProfileID]
+	assert.Equal(t, "custom-agent/1.0", profile.UserAgent)
+	assert.NotNil(t, profile.Headers)
+	assert.Empty(t, profile.Headers)
+}
+
+func TestLoaderApplyDefaults_MergesCollectorSourceOverridesWithBuiltInCatalog(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"sources": map[string]any{
+				"zhihu": map[string]any{
+					"display_name":         "知乎热榜-自定义",
+					"interval_minutes":     15,
+					"detail_fetch_enabled": true,
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	assert.Len(t, cfg.Collector.Sources, 22)
+	assert.Contains(t, cfg.Collector.Sources, "baidu")
+	assert.Contains(t, cfg.Collector.Sources, "zhihu")
+	zhihu := cfg.Collector.Sources["zhihu"]
+	assert.Equal(t, "知乎热榜-自定义", zhihu.DisplayName)
+	assert.Equal(t, 15, zhihu.IntervalMinutes)
+	assert.True(t, zhihu.DetailFetchEnabled)
+	assert.Equal(t, "json-api", zhihu.SourceType)
+	assert.Equal(t, "https://www.zhihu.com/api/v3/explore/guest/feeds?limit=30&ws_qiangzhisafe=0", zhihu.SourceURL)
+}
+
+func TestLoaderApplyDefaults_SourceOverrideCanDisableBuiltInBooleanFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"sources": map[string]any{
+				"baidu": map[string]any{
+					"enabled":              false,
+					"schedule_enabled":     false,
+					"detail_fetch_enabled": false,
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	baidu := cfg.Collector.Sources["baidu"]
+	assert.False(t, baidu.Enabled)
+	assert.False(t, baidu.ScheduleEnabled)
+	assert.False(t, baidu.DetailFetchEnabled)
+	assert.Equal(t, "百度热搜", baidu.DisplayName)
+}
+
+func TestLoaderApplyDefaults_SourceOverridePreservesOmittedBooleanFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"sources": map[string]any{
+				"baidu": map[string]any{
+					"display_name": "百度热搜-自定义",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	baidu := cfg.Collector.Sources["baidu"]
+	assert.Equal(t, "百度热搜-自定义", baidu.DisplayName)
+	assert.True(t, baidu.Enabled)
+	assert.True(t, baidu.ScheduleEnabled)
+	assert.True(t, baidu.DetailFetchEnabled)
+}
+
+func TestLoaderApplyDefaults_SourceOverrideWithAuthProfileDoesNotKeepStaleAuthMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"sources": map[string]any{
+				"zhihu": map[string]any{
+					"auth_profile": "cookie",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	zhihu, ok := cfg.Collector.SourceOrDefault("zhihu")
+	require.True(t, ok)
+	assert.Equal(t, "cookie", zhihu.AuthProfile)
+	assert.Equal(t, "cookie", zhihu.AuthMode)
 }
 
 func TestLoaderSetCurrent(t *testing.T) {

@@ -12,6 +12,10 @@ const (
 	defaultHTTPPort = 8080
 	defaultLogLevel = "info"
 	defaultDBPath   = "./data/content-hub.db"
+
+	defaultCollectorHTTPClientProfileID  = "default_api_client"
+	defaultCollectorRetryPolicyProfileID = "default_api"
+	defaultCollectorAuthProfileID        = "none"
 )
 
 type Config struct {
@@ -60,9 +64,23 @@ type WorkflowConfig struct {
 }
 
 type LLMConfig struct {
+	DefaultProfile string                   `json:"default_profile,omitempty"`
+	Profiles       map[string]LLMProfileDef `json:"profiles,omitempty"`
+	Provider       string                   `json:"provider,omitempty"`
+	APIKey         string                   `json:"api_key,omitempty"`
+	BaseURL        string                   `json:"base_url,omitempty"`
+	Model          string                   `json:"model,omitempty"`
+	Temperature    float64                  `json:"temperature"`
+	MaxTokens      int                      `json:"max_tokens"`
+	TimeoutSec     int                      `json:"timeout_sec"`
+}
+
+type LLMProfileDef struct {
 	Provider    string  `json:"provider"`
 	APIKey      string  `json:"api_key,omitempty"`
-	BaseURL     string  `json:"base_url"`
+	APIKeyRef   string  `json:"api_key_ref,omitempty"`
+	BaseURL     string  `json:"base_url,omitempty"`
+	BaseURLRef  string  `json:"base_url_ref,omitempty"`
 	Model       string  `json:"model"`
 	Temperature float64 `json:"temperature"`
 	MaxTokens   int     `json:"max_tokens"`
@@ -134,6 +152,18 @@ func DefaultConfig() Config {
 			EnvPrefix: "CONTENTHUB",
 		},
 		LLM: LLMConfig{
+			DefaultProfile: "default_openai",
+			Profiles: map[string]LLMProfileDef{
+				"default_openai": {
+					Provider:    "openai",
+					APIKeyRef:   "env.OPENAI_API_KEY",
+					BaseURLRef:  "env.OPENAI_BASE_URL",
+					Model:       "gpt-4.1",
+					Temperature: 0.7,
+					MaxTokens:   4096,
+					TimeoutSec:  60,
+				},
+			},
 			Provider:    "openai",
 			Model:       "gpt-4",
 			Temperature: 0.7,
@@ -192,6 +222,9 @@ func (c *Config) Validate() error {
 	if len(c.Collector.Sources) == 0 {
 		return fmt.Errorf("collector.sources cannot be empty")
 	}
+	if err := c.validateLLM(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -201,6 +234,7 @@ func (c *Config) ResolveSecrets() {
 	c.resolvePlatformSecrets(&c.Platforms.Zhihu, "ZHIHU")
 	c.resolvePlatformSecrets(&c.Platforms.Toutiao, "TOUTIAO")
 	c.resolvePlatformSecrets(&c.Platforms.CSDN, "CSDN")
+	c.resolveLLMSecrets()
 }
 
 func (c *Config) resolvePlatformSecrets(p *PlatformEntry, platformKey string) {
@@ -211,6 +245,85 @@ func (c *Config) resolvePlatformSecrets(p *PlatformEntry, platformKey string) {
 	if p.Token == "" {
 		p.Token = os.Getenv(fmt.Sprintf("%s_%s_TOKEN", prefix, platformKey))
 	}
+}
+
+func (c *Config) resolveLLMSecrets() {
+	_ = c.ResolveLLMRuntime()
+}
+
+func (c *Config) ResolveLLMRuntime() error {
+	if c == nil {
+		return nil
+	}
+	if c.LLM.DefaultProfile == "" {
+		return nil
+	}
+	profile, ok := c.LLM.Profiles[c.LLM.DefaultProfile]
+	if !ok {
+		return fmt.Errorf("llm.default_profile %q does not exist", c.LLM.DefaultProfile)
+	}
+	resolvedProfile := resolvedLLMProfile(profile)
+	if profile.Provider == "" {
+		return fmt.Errorf("llm.profiles.%s.provider cannot be empty", c.LLM.DefaultProfile)
+	}
+	if profile.Model == "" {
+		return fmt.Errorf("llm.profiles.%s.model cannot be empty", c.LLM.DefaultProfile)
+	}
+	c.LLM.Provider = resolvedProfile.Provider
+	c.LLM.APIKey = resolvedProfile.APIKey
+	c.LLM.BaseURL = resolvedProfile.BaseURL
+	c.LLM.Model = resolvedProfile.Model
+	c.LLM.Temperature = resolvedProfile.Temperature
+	c.LLM.MaxTokens = resolvedProfile.MaxTokens
+	c.LLM.TimeoutSec = resolvedProfile.TimeoutSec
+	return nil
+}
+
+func (c *Config) validateLLM() error {
+	if c.LLM.DefaultProfile != "" {
+		profile, ok := c.LLM.Profiles[c.LLM.DefaultProfile]
+		if !ok {
+			return fmt.Errorf("llm.default_profile %q does not exist", c.LLM.DefaultProfile)
+		}
+		if profile.Provider == "" {
+			return fmt.Errorf("llm.profiles.%s.provider cannot be empty", c.LLM.DefaultProfile)
+		}
+		if profile.Model == "" {
+			return fmt.Errorf("llm.profiles.%s.model cannot be empty", c.LLM.DefaultProfile)
+		}
+	}
+	if c.LLM.Provider == "" {
+		return fmt.Errorf("llm.provider cannot be empty")
+	}
+	if c.LLM.Model == "" {
+		return fmt.Errorf("llm.model cannot be empty")
+	}
+	if c.LLM.MaxTokens <= 0 {
+		return fmt.Errorf("llm.max_tokens must be positive")
+	}
+	if c.LLM.TimeoutSec <= 0 {
+		return fmt.Errorf("llm.timeout_sec must be positive")
+	}
+	return nil
+}
+
+func resolveEnvSecretRef(ref string) string {
+	if !strings.HasPrefix(ref, "env.") {
+		return ""
+	}
+	name := strings.TrimPrefix(ref, "env.")
+	return os.Getenv(name)
+}
+
+func resolvedLLMProfile(profile LLMProfileDef) LLMProfileDef {
+	resolved := profile
+	if resolved.APIKey == "" {
+		resolved.APIKey = resolveEnvSecretRef(resolved.APIKeyRef)
+	}
+	if resolved.BaseURL == "" {
+		resolved.BaseURL = resolveEnvSecretRef(resolved.BaseURLRef)
+	}
+	return resolved
 }
 
 func (c *Config) Hash() (string, error) {
@@ -261,6 +374,9 @@ func (c *Config) Redacted() Config {
 	redacted.Platforms.Zhihu = redactPlatform(redacted.Platforms.Zhihu)
 	redacted.Platforms.Toutiao = redactPlatform(redacted.Platforms.Toutiao)
 	redacted.Platforms.CSDN = redactPlatform(redacted.Platforms.CSDN)
+	if redacted.LLM.APIKey != "" {
+		redacted.LLM.APIKey = maskSecret(redacted.LLM.APIKey)
+	}
 	return redacted
 }
 

@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"content-hub/collector/httpclient"
 	"content-hub/domain"
 	"context"
 	"fmt"
@@ -21,6 +22,14 @@ type SourcePlugin interface {
 
 type SourceConfigurablePlugin interface {
 	WithSourceConfig(source domain.CollectorSource) SourcePlugin
+}
+
+type SourceHTTPClientConfigurable interface {
+	WithHTTPClient(client *httpclient.Client) SourcePlugin
+}
+
+type SourceHTTPClientAccessor interface {
+	HTTPClient() *httpclient.Client
 }
 
 // SourceDescriptor 用于把平台元数据从插件层投影回 registry / 持久化层。

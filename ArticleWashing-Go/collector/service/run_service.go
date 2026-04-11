@@ -2,7 +2,9 @@ package service
 
 import (
 	"content-hub/collector/plugin"
+	collectorruntime "content-hub/collector/runtime"
 	"content-hub/domain"
+	"content-hub/infra/config"
 	"content-hub/pkg/repo"
 	"context"
 	"encoding/json"
@@ -15,10 +17,15 @@ type RunService struct {
 	runs    repo.CollectorRunRepo
 	entries repo.CollectorEntryRepo
 	plugins *plugin.Registry
+	runtime *runtimePluginAdapter
 }
 
 func NewRunService(sources repo.CollectorSourceRepo, runs repo.CollectorRunRepo, entries repo.CollectorEntryRepo, plugins *plugin.Registry) *RunService {
 	return &RunService{sources: sources, runs: runs, entries: entries, plugins: plugins}
+}
+
+func NewRunServiceWithRuntime(sources repo.CollectorSourceRepo, runs repo.CollectorRunRepo, entries repo.CollectorEntryRepo, plugins *plugin.Registry, cfg config.Config, secrets collectorruntime.SecretResolver) *RunService {
+	return &RunService{sources: sources, runs: runs, entries: entries, plugins: plugins, runtime: newRuntimePluginAdapter(cfg, secrets)}
 }
 
 func (s *RunService) RunHotlist(ctx context.Context, trigger string) (*domain.CollectorRunSummary, error) {
@@ -81,7 +88,10 @@ func (s *RunService) runSource(ctx context.Context, runID string, sourceRun *dom
 	if err != nil {
 		return 0, err
 	}
-	p = pluginForSourceConfig(p, source)
+	p, err = s.configurePlugin(p, source)
+	if err != nil {
+		return 0, err
+	}
 	entries, err := p.FetchHotlist(ctx, plugin.FetchHotlistRequest{Limit: source.HotlistLimit})
 	if err != nil {
 		return 0, err
@@ -106,6 +116,13 @@ func (s *RunService) runSource(ctx context.Context, runID string, sourceRun *dom
 	sourceRun.DiscoveredCount = len(entries)
 	sourceRun.StoredCount = stored
 	return stored, nil
+}
+
+func (s *RunService) configurePlugin(p plugin.SourcePlugin, source domain.CollectorSource) (plugin.SourcePlugin, error) {
+	if s.runtime == nil {
+		return pluginForSourceConfig(p, source), nil
+	}
+	return s.runtime.configure(p, source)
 }
 
 func (s *RunService) ListRuns(ctx context.Context, limit int) ([]domain.CollectorRun, error) {

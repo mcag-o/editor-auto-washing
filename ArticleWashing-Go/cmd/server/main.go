@@ -18,6 +18,7 @@ type serverRunner interface {
 }
 
 var buildRuntimeReposFn = buildRuntimeRepos
+var buildStandaloneRuntimeReposFn = service.BuildStandaloneRuntimeRepos
 var newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serverRunner {
 	return httpserver.NewServer(cfg, provider)
 }
@@ -36,24 +37,33 @@ func run() error {
 	workspaceRoot := workspaceRootFromEnv()
 
 	var cfg config.Config
+	selectedStandaloneFallback := false
 	if runtimeCfg, err := workspaceConfigSvc.RuntimeConfig(workspaceRoot); err == nil {
 		cfg = runtimeCfg
 		loader.SetCurrent(cfg)
 	} else {
-		// 说明：这里继续保留独立配置文件回退路径，方便在未初始化 workspace 的场景下启动服务。
-		// 后续如果所有环境都完成 workspace 化，可以再统一收敛配置入口。
-		fallback := config.NewLoader("./config/config.json")
+		fallbackPath := "./config/config.json"
+		if _, statErr := os.Stat(fallbackPath); statErr != nil {
+			return fmt.Errorf("load standalone config: failed to read config file: %w", statErr)
+		}
+		fallback := config.NewLoader(fallbackPath)
 		loadedCfg, loadErr := fallback.Load()
 		if loadErr != nil {
-			cfg = config.DefaultConfig()
-			cfg.ResolveSecrets()
-		} else {
-			cfg = loadedCfg
+			return fmt.Errorf("load standalone config: %w", loadErr)
 		}
+		cfg = loadedCfg
 		loader.SetCurrent(cfg)
+		selectedStandaloneFallback = true
 	}
 
-	runtimeRepos, cleanup, err := buildRuntimeReposFn(workspaceRoot)
+	var runtimeRepos *service.RuntimeRepos
+	var cleanup func() error
+	var err error
+	if selectedStandaloneFallback {
+		runtimeRepos, cleanup, err = buildStandaloneRuntimeReposFn(cfg)
+	} else {
+		runtimeRepos, cleanup, err = buildRuntimeReposFn(workspaceRoot)
+	}
 	if err != nil {
 		return err
 	}
