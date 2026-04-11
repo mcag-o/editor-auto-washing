@@ -437,12 +437,8 @@ func mergeCollectorSourceDef(base CollectorSourceDef, override CollectorSourceDe
 	if override.SourceURL != "" {
 		merged.SourceURL = override.SourceURL
 	}
-	if override.Enabled {
-		merged.Enabled = true
-	}
-	if override.ScheduleEnabled {
-		merged.ScheduleEnabled = true
-	}
+	merged.Enabled = override.Enabled
+	merged.ScheduleEnabled = override.ScheduleEnabled
 	if override.IntervalMinutes != 0 {
 		merged.IntervalMinutes = override.IntervalMinutes
 	}
@@ -452,9 +448,7 @@ func mergeCollectorSourceDef(base CollectorSourceDef, override CollectorSourceDe
 	if override.HotlistLimit != 0 {
 		merged.HotlistLimit = override.HotlistLimit
 	}
-	if override.DetailFetchEnabled {
-		merged.DetailFetchEnabled = true
-	}
+	merged.DetailFetchEnabled = override.DetailFetchEnabled
 	if override.Concurrency != 0 {
 		merged.Concurrency = override.Concurrency
 	}
@@ -497,11 +491,7 @@ func mergeCollectorSourceDef(base CollectorSourceDef, override CollectorSourceDe
 	if override.MigrationReference != "" {
 		merged.MigrationReference = override.MigrationReference
 	}
-	if override.SupportsArticle {
-		merged.SupportsArticle = true
-	}
-	if override.PlaceholderRequired {
-		merged.PlaceholderRequired = true
-	}
+	merged.SupportsArticle = override.SupportsArticle
+	merged.PlaceholderRequired = override.PlaceholderRequired
 	return merged
 }

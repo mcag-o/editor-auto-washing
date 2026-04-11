@@ -406,6 +406,35 @@ func TestLoaderApplyDefaults_MergesCollectorSourceOverridesWithBuiltInCatalog(t 
 	assert.Equal(t, "https://www.zhihu.com/api/v3/explore/guest/feeds?limit=30&ws_qiangzhisafe=0", zhihu.SourceURL)
 }
 
+func TestLoaderApplyDefaults_SourceOverrideCanDisableBuiltInBooleanFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"sources": map[string]any{
+				"baidu": map[string]any{
+					"enabled":              false,
+					"schedule_enabled":     false,
+					"detail_fetch_enabled": false,
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	baidu := cfg.Collector.Sources["baidu"]
+	assert.False(t, baidu.Enabled)
+	assert.False(t, baidu.ScheduleEnabled)
+	assert.False(t, baidu.DetailFetchEnabled)
+	assert.Equal(t, "百度热搜", baidu.DisplayName)
+}
+
 func TestLoaderSetCurrent(t *testing.T) {
 	loader := NewLoader("")
 	cfg := DefaultConfig()
