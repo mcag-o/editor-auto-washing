@@ -12,6 +12,10 @@ const (
 	defaultHTTPPort = 8080
 	defaultLogLevel = "info"
 	defaultDBPath   = "./data/content-hub.db"
+
+	defaultCollectorHTTPClientProfileID  = "default_api_client"
+	defaultCollectorRetryPolicyProfileID = "default_api"
+	defaultCollectorAuthProfileID        = "none"
 )
 
 type Config struct {

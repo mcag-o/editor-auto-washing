@@ -82,28 +82,28 @@ type CollectorSourceDef struct {
 func DefaultCollectorConfig() CollectorConfig {
 	return CollectorConfig{
 		Defaults: CollectorDefaults{
-			HTTPClient:   "default_api_client",
-			RetryPolicy:  "default_api",
-			AuthProfile:  domain.CollectorAuthModeNone,
+			HTTPClient:   defaultCollectorHTTPClientProfileID,
+			RetryPolicy:  defaultCollectorRetryPolicyProfileID,
+			AuthProfile:  defaultCollectorAuthProfileID,
 			TimeoutMS:    10000,
 			IntervalMins: 30,
 			HotlistLimit: 50,
 			Concurrency:  1,
 		},
 		HTTPClients: map[string]HTTPClientProfile{
-			"default_api_client": {
+			defaultCollectorHTTPClientProfileID: {
 				Headers: map[string]string{},
 			},
 		},
 		RetryPolicies: map[string]RetryPolicyProfile{
-			"default_api": {
+			defaultCollectorRetryPolicyProfileID: {
 				MaxAttempts: 3,
 				BaseWaitMS:  500,
 				MaxWaitMS:   5000,
 			},
 		},
 		AuthProfiles: map[string]AuthProfileConfig{
-			"none": {
+			defaultCollectorAuthProfileID: {
 				Mode: domain.CollectorAuthModeNone,
 			},
 			"header": {
@@ -298,8 +298,8 @@ func collectorSourceDef(displayName string, aliases []string, sourceType string,
 		DetailFetchEnabled:  supportsArticle && enabled,
 		Concurrency:         1,
 		AuthMode:            authMode,
-		HTTPClient:          "default_api_client",
-		RetryPolicy:         "default_api",
+		HTTPClient:          defaultCollectorHTTPClientProfileID,
+		RetryPolicy:         defaultCollectorRetryPolicyProfileID,
 		AuthProfile:         authMode,
 		Status:              status,
 		Goal:                goal,

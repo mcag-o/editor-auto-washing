@@ -256,3 +256,72 @@ func TestConfigValidate_RejectsMissingCollectorPolicyReference(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "collector.sources.zhihu.http_client")
 }
+
+func TestConfigValidate_RejectsMissingCollectorDefaultPolicyReference(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(*Config)
+		wantErr string
+	}{
+		{
+			name: "missing default http client",
+			mutate: func(cfg *Config) {
+				cfg.Collector.Defaults.HTTPClient = "missing-client"
+			},
+			wantErr: "collector.defaults.http_client",
+		},
+		{
+			name: "missing default retry policy",
+			mutate: func(cfg *Config) {
+				cfg.Collector.Defaults.RetryPolicy = "missing-policy"
+			},
+			wantErr: "collector.defaults.retry_policy",
+		},
+		{
+			name: "missing default auth profile",
+			mutate: func(cfg *Config) {
+				cfg.Collector.Defaults.AuthProfile = "missing-auth"
+			},
+			wantErr: "collector.defaults.auth_profile",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			tt.mutate(&cfg)
+
+			err := cfg.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestConfigValidate_RejectsMissingCollectorSourceRetryPolicyReference(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Collector.Sources["zhihu"] = CollectorSourceDef{
+		DisplayName: "知乎热榜",
+		SourceType:  "json-api",
+		SourceURL:   "https://www.zhihu.com/api/v3/explore/guest/feeds",
+		RetryPolicy: "missing-policy",
+	}
+
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "collector.sources.zhihu.retry_policy")
+}
+
+func TestConfigValidate_RejectsMissingCollectorSourceAuthProfileReference(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Collector.Sources["zhihu"] = CollectorSourceDef{
+		DisplayName: "知乎热榜",
+		SourceType:  "json-api",
+		SourceURL:   "https://www.zhihu.com/api/v3/explore/guest/feeds",
+		AuthProfile: "missing-auth",
+	}
+
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "collector.sources.zhihu.auth_profile")
+}
