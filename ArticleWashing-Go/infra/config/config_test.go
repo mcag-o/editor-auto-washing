@@ -3,6 +3,8 @@ package config
 import (
 	"testing"
 
+	"content-hub/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -379,6 +381,17 @@ func TestConfigValidate_RejectsInvalidUnreferencedCollectorAuthProfileMode(t *te
 	err := cfg.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "collector.auth_profiles.broken_auth.mode")
+}
+
+func TestConfigValidate_RejectsHeaderAuthProfileWithoutHeaderName(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Collector.AuthProfiles["broken_auth"] = AuthProfileConfig{
+		Mode: domain.CollectorAuthModeHeader,
+	}
+
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "collector.auth_profiles.broken_auth.header_name")
 }
 
 func TestConfigValidate_RejectsCollectorSourceAuthModeWithoutAuthProfile(t *testing.T) {

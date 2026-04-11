@@ -388,6 +388,12 @@ func mergeAuthProfile(base AuthProfileConfig, override AuthProfileConfig) AuthPr
 	if override.Mode != "" {
 		merged.Mode = override.Mode
 	}
+	if override.HeaderName != "" {
+		merged.HeaderName = override.HeaderName
+	}
+	if override.HeaderValuePrefix != "" {
+		merged.HeaderValuePrefix = override.HeaderValuePrefix
+	}
 	return merged
 }
 

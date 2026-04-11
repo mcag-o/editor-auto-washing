@@ -44,7 +44,9 @@ type RetryPolicyProfile struct {
 }
 
 type AuthProfileConfig struct {
-	Mode string `json:"mode"`
+	Mode              string `json:"mode"`
+	HeaderName        string `json:"header_name,omitempty"`
+	HeaderValuePrefix string `json:"header_value_prefix,omitempty"`
 }
 
 // CollectorSourceDef 是平台注册元数据的配置表达。
@@ -107,7 +109,8 @@ func DefaultCollectorConfig() CollectorConfig {
 				Mode: domain.CollectorAuthModeNone,
 			},
 			"header": {
-				Mode: domain.CollectorAuthModeHeader,
+				Mode:       domain.CollectorAuthModeHeader,
+				HeaderName: "Authorization",
 			},
 			"cookie": {
 				Mode: domain.CollectorAuthModeCookie,
@@ -222,6 +225,9 @@ func validateAuthProfile(name string, profile AuthProfileConfig) error {
 	}
 	if !validModes[mode] {
 		return fmt.Errorf("collector.auth_profiles.%s.mode must be one of none,header,cookie", name)
+	}
+	if mode == domain.CollectorAuthModeHeader && strings.TrimSpace(profile.HeaderName) == "" {
+		return fmt.Errorf("collector.auth_profiles.%s.header_name cannot be empty for header auth", name)
 	}
 	return nil
 }

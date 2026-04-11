@@ -95,15 +95,24 @@ func (r *PolicyResolver) buildResolvedSourceConfig(sourceID string, source confi
 			Wait:        time.Duration(retryProfile.BaseWaitMS) * time.Millisecond,
 			MaxWait:     time.Duration(retryProfile.MaxWaitMS) * time.Millisecond,
 		},
-		Auth:    auth,
-		Options: map[string]any{},
+		Auth: auth,
+		Options: map[string]any{
+			"detail_fetch_enabled": source.DetailFetchEnabled,
+			"goal":                 source.Goal,
+			"placeholder_required": source.PlaceholderRequired,
+			"source_type":          source.SourceType,
+			"status":               source.Status,
+			"supports_article":     source.SupportsArticle,
+		},
 	}, nil
 }
 
 func (r *PolicyResolver) resolveAuthConfig(source config.CollectorSourceDef, authProfile config.AuthProfileConfig) (ResolvedAuthConfig, error) {
 	resolved := ResolvedAuthConfig{
-		Mode:    strings.TrimSpace(authProfile.Mode),
-		Headers: map[string]string{},
+		Mode:              strings.TrimSpace(authProfile.Mode),
+		Headers:           map[string]string{},
+		HeaderName:        strings.TrimSpace(authProfile.HeaderName),
+		HeaderValuePrefix: authProfile.HeaderValuePrefix,
 	}
 
 	if resolved.Mode == "" {
@@ -124,7 +133,11 @@ func (r *PolicyResolver) resolveAuthConfig(source config.CollectorSourceDef, aut
 			return ResolvedAuthConfig{}, fmt.Errorf("resolve header secret %s: %w", ref, err)
 		}
 		if secret != "" {
-			resolved.Headers = map[string]string{"Authorization": secret}
+			headerName := resolved.HeaderName
+			if headerName == "" {
+				headerName = "Authorization"
+			}
+			resolved.Headers = map[string]string{headerName: resolved.HeaderValuePrefix + secret}
 		}
 	}
 

@@ -9,9 +9,11 @@ type RetryRuntimeConfig struct {
 }
 
 type ResolvedAuthConfig struct {
-	Mode    string
-	Cookie  string
-	Headers map[string]string
+	Mode              string
+	Cookie            string
+	Headers           map[string]string
+	HeaderName        string
+	HeaderValuePrefix string
 }
 
 type ResolvedSourceRuntimeConfig struct {

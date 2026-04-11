@@ -347,6 +347,32 @@ func TestLoaderApplyDefaults_PartiallyOverridesBuiltInAuthProfile(t *testing.T) 
 	assert.Equal(t, "cookie", profile.Mode)
 }
 
+func TestLoaderApplyDefaults_MergesExtendedAuthProfileFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"auth_profiles": map[string]any{
+				"header": map[string]any{
+					"header_value_prefix": "Bearer ",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	profile := cfg.Collector.AuthProfiles["header"]
+	assert.Equal(t, "header", profile.Mode)
+	assert.Equal(t, "Authorization", profile.HeaderName)
+	assert.Equal(t, "Bearer ", profile.HeaderValuePrefix)
+}
+
 func TestLoaderApplyDefaults_PartiallyOverridesBuiltInHTTPClientProfile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
