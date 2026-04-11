@@ -394,6 +394,15 @@ func TestConfigValidate_RejectsHeaderAuthProfileWithoutHeaderName(t *testing.T) 
 	assert.Contains(t, err.Error(), "collector.auth_profiles.broken_auth.header_name")
 }
 
+func TestConfigValidate_RejectsMissingDefaultLLMProfile(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LLM.DefaultProfile = "missing"
+
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "llm.default_profile")
+}
+
 func TestConfigValidate_RejectsCollectorSourceAuthModeWithoutAuthProfile(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Collector.Sources["zhihu"] = CollectorSourceDef{

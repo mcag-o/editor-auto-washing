@@ -28,13 +28,40 @@ func TestRunUsesCurrentDirectoryWorkspaceRootByDefault(t *testing.T) {
 }
 
 func TestRunPropagatesServerStartupFailure(t *testing.T) {
+	workingDir := t.TempDir()
+	t.Chdir(workingDir)
+	configDir := filepath.Join(workingDir, "config")
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.json"), []byte(`{
+	  "llm": {
+	    "default_profile": "default_openai",
+	    "profiles": {
+	      "default_openai": {
+	        "provider": "openai",
+	        "model": "gpt-4.1",
+	        "temperature": 0.2,
+	        "max_tokens": 4096,
+	        "timeout_sec": 60
+	      }
+	    }
+	  }
+	}`), 0o644))
+
 	originalBuild := buildRuntimeReposFn
+	originalStandaloneBuild := buildStandaloneRuntimeReposFn
 	originalNewServer := newHTTPServer
 	defer func() {
 		buildRuntimeReposFn = originalBuild
+		buildStandaloneRuntimeReposFn = originalStandaloneBuild
 		newHTTPServer = originalNewServer
 	}()
 	buildRuntimeReposFn = func(root string) (*service.RuntimeRepos, func() error, error) {
+		provider := memory.NewProvider()
+		return &service.RuntimeRepos{
+			ArticleRepo: provider.ArticleRepo(), TemplateRepo: provider.TemplateRepo(), DraftRepo: provider.DraftRepo(), AssetRepo: provider.AssetRepo(), ReviewRepo: provider.ReviewRepo(), PublishRepo: provider.PublishRepo(), JobRepo: provider.JobRepo(), JobEventRepo: provider.JobEventRepo(), IngestionRepo: provider.IngestionRepo(), WorkspaceRepo: provider.WorkspaceRepo(), CollectorSourceRepo: provider.CollectorSourceRepo(), CollectorRunRepo: provider.CollectorRunRepo(), CollectorEntryRepo: provider.CollectorEntryRepo(), CollectorSchedulerRepo: provider.CollectorSchedulerRepo(), RenderedDir: t.TempDir(),
+		}, func() error { return nil }, nil
+	}
+	buildStandaloneRuntimeReposFn = func(cfg config.Config) (*service.RuntimeRepos, func() error, error) {
 		provider := memory.NewProvider()
 		return &service.RuntimeRepos{
 			ArticleRepo: provider.ArticleRepo(), TemplateRepo: provider.TemplateRepo(), DraftRepo: provider.DraftRepo(), AssetRepo: provider.AssetRepo(), ReviewRepo: provider.ReviewRepo(), PublishRepo: provider.PublishRepo(), JobRepo: provider.JobRepo(), JobEventRepo: provider.JobEventRepo(), IngestionRepo: provider.IngestionRepo(), WorkspaceRepo: provider.WorkspaceRepo(), CollectorSourceRepo: provider.CollectorSourceRepo(), CollectorRunRepo: provider.CollectorRunRepo(), CollectorEntryRepo: provider.CollectorEntryRepo(), CollectorSchedulerRepo: provider.CollectorSchedulerRepo(), RenderedDir: t.TempDir(),
@@ -118,6 +145,68 @@ func TestRunReturnsStandaloneConfigLoadFailureWhenWorkspaceConfigFails(t *testin
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "load standalone config")
 	assert.Contains(t, err.Error(), "failed to read config file")
+}
+
+func TestRunStandaloneFallbackRemainsAuthoritativeThroughRuntimeBootstrap(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	t.Setenv("CONTENT_HUB_WORKSPACE_ROOT", workspaceRoot)
+	workingDir := t.TempDir()
+	t.Chdir(workingDir)
+	t.Setenv("OPENAI_API_KEY", "standalone-key")
+	t.Setenv("OPENAI_BASE_URL", "https://standalone.example.test")
+	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, "workspace.yaml"), []byte("name: [\n"), 0o644))
+
+	configDir := filepath.Join(workingDir, "config")
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.json"), []byte(`{
+	  "database": {
+	    "path": "./standalone/authoritative.db"
+	  },
+	  "template": {
+	    "prompt_dir": "./standalone-prompts",
+	    "default_prompt": "standalone-default"
+	  },
+	  "llm": {
+	    "default_profile": "external_profile",
+	    "profiles": {
+	      "external_profile": {
+	        "provider": "openai",
+	        "api_key_ref": "env.OPENAI_API_KEY",
+	        "base_url_ref": "env.OPENAI_BASE_URL",
+	        "model": "gpt-4.1-mini",
+	        "temperature": 0.25,
+	        "max_tokens": 2048,
+	        "timeout_sec": 45
+	      }
+	    }
+	  }
+	}`), 0o644))
+
+	originalBuild := buildRuntimeReposFn
+	originalStandaloneBuild := buildStandaloneRuntimeReposFn
+	originalNewServer := newHTTPServer
+	defer func() {
+		buildRuntimeReposFn = originalBuild
+		buildStandaloneRuntimeReposFn = originalStandaloneBuild
+		newHTTPServer = originalNewServer
+	}()
+	buildRuntimeReposFn = func(root string) (*service.RuntimeRepos, func() error, error) {
+		return nil, nil, fmt.Errorf("workspace runtime builder called for %s", root)
+	}
+	buildStandaloneRuntimeReposFn = func(cfg config.Config) (*service.RuntimeRepos, func() error, error) {
+		return nil, nil, fmt.Errorf("standalone runtime bootstrap db=%s llm=%s prompt=%s", cfg.Database.Path, cfg.LLM.Model, cfg.Template.DefaultPrompt)
+	}
+	newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serverRunner {
+		return failingServerRunner{err: fmt.Errorf("server received db=%s llm=%s prompt=%s", cfg.Database.Path, cfg.LLM.Model, cfg.Template.DefaultPrompt)}
+	}
+
+	err := run()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "standalone runtime bootstrap db=./standalone/authoritative.db llm=gpt-4.1-mini prompt=standalone-default")
+	assert.NotContains(t, err.Error(), "workspace runtime builder called")
+	assert.NotContains(t, err.Error(), "workspace_data")
+	assert.NotContains(t, err.Error(), "daily-intelligence")
 }
 
 func TestBuildRuntimeReposExposesCollectorRepos(t *testing.T) {

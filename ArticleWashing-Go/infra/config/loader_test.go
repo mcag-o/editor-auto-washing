@@ -45,6 +45,8 @@ func TestLoaderLoadExistingFile(t *testing.T) {
 func TestLoader_LoadsLLMProfileRefsWithoutHardcodedSecrets(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
+	t.Setenv("OPENAI_API_KEY", "env-openai-key")
+	t.Setenv("OPENAI_BASE_URL", "https://llm.example.test")
 	require.NoError(t, os.WriteFile(path, []byte(`{
 	  "llm": {
 	    "default_profile": "default_openai",
@@ -66,7 +68,37 @@ func TestLoader_LoadsLLMProfileRefsWithoutHardcodedSecrets(t *testing.T) {
 	cfg, err := loader.Load()
 	require.NoError(t, err)
 	assert.Equal(t, "default_openai", cfg.LLM.DefaultProfile)
+	assert.Equal(t, "openai", cfg.LLM.Provider)
+	assert.Equal(t, "env-openai-key", cfg.LLM.APIKey)
+	assert.Equal(t, "https://llm.example.test", cfg.LLM.BaseURL)
+	assert.Equal(t, "gpt-4.1", cfg.LLM.Model)
 	assert.Empty(t, cfg.LLM.Profiles["default_openai"].APIKey)
+}
+
+func TestLoaderLoadRejectsMissingDefaultLLMProfile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{
+	  "llm": {
+	    "default_profile": "missing",
+	    "profiles": {
+	      "default_openai": {
+	        "provider": "openai",
+	        "model": "gpt-4.1",
+	        "temperature": 0.2,
+	        "max_tokens": 4096,
+	        "timeout_sec": 60
+	      }
+	    }
+	  }
+	}`), 0o644))
+
+	loader := NewLoader(path)
+	_, err := loader.Load()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "config validation failed")
+	assert.Contains(t, err.Error(), "llm.default_profile")
 }
 
 func TestLoaderLoadInvalidJSON(t *testing.T) {

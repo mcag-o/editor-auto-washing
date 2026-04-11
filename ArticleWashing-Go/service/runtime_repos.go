@@ -1,6 +1,7 @@
 package service
 
 import (
+	"content-hub/infra/config"
 	"content-hub/infra/formatter"
 	"content-hub/infra/sqlite"
 	workspaceinfra "content-hub/infra/workspace"
@@ -42,6 +43,25 @@ func BuildRuntimeRepos(root string) (*RuntimeRepos, func() error, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	return buildRuntimeReposFromResolved(runtimeCfg, resolved.Paths.RenderedDir, resolved.Paths.TemplateDirs)
+}
+
+func BuildStandaloneRuntimeRepos(cfg config.Config) (*RuntimeRepos, func() error, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, nil, err
+	}
+	renderedDir := cfg.Storage.BasePath
+	if renderedDir != "" {
+		renderedDir = filepath.Join(renderedDir, "rendered")
+	}
+	var templateDirs []string
+	if cfg.Template.PromptDir != "" {
+		templateDirs = []string{cfg.Template.PromptDir}
+	}
+	return buildRuntimeReposFromResolved(cfg, renderedDir, templateDirs)
+}
+
+func buildRuntimeReposFromResolved(runtimeCfg config.Config, renderedDir string, templateDirs []string) (*RuntimeRepos, func() error, error) {
 	if err := os.MkdirAll(filepath.Dir(runtimeCfg.Database.Path), 0o755); err != nil {
 		return nil, nil, fmt.Errorf("create runtime db dir: %w", err)
 	}
@@ -49,8 +69,7 @@ func BuildRuntimeRepos(root string) (*RuntimeRepos, func() error, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	_ = resolved
-	wechatFormatter := formatter.NewWechatHtmlFormatter(resolved.Paths.TemplateDirs)
+	wechatFormatter := formatter.NewWechatHtmlFormatter(templateDirs)
 	return &RuntimeRepos{
 		ArticleRepo:            sqliteProvider.ArticleRepo(),
 		TemplateRepo:           sqliteProvider.TemplateRepo(),
@@ -58,7 +77,7 @@ func BuildRuntimeRepos(root string) (*RuntimeRepos, func() error, error) {
 		AssetRepo:              sqliteProvider.AssetRepo(),
 		ReviewRepo:             sqliteProvider.ReviewRepo(),
 		Formatter:              wechatFormatter,
-		RenderedDir:            resolved.Paths.RenderedDir,
+		RenderedDir:            renderedDir,
 		PublishRepo:            sqliteProvider.PublishRepo(),
 		JobRepo:                sqliteProvider.JobRepo(),
 		JobEventRepo:           sqliteProvider.JobEventRepo(),

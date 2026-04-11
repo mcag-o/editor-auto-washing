@@ -222,6 +222,9 @@ func (c *Config) Validate() error {
 	if len(c.Collector.Sources) == 0 {
 		return fmt.Errorf("collector.sources cannot be empty")
 	}
+	if err := c.validateLLM(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -231,6 +234,7 @@ func (c *Config) ResolveSecrets() {
 	c.resolvePlatformSecrets(&c.Platforms.Zhihu, "ZHIHU")
 	c.resolvePlatformSecrets(&c.Platforms.Toutiao, "TOUTIAO")
 	c.resolvePlatformSecrets(&c.Platforms.CSDN, "CSDN")
+	c.resolveLLMSecrets()
 }
 
 func (c *Config) resolvePlatformSecrets(p *PlatformEntry, platformKey string) {
@@ -241,6 +245,85 @@ func (c *Config) resolvePlatformSecrets(p *PlatformEntry, platformKey string) {
 	if p.Token == "" {
 		p.Token = os.Getenv(fmt.Sprintf("%s_%s_TOKEN", prefix, platformKey))
 	}
+}
+
+func (c *Config) resolveLLMSecrets() {
+	_ = c.ResolveLLMRuntime()
+}
+
+func (c *Config) ResolveLLMRuntime() error {
+	if c == nil {
+		return nil
+	}
+	if c.LLM.DefaultProfile == "" {
+		return nil
+	}
+	profile, ok := c.LLM.Profiles[c.LLM.DefaultProfile]
+	if !ok {
+		return fmt.Errorf("llm.default_profile %q does not exist", c.LLM.DefaultProfile)
+	}
+	resolvedProfile := resolvedLLMProfile(profile)
+	if profile.Provider == "" {
+		return fmt.Errorf("llm.profiles.%s.provider cannot be empty", c.LLM.DefaultProfile)
+	}
+	if profile.Model == "" {
+		return fmt.Errorf("llm.profiles.%s.model cannot be empty", c.LLM.DefaultProfile)
+	}
+	c.LLM.Provider = resolvedProfile.Provider
+	c.LLM.APIKey = resolvedProfile.APIKey
+	c.LLM.BaseURL = resolvedProfile.BaseURL
+	c.LLM.Model = resolvedProfile.Model
+	c.LLM.Temperature = resolvedProfile.Temperature
+	c.LLM.MaxTokens = resolvedProfile.MaxTokens
+	c.LLM.TimeoutSec = resolvedProfile.TimeoutSec
+	return nil
+}
+
+func (c *Config) validateLLM() error {
+	if c.LLM.DefaultProfile != "" {
+		profile, ok := c.LLM.Profiles[c.LLM.DefaultProfile]
+		if !ok {
+			return fmt.Errorf("llm.default_profile %q does not exist", c.LLM.DefaultProfile)
+		}
+		if profile.Provider == "" {
+			return fmt.Errorf("llm.profiles.%s.provider cannot be empty", c.LLM.DefaultProfile)
+		}
+		if profile.Model == "" {
+			return fmt.Errorf("llm.profiles.%s.model cannot be empty", c.LLM.DefaultProfile)
+		}
+	}
+	if c.LLM.Provider == "" {
+		return fmt.Errorf("llm.provider cannot be empty")
+	}
+	if c.LLM.Model == "" {
+		return fmt.Errorf("llm.model cannot be empty")
+	}
+	if c.LLM.MaxTokens <= 0 {
+		return fmt.Errorf("llm.max_tokens must be positive")
+	}
+	if c.LLM.TimeoutSec <= 0 {
+		return fmt.Errorf("llm.timeout_sec must be positive")
+	}
+	return nil
+}
+
+func resolveEnvSecretRef(ref string) string {
+	if !strings.HasPrefix(ref, "env.") {
+		return ""
+	}
+	name := strings.TrimPrefix(ref, "env.")
+	return os.Getenv(name)
+}
+
+func resolvedLLMProfile(profile LLMProfileDef) LLMProfileDef {
+	resolved := profile
+	if resolved.APIKey == "" {
+		resolved.APIKey = resolveEnvSecretRef(resolved.APIKeyRef)
+	}
+	if resolved.BaseURL == "" {
+		resolved.BaseURL = resolveEnvSecretRef(resolved.BaseURLRef)
+	}
+	return resolved
 }
 
 func (c *Config) Hash() (string, error) {

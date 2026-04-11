@@ -104,12 +104,24 @@ func BuildRuntimeConfig(resolved domain.ResolvedWorkspaceSettings) (config.Confi
 		cfg.Template.PromptDir = resolved.Paths.TemplateDirs[0]
 	}
 	cfg.Template.DefaultPrompt = articleProfile.Template
-	cfg.LLM.Provider = providerProfile.Provider
-	cfg.LLM.Model = providerProfile.Model
-	cfg.LLM.BaseURL = providerProfile.BaseURL
-	cfg.LLM.Temperature = providerProfile.Temperature
-	cfg.LLM.MaxTokens = providerProfile.MaxTokens
+	if providerProfile.Provider != "" {
+		cfg.LLM.Provider = providerProfile.Provider
+	}
+	if providerProfile.Model != "" {
+		cfg.LLM.Model = providerProfile.Model
+	}
+	if providerProfile.BaseURL != "" {
+		cfg.LLM.BaseURL = providerProfile.BaseURL
+	}
+	if providerProfile.Temperature != 0 {
+		cfg.LLM.Temperature = providerProfile.Temperature
+	}
+	if providerProfile.MaxTokens != 0 {
+		cfg.LLM.MaxTokens = providerProfile.MaxTokens
+	}
 	cfg.LLM.APIKey = resolved.Secrets[providerProfile.SecretRef]
+	cfg.LLM.DefaultProfile = ""
+	cfg.LLM.Profiles = nil
 	cfg.Platforms.WeChat.Enabled = publishProfile.Platform == "wechat"
 	cfg.Platforms.WeChat.Token = resolved.Secrets[publishProfile.SecretRef]
 

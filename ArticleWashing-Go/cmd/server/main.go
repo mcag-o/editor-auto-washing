@@ -18,6 +18,7 @@ type serverRunner interface {
 }
 
 var buildRuntimeReposFn = buildRuntimeRepos
+var buildStandaloneRuntimeReposFn = service.BuildStandaloneRuntimeRepos
 var newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serverRunner {
 	return httpserver.NewServer(cfg, provider)
 }
@@ -36,6 +37,7 @@ func run() error {
 	workspaceRoot := workspaceRootFromEnv()
 
 	var cfg config.Config
+	selectedStandaloneFallback := false
 	if runtimeCfg, err := workspaceConfigSvc.RuntimeConfig(workspaceRoot); err == nil {
 		cfg = runtimeCfg
 		loader.SetCurrent(cfg)
@@ -51,9 +53,17 @@ func run() error {
 		}
 		cfg = loadedCfg
 		loader.SetCurrent(cfg)
+		selectedStandaloneFallback = true
 	}
 
-	runtimeRepos, cleanup, err := buildRuntimeReposFn(workspaceRoot)
+	var runtimeRepos *service.RuntimeRepos
+	var cleanup func() error
+	var err error
+	if selectedStandaloneFallback {
+		runtimeRepos, cleanup, err = buildStandaloneRuntimeReposFn(cfg)
+	} else {
+		runtimeRepos, cleanup, err = buildRuntimeReposFn(workspaceRoot)
+	}
 	if err != nil {
 		return err
 	}
