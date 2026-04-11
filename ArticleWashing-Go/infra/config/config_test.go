@@ -380,3 +380,17 @@ func TestConfigValidate_RejectsInvalidUnreferencedCollectorAuthProfileMode(t *te
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "collector.auth_profiles.broken_auth.mode")
 }
+
+func TestConfigValidate_RejectsCollectorSourceAuthModeWithoutAuthProfile(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Collector.Sources["zhihu"] = CollectorSourceDef{
+		DisplayName: "知乎热榜",
+		SourceType:  "json-api",
+		SourceURL:   "https://www.zhihu.com/api/v3/explore/guest/feeds",
+		AuthMode:    "cookie",
+	}
+
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "collector.sources.zhihu.auth_mode")
+}

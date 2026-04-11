@@ -181,6 +181,9 @@ func (c CollectorConfig) Validate() error {
 				return fmt.Errorf("collector.sources.%s.retry_policy references unknown profile %q", id, source.RetryPolicy)
 			}
 		}
+		if strings.TrimSpace(source.AuthMode) != "" && strings.TrimSpace(source.AuthProfile) == "" {
+			return fmt.Errorf("collector.sources.%s.auth_mode requires explicit auth_profile", id)
+		}
 		if source.AuthProfile != "" {
 			profile, ok := c.AuthProfiles[source.AuthProfile]
 			if !ok {

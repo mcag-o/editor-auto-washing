@@ -373,6 +373,39 @@ func TestLoaderApplyDefaults_PartiallyOverridesBuiltInHTTPClientProfile(t *testi
 	assert.Empty(t, profile.Headers)
 }
 
+func TestLoaderApplyDefaults_MergesCollectorSourceOverridesWithBuiltInCatalog(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	partial := map[string]any{
+		"collector": map[string]any{
+			"sources": map[string]any{
+				"zhihu": map[string]any{
+					"display_name":         "知乎热榜-自定义",
+					"interval_minutes":     15,
+					"detail_fetch_enabled": true,
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(partial)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+
+	require.NoError(t, err)
+	assert.Len(t, cfg.Collector.Sources, 22)
+	assert.Contains(t, cfg.Collector.Sources, "baidu")
+	assert.Contains(t, cfg.Collector.Sources, "zhihu")
+	zhihu := cfg.Collector.Sources["zhihu"]
+	assert.Equal(t, "知乎热榜-自定义", zhihu.DisplayName)
+	assert.Equal(t, 15, zhihu.IntervalMinutes)
+	assert.True(t, zhihu.DetailFetchEnabled)
+	assert.Equal(t, "json-api", zhihu.SourceType)
+	assert.Equal(t, "https://www.zhihu.com/api/v3/explore/guest/feeds?limit=30&ws_qiangzhisafe=0", zhihu.SourceURL)
+}
+
 func TestLoaderSetCurrent(t *testing.T) {
 	loader := NewLoader("")
 	cfg := DefaultConfig()

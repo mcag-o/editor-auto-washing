@@ -247,9 +247,7 @@ func applyDefaults(cfg *Config) {
 	cfg.Collector.HTTPClients = mergeHTTPClientProfiles(def.Collector.HTTPClients, cfg.Collector.HTTPClients)
 	cfg.Collector.RetryPolicies = mergeRetryPolicyProfiles(def.Collector.RetryPolicies, cfg.Collector.RetryPolicies)
 	cfg.Collector.AuthProfiles = mergeAuthProfiles(def.Collector.AuthProfiles, cfg.Collector.AuthProfiles)
-	if len(cfg.Collector.Sources) == 0 {
-		cfg.Collector.Sources = def.Collector.Sources
-	}
+	cfg.Collector.Sources = mergeCollectorSources(def.Collector.Sources, cfg.Collector.Sources)
 	if cfg.Secrets.EnvPrefix == "" {
 		cfg.Secrets.EnvPrefix = def.Secrets.EnvPrefix
 	}
@@ -382,6 +380,128 @@ func mergeAuthProfile(base AuthProfileConfig, override AuthProfileConfig) AuthPr
 	merged := base
 	if override.Mode != "" {
 		merged.Mode = override.Mode
+	}
+	return merged
+}
+
+func mergeCollectorSources(defaults map[string]CollectorSourceDef, overrides map[string]CollectorSourceDef) map[string]CollectorSourceDef {
+	if len(defaults) == 0 && len(overrides) == 0 {
+		return nil
+	}
+	merged := make(map[string]CollectorSourceDef, len(defaults)+len(overrides))
+	for key, value := range defaults {
+		merged[key] = cloneCollectorSourceDef(value)
+	}
+	for key, value := range overrides {
+		base, ok := merged[key]
+		if !ok {
+			merged[key] = cloneCollectorSourceDef(value)
+			continue
+		}
+		merged[key] = mergeCollectorSourceDef(base, value)
+	}
+	return merged
+}
+
+func cloneCollectorSourceDef(source CollectorSourceDef) CollectorSourceDef {
+	cloned := source
+	if source.Aliases != nil {
+		cloned.Aliases = append([]string(nil), source.Aliases...)
+	}
+	if source.Headers != nil {
+		cloned.Headers = make(map[string]string, len(source.Headers))
+		for key, value := range source.Headers {
+			cloned.Headers[key] = value
+		}
+	}
+	if source.Todo != nil {
+		cloned.Todo = append([]string(nil), source.Todo...)
+	}
+	if source.Notes != nil {
+		cloned.Notes = append([]string(nil), source.Notes...)
+	}
+	return cloned
+}
+
+func mergeCollectorSourceDef(base CollectorSourceDef, override CollectorSourceDef) CollectorSourceDef {
+	merged := cloneCollectorSourceDef(base)
+	if override.DisplayName != "" {
+		merged.DisplayName = override.DisplayName
+	}
+	if override.Aliases != nil {
+		merged.Aliases = append([]string(nil), override.Aliases...)
+	}
+	if override.SourceType != "" {
+		merged.SourceType = override.SourceType
+	}
+	if override.SourceURL != "" {
+		merged.SourceURL = override.SourceURL
+	}
+	if override.Enabled {
+		merged.Enabled = true
+	}
+	if override.ScheduleEnabled {
+		merged.ScheduleEnabled = true
+	}
+	if override.IntervalMinutes != 0 {
+		merged.IntervalMinutes = override.IntervalMinutes
+	}
+	if override.TimeoutMS != 0 {
+		merged.TimeoutMS = override.TimeoutMS
+	}
+	if override.HotlistLimit != 0 {
+		merged.HotlistLimit = override.HotlistLimit
+	}
+	if override.DetailFetchEnabled {
+		merged.DetailFetchEnabled = true
+	}
+	if override.Concurrency != 0 {
+		merged.Concurrency = override.Concurrency
+	}
+	if override.AuthMode != "" {
+		merged.AuthMode = override.AuthMode
+	}
+	if override.HTTPClient != "" {
+		merged.HTTPClient = override.HTTPClient
+	}
+	if override.RetryPolicy != "" {
+		merged.RetryPolicy = override.RetryPolicy
+	}
+	if override.AuthProfile != "" {
+		merged.AuthProfile = override.AuthProfile
+	}
+	if override.CookieSecretRef != "" {
+		merged.CookieSecretRef = override.CookieSecretRef
+	}
+	if override.HeaderSecretRef != "" {
+		merged.HeaderSecretRef = override.HeaderSecretRef
+	}
+	if override.Headers != nil {
+		merged.Headers = make(map[string]string, len(override.Headers))
+		for key, value := range override.Headers {
+			merged.Headers[key] = value
+		}
+	}
+	if override.Status != "" {
+		merged.Status = override.Status
+	}
+	if override.Goal != "" {
+		merged.Goal = override.Goal
+	}
+	if override.Todo != nil {
+		merged.Todo = append([]string(nil), override.Todo...)
+	}
+	if override.Notes != nil {
+		merged.Notes = append([]string(nil), override.Notes...)
+	}
+	if override.MigrationReference != "" {
+		merged.MigrationReference = override.MigrationReference
+	}
+	if override.SupportsArticle {
+		merged.SupportsArticle = true
+	}
+	if override.PlaceholderRequired {
+		merged.PlaceholderRequired = true
 	}
 	return merged
 }
