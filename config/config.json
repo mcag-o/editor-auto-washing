@@ -55,7 +55,7 @@
         "notes": ["当前 Go 版已实现 hotlist + detail fetch。"],
         "supports_article": true,
         "placeholder_required": false,
-        "migration_reference": "DataCollection/src/platforms/baidu.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/baidu.js"
       },
       "shaoshupai": {
         "display_name": "少数派",
@@ -76,7 +76,7 @@
         "notes": ["原平台偏内容站，后续 bridge 价值较高。"],
         "supports_article": true,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/shaoshupai.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/shaoshupai.js"
       },
       "weibo": {
         "display_name": "微博热搜",
@@ -98,7 +98,7 @@
         "notes": ["当前 Go 版支持 Cookie 注入与健康检查。"],
         "supports_article": false,
         "placeholder_required": false,
-        "migration_reference": "DataCollection/src/platforms/weibo.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/weibo.js"
       },
       "zhihu": {
         "display_name": "知乎热榜",
@@ -119,7 +119,7 @@
         "notes": ["适合作为下一批重点迁移平台之一。"],
         "supports_article": true,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/zhihu.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/zhihu.js"
       },
       "36kr": {
         "display_name": "36Kr",
@@ -140,7 +140,7 @@
         "notes": ["原 DataCollection 已有实现，可直接对照迁移。"],
         "supports_article": false,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/36kr.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/36kr.js"
       },
       "52pojie": {
         "display_name": "吾爱破解",
@@ -161,7 +161,7 @@
         "notes": ["该平台为 HTML 类站点，后续重点是选择器稳定性。"],
         "supports_article": true,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/52pojie.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/52pojie.js"
       },
       "bilibili": {
         "display_name": "哔哩哔哩",
@@ -182,7 +182,7 @@
         "notes": ["现阶段可用于热点发现，不可直接 bridge 为完整文章。"],
         "supports_article": false,
         "placeholder_required": false,
-        "migration_reference": "DataCollection/src/platforms/bilibili.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/bilibili.js"
       },
       "douban": {
         "display_name": "豆瓣",
@@ -203,7 +203,7 @@
         "notes": ["后续若 HTML 不稳定，可评估浏览器回退。"],
         "supports_article": true,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/douban.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/douban.js"
       },
       "hupu": {
         "display_name": "虎扑",
@@ -224,7 +224,7 @@
         "notes": ["HTML 结构变更概率较高，建议后续重点补 fixture。"],
         "supports_article": true,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/hupu.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/hupu.js"
       },
       "tieba": {
         "display_name": "百度贴吧",
@@ -245,7 +245,7 @@
         "notes": ["接口为 http，迁移时需要确认是否存在 https 替代。"],
         "supports_article": false,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/tieba.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/tieba.js"
       },
       "juejin": {
         "display_name": "掘金",
@@ -266,7 +266,7 @@
         "notes": ["该平台适合作为下一批 JSON 平台迁移目标。"],
         "supports_article": true,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/juejin.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/juejin.js"
       },
       "douyin": {
         "display_name": "抖音",
@@ -287,7 +287,7 @@
         "notes": ["该平台后续可能需要更严格的 headers/cookie 组合。"],
         "supports_article": false,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/douyin.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/douyin.js"
       },
       "v2ex": {
         "display_name": "V2EX",
@@ -308,7 +308,7 @@
         "notes": ["当前 Go 版已具备 hotlist + detail fetch。"],
         "supports_article": true,
         "placeholder_required": false,
-        "migration_reference": "DataCollection/src/platforms/v2ex.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/v2ex.js"
       },
       "jinritoutiao": {
         "display_name": "今日头条",
@@ -329,7 +329,7 @@
         "notes": ["可能需要特别处理反爬 headers。"],
         "supports_article": false,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/jinritoutiao.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/jinritoutiao.js"
       },
       "tenxunwang": {
         "display_name": "腾讯网",
@@ -350,7 +350,7 @@
         "notes": ["命名沿用现有 DataCollection 平台 id，避免迁移映射混乱。"],
         "supports_article": false,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/tenxunwang.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/tenxunwang.js"
       },
       "stackoverflow": {
         "display_name": "Stack Overflow",
@@ -371,7 +371,7 @@
         "notes": ["现有 Go 版仅完成热榜归一化。"],
         "supports_article": false,
         "placeholder_required": false,
-        "migration_reference": "DataCollection/src/platforms/stackoverflow.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/stackoverflow.js"
       },
       "github": {
         "display_name": "GitHub Trending",
@@ -392,7 +392,7 @@
         "notes": ["当前 Go 版已实现 hotlist + detail fetch。"],
         "supports_article": true,
         "placeholder_required": false,
-        "migration_reference": "DataCollection/src/platforms/github.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/github.js"
       },
       "hackernews": {
         "display_name": "Hacker News",
@@ -413,7 +413,7 @@
         "notes": ["该平台是典型 HTML 占位源，优先补足热榜解析。"],
         "supports_article": true,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/hackernews.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/hackernews.js"
       },
       "sina_finance": {
         "display_name": "新浪财经",
@@ -434,7 +434,7 @@
         "notes": ["后续可补财经标签到 Metadata。"],
         "supports_article": false,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/sina_finance.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/sina_finance.js"
       },
       "eastmoney": {
         "display_name": "东方财富",
@@ -455,7 +455,7 @@
         "notes": ["可能需要增加财经类字段映射到 Metadata。"],
         "supports_article": false,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/eastmoney.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/eastmoney.js"
       },
       "xueqiu": {
         "display_name": "雪球",
@@ -477,7 +477,7 @@
         "notes": ["该平台与微博类似，需要先打通 Cookie 配置链路。"],
         "supports_article": false,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/xueqiu.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/xueqiu.js"
       },
       "cls": {
         "display_name": "财联社",
@@ -498,7 +498,7 @@
         "notes": ["可能需要区分栏目类型与快讯类型。"],
         "supports_article": false,
         "placeholder_required": true,
-        "migration_reference": "DataCollection/src/platforms/cls.js"
+        "migration_reference": "Archive/DataCollection/src/platforms/cls.js"
       }
     }
   },

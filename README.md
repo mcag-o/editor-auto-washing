@@ -1,113 +1,408 @@
-# 项目简介
+# ArticleWashing-Go
 
-这是一个围绕内容采集、结构化处理与内容服务化运行构建的多项目工作区，不是单一应用。
+> 当前默认主实现（Go 版），已覆盖工作区配置、Go 内置采集器、结构化排版、审核发布、作业与自动化主链路。
 
-仓库当前包含两个活跃子项目：
+---
 
-- `ArticleWashing/`：面向服务化运行的内容中转站，也是当前推荐的主开发目录
-- `DataCollection/`：负责热榜与内容来源采集、平台适配和调度逻辑的 Node.js 项目
+## 项目定位
 
-如果你是第一次进入这个仓库，建议先把它理解为“多个相关项目组成的工作区”。如果你准备继续开发核心服务能力，优先从 `ArticleWashing/` 开始。
+`ArticleWashing` 不是 Python 版的逐文件翻译，而是面向当前主链路的 Go 实现。
 
-如果你只想先用一个最小步骤确认环境和项目入口，推荐先从 `ArticleWashing/` 开始：
+当前已经完成的主链路替代范围：
+
+- workspace 驱动配置
+- collector source registry / hotlist run / scheduler control
+- article workspace 生命周期
+- 结构化 draft / render / validate / asset persistence
+- review / publish gate / publish history
+- workflow / jobs / automation
+- HTTP API / CLI / 基础 TUI
+
+这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，`ArticleWashing-Go` 已可以作为当前默认主实现；但 collector 的对外运维面仍以 source registry、run listing、scheduler control 为主，detail fetch 与 bridge 目前主要还是内部服务能力。
+
+不包含的承诺：
+
+- 不保证 100% 复刻 Python 历史兼容层
+- 不保证所有旧接口路径、旧命名、旧文档描述完全不变
+- 不把当前 TUI 视为全部运维能力入口
+
+---
+
+## 当前能力
+
+### 1. 工作区与配置
+
+- workspace 初始化、加载、解析、校验、doctor 检查
+- provider/article/publish profile
+- secret 引用与环境变量解析
+- incoming/processed/failed/rendered 等路径解析
+
+相关代码：
+
+- `service/workspace_config.go`
+- `infra/workspace/loader.go`
+- `infra/workspace/validator.go`
+
+### 2. Ingestion 与文章工作区
+
+- 导入历史 bundle 文件，并承接 Go collector bridge 创建的 workspace article
+- 处理 `incoming / processed / failed`
+- 持久化 ingestion record
+- 持久化 article workspace record 与状态流转
+- 支持 retry-failed
+
+相关代码：
+
+- `service/ingestion_pipeline.go`
+- `infra/filesystem/bundle_router.go`
+- `infra/sqlite/ingestion_repo.go`
+- `infra/sqlite/article_workspace_repo.go`
+
+### 2.5. Go Collector 主链路
+
+- 内置 source registry，同步当前 Go 插件到 SQLite source repo
+- 支持 hotlist mainline：source -> run -> source run -> collector entries
+- 内部已实现 detail fetch mainline：entry -> collector article -> fetch attempts
+- 内部已实现 bridge mainline：collector article -> workspace article，且重复 push 幂等
+- 当前对外提供 collector scheduler `run-once / daemon / status / health / stop`
+
+当前默认注册 source：
+
+- `baidu`
+- `bilibili`
+- `github`
+- `stackoverflow`
+- `v2ex`
+- `weibo`
+
+其中当前能力边界是：
+
+- `baidu`、`github`、`v2ex` 已具备 hotlist + detail fetch
+- `bilibili`、`stackoverflow`、`weibo` 当前为 hotlist-only
+- 其余 `Archive/DataCollection/` 历史 source 尚未迁入 Go runtime
+
+需要区分三层语义：
+
+- 已实现的内部服务：`run_service`、`article_fetch_service`、`bridge_service`
+- 当前暴露的运维接口：source list/health、run list/detail、scheduler control
+- 仍待 cutover 完成的事项：detail fetch/bridge 的正式运维入口、按 source 的生产验证、未迁移 source 的迁移与回退编排
+
+相关代码：
+
+- `collector/service/registry.go`
+- `collector/service/run_service.go`
+- `collector/service/article_fetch_service.go`
+- `collector/service/bridge_service.go`
+- `collector/scheduler/service.go`
+- `service/collector_runtime.go`
+- `docs/collector-migration-matrix.md`
+
+### 3. 结构化排版
+
+- draft 创建与读取
+- 模板目录加载
+- WeChat HTML 渲染
+- draft 校验与 rendered output 校验
+- rendered asset 持久化与读取
+
+相关代码：
+
+- `service/formatting_pipeline.go`
+- `infra/formatter/wechat_html.go`
+- `infra/formatter/template_catalog.go`
+- `infra/sqlite/formatting_repo.go`
+
+### 4. 审核与发布
+
+- review create / list / approve / reject
+- 未审核禁止发布
+- asset 非 `ready` 禁止发布
+- publish outcome 与 publish history 持久化
+- workspace 生命周期与 review/publish 同步
+
+相关代码：
+
+- `service/review.go`
+- `service/publish_gate.go`
+- `infra/sqlite/review_repo.go`
+- `infra/sqlite/runtime_repo.go`
+
+### 5. Workflow / Jobs / Automation
+
+- concrete workflow nodes 已注册
+- job queue / worker / cancel / event history
+- automation `run-once / daemon / retry-failed / status / health / stop`
+- automation snapshot 持久化
+
+相关代码：
+
+- `service/workflow.go`
+- `service/workflow_nodes.go`
+- `service/job.go`
+- `service/automation.go`
+
+---
+
+## 运行方式
+
+### 前置条件
+
+- Go `>= 1.25`
+- CGO 可用
+- 本机有 SQLite 编译链（例如 `gcc`）
+
+### 安装依赖
 
 ```bash
-python3 -m pip install -r "ArticleWashing/requirements.txt"
-PYTHONPATH="ArticleWashing/src" python3 -m unittest discover -s "ArticleWashing/tests/content_hub" -p "test_workflow.py"
+go mod download
 ```
 
-判断从哪个目录开始，可以先用下面这条简单规则：
-
-- 偏服务运行、API、工作流：去 `ArticleWashing/`
-- 偏抓取输入、平台采集、调度：去 `DataCollection/`
-- 偏结构化文章渲染、校验、格式化产物生成：优先进入 `ArticleWashing/`
-
-## 仓库结构
-
-### `ArticleWashing/`
-
-- 技术栈：Python、FastAPI、`unittest`
-- 作用：承载 service-first 内容中转站运行时，对外提供 API、工作流和内容服务能力
-- 适合改动：API、工作流节点、内容域模型、存储层、发布流程、任务系统
-
-### `DataCollection/`
-
-- 技术栈：Node.js、ESM、Vitest
-- 作用：负责热榜和内容源采集，处理平台适配、采集调度与请求重试等运行逻辑
-- 适合改动：抓取器、平台适配器、调度策略、HTTP 客户端、重试与超时控制
-
-## 快速开始
-
-### 1. `ArticleWashing/`
-
-从仓库根目录执行。
-
-安装依赖：
+### 启动服务
 
 ```bash
-python3 -m pip install -r "ArticleWashing/requirements.txt"
+go run ./cmd/server
 ```
 
-运行主 API（用于本地启动服务）：
+默认监听后可检查：
 
 ```bash
-PYTHONPATH="ArticleWashing/src" uvicorn content_hub.interfaces.api.main:app --reload
+curl http://localhost:8080/health
+curl http://localhost:8080/ready
 ```
 
-运行独立入口（用于快速验证运行时入口；与 API 启动二选一即可）：
+### 启动 TUI
 
 ```bash
-python3 "ArticleWashing/main.py"
+go run ./cmd/tui --api http://localhost:8080
 ```
 
-适用场景：继续服务端、API、工作流主线能力开发。
+说明：当前 TUI 是基础监控/浏览入口，不覆盖全部 automation 控制能力。
 
-### 2. `DataCollection/`
+---
 
-从仓库根目录执行：
+## CLI
+
+CLI 入口：`cmd/cli/main.go`
+
+### Workspace
 
 ```bash
-(cd DataCollection && npm install)
-(cd DataCollection && npm test)
-(cd DataCollection && npm run collect)
+go run ./cmd/cli workspace init --root .
+go run ./cmd/cli workspace show-config --root .
+go run ./cmd/cli workspace resolve-config --root .
+go run ./cmd/cli workspace doctor --root .
 ```
 
-适用场景：继续抓取器、平台适配和采集调度相关开发。
-
-## 测试与开发
-
-两个子项目的测试方式并不相同：
-
-- `ArticleWashing/`：使用 Python `unittest`，要求 Python `>=3.10,<3.13`
-- `DataCollection/`：使用 npm + Vitest，要求 Node `>=20`
-
-单文件测试示例：
+### Ingestion
 
 ```bash
-(PYTHONPATH="ArticleWashing/src" python3 -m unittest discover -s "ArticleWashing/tests/content_hub" -p "test_workflow.py")
+go run ./cmd/cli ingestion import --root .
+go run ./cmd/cli ingestion retry-failed --root .
 ```
+
+### Formatting
 
 ```bash
-(cd DataCollection && npx vitest run test/core/httpClient.test.js)
+go run ./cmd/cli formatting render <draft-id> --platform wechat --template daily-intelligence --root .
+go run ./cmd/cli formatting validate <draft-id> --platform wechat --template daily-intelligence --root .
 ```
 
-开发时建议遵循以下顺序：
+### Review / Publish
 
-1. 先确认目标子项目。
-2. 先运行该子项目最窄的相关测试，再开始修改。
-3. 做最小、针对性的改动，尽量保持修改范围局部。
-4. 先回归单文件测试，再回归对应子项目的完整测试集。
+```bash
+go run ./cmd/cli review approve <review-id> --reviewer alice --notes ok --root .
+go run ./cmd/cli review reject <review-id> --reviewer alice --notes retry --root .
+go run ./cmd/cli publish run <review-id> --root .
+go run ./cmd/cli publish history <article-id> --root .
+```
 
-## 推荐开发路径
+### Automation
 
-- 如果你在做新的 service、API 和工作流能力，优先进入 `ArticleWashing/`
-- 如果你在做站点抓取、平台适配、采集调度，进入 `DataCollection/`
-- 如果你在做文章渲染、结构校验、CLI 或本地流程，优先进入 `ArticleWashing/`
+```bash
+go run ./cmd/cli automation run-once --root .
+go run ./cmd/cli automation daemon --root .
+go run ./cmd/cli automation retry-failed --root .
+go run ./cmd/cli automation status --root .
+go run ./cmd/cli automation health --root .
+go run ./cmd/cli automation stop --root .
+```
 
-## 补充说明
+说明：CLI `automation daemon` 是前台阻塞模式；HTTP 的 `daemon` 是进程内异步启动模式。这是有意保持的“真实语义”。
 
-- 根目录 `README.md` 只负责仓库级导航，更多实现细节请查看各子项目自己的 README 和目录文档。
-- `ArticleWashing/` 是当前推荐的主开发目录；如果没有明确理由，新的核心服务能力应优先落在这里。
-- 结构化文章能力已逐步并入 `ArticleWashing/`，新的结构化文章入口、格式化输出与审核发布链路应以 `ArticleWashing/` 为准。
-- 原 `结构化文章/` 的模板、渲染、校验、dry-run pipeline 与 CLI 主入口已并入 `ArticleWashing/`。
-- 当前仓库根目录没有统一的 build、lint、test 入口；执行命令前请先确认自己所在的目标子项目。
+### Collector
+
+```bash
+go run ./cmd/cli collector sources list --root .
+go run ./cmd/cli collector sources health --root .
+go run ./cmd/cli collector runs list --root .
+go run ./cmd/cli collector scheduler run-once --root .
+go run ./cmd/cli collector scheduler daemon --root .
+go run ./cmd/cli collector scheduler status --root .
+go run ./cmd/cli collector scheduler health --root .
+go run ./cmd/cli collector scheduler stop --root .
+```
+
+说明：当前 collector CLI 暴露的是 source registry、run listing、scheduler control。detail fetch 与 bridge 虽已在运行时内部实现并有集成测试覆盖，但还不是独立的一线运维入口。
+
+补充说明：collector runtime 现在引入了面向 retry、auth 与 source-scoped HTTP 行为的配置层；resolved policy metadata 会在 source sync 时持久化，并用于当前 runtime-aware service path。standalone runtime/LLM 设置已外置到配置中，已实现路径中的 secret ref 也不再硬编码在 active plugin flow 里。
+
+---
+
+## HTTP API
+
+核心路由定义在：`transport/http/server.go`
+
+### 基础
+
+- `GET /health`
+- `GET /ready`
+- `GET /config`
+
+### Content / Templates / Drafts / Assets
+
+- `GET|POST|PUT|DELETE /content`
+- `GET|POST /templates`
+- `GET /templates/categories`
+- `POST /drafts`
+- `GET /drafts/:id`
+- `POST /drafts/:id/render`
+- `POST /drafts/:id/validate`
+- `GET /assets/:id`
+
+### Ingestion / Workspace
+
+- `POST /ingestion/import`
+- `POST /ingestion/retry-failed`
+- `GET /ingestion`
+- `GET /ingestion/:id`
+- `GET /workspace/articles`
+
+### Review / Publish
+
+- `POST /reviews`
+- `GET /reviews`
+- `POST /reviews/:id/approve`
+- `POST /reviews/:id/reject`
+- `POST /publish`
+- `GET /publish/history`
+
+### Jobs / Workflows / Automation
+
+- `POST /jobs`
+- `GET /jobs`
+- `GET /jobs/:id`
+- `POST /jobs/:id/cancel`
+- `GET /jobs/:id/events`
+- `POST /workflows/execute`
+- `POST /automation/run-once`
+- `POST /automation/daemon`
+- `POST /automation/retry-failed`
+- `GET /automation/status`
+- `GET /automation/health`
+- `POST /automation/stop`
+
+### Collector
+
+- `GET /collector/sources`
+- `GET /collector/sources/health`
+- `GET /collector/runs`
+- `GET /collector/runs/:id`
+- `POST /collector/scheduler/run-once`
+- `POST /collector/scheduler/daemon`
+- `GET /collector/scheduler/status`
+- `GET /collector/scheduler/health`
+- `POST /collector/scheduler/stop`
+
+说明：当前 HTTP collector 面向运行状态观测与 scheduler 控制；detail fetch 和 bridge 没有作为独立 HTTP entrypoint 暴露。
+
+---
+
+## 存储与运行时
+
+当前默认主路径是 SQLite，而不是纯内存实现。
+
+- SQLite provider：`infra/sqlite/provider.go`
+- runtime repos：`service/runtime_repos.go`
+- migrations：`infra/sqlite/migrations/`
+
+`infra/memory/` 仍然保留，用于测试和内存替身场景。
+
+---
+
+## 验证状态
+
+当前仓库已经在 Go 主项目上通过完整测试：
+
+```bash
+go test ./...
+```
+
+覆盖范围包括：
+
+- workspace/config
+- collector hotlist/detail/bridge integration
+- ingestion/article workspace
+- formatting/render/validate/assets
+- review/publish
+- workflow/jobs/automation
+- HTTP handlers
+- CLI
+- integration mainline
+- TUI 基础行为
+
+---
+
+## 当前限制与边界
+
+- Go 版已经可以替代 Python 主链路，但不是历史兼容层逐字复刻
+- Go collector 仅覆盖当前已迁移 source；未迁移 source 仍需参考 `docs/collector-migration-matrix.md`
+- collector 内部 detail fetch / bridge 已实现，但正式 cutover 仍需要补足对外操作面与 source-by-source 验证
+- automation daemon 目前是单进程内模型，不是外部 supervisor 模型
+- TUI 范围有意收敛，不覆盖全部 automation 管理面
+- publish provider 当前仍以现有 provider boundary 为主，外部平台能力是否完整取决于具体 provider 实现
+
+---
+
+## 目录概览
+
+```text
+├── Archive/
+│   ├── ArticleWashing/
+│   └── DataCollection/
+├── cmd/
+│   ├── cli/
+│   ├── server/
+│   └── tui/
+├── collector/
+│   ├── httpclient/
+│   ├── plugin/
+│   ├── runtime/
+│   ├── scheduler/
+│   └── service/
+├── config/
+├── domain/
+├── infra/
+│   ├── config/
+│   ├── filesystem/
+│   ├── formatter/
+│   ├── memory/
+│   ├── sqlite/
+│   └── workspace/
+├── integration/
+├── pkg/repo/
+├── service/
+├── testdata/
+└── transport/
+    ├── http/
+    └── tui/
+```
+
+---
+
+## 当前结论
+
+`ArticleWashing` 现在的准确表述是：
+
+- 已完成对 `Archive/ArticleWashing` (Python 版) 的主链路功能等价替代
+- 可以作为当前默认主实现使用
+- Go collector 已具备内部主链路验证基础，剩余事项集中在对外运维入口补齐、source-by-source 迁移验证与生产切换编排
