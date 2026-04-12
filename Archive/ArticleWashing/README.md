@@ -1,5 +1,7 @@
 # ArticleWashing
 
+> 归档说明：本文件保留大量迁移前表述与历史路径（如 `ArticleWashing/`），用于历史复盘与迁移对照。当前仓库中的实际位置是 `Archive/ArticleWashing/`，当前默认主实现是仓库根目录下的 Go runtime，而不是本目录。
+
 `ArticleWashing/` 是从原始 `AIWriteX` 仓库中抽取出来的 service-first 内容中站运行时，也是当前推荐的主开发目录。
 
 这份 README 不是一个简单的启动说明，而是把以下三类信息整合到了一起：

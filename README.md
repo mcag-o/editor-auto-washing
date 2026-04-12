@@ -1,12 +1,12 @@
-# ArticleWashing-Go
+# content-hub
 
-> 当前默认主实现（Go 版），已覆盖工作区配置、Go 内置采集器、结构化排版、审核发布、作业与自动化主链路。
+> 当前默认主实现（Go 版，仓库根目录），已覆盖工作区配置、Go 内置采集器、结构化排版、审核发布、作业与自动化主链路。
 
 ---
 
 ## 项目定位
 
-`ArticleWashing` 不是 Python 版的逐文件翻译，而是面向当前主链路的 Go 实现。
+仓库根目录下的 `content-hub` 不是 Python 版的逐文件翻译，而是面向当前主链路的 Go 实现。
 
 当前已经完成的主链路替代范围：
 
@@ -18,7 +18,7 @@
 - workflow / jobs / automation
 - HTTP API / CLI / 基础 TUI
 
-这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，`ArticleWashing-Go` 已可以作为当前默认主实现；但 collector 的对外运维面仍以 source registry、run listing、scheduler control 为主，detail fetch 与 bridge 目前主要还是内部服务能力。
+这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；但 collector 的对外运维面仍以 source registry、run listing、scheduler control 为主，detail fetch 与 bridge 目前主要还是内部服务能力。
 
 不包含的承诺：
 
@@ -401,8 +401,8 @@ go test ./...
 
 ## 当前结论
 
-`ArticleWashing` 现在的准确表述是：
+当前仓库根目录 Go runtime 的准确表述是：
 
-- 已完成对 `Archive/ArticleWashing` (Python 版) 的主链路功能等价替代
+- 已完成对 `Archive/ArticleWashing/`（Python 版）的主链路功能等价替代
 - 可以作为当前默认主实现使用
 - Go collector 已具备内部主链路验证基础，剩余事项集中在对外运维入口补齐、source-by-source 迁移验证与生产切换编排

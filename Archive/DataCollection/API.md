@@ -1,5 +1,7 @@
 # API
 
+> 归档说明：本文件中的 `DataCollection/` 路径和示例命令保留的是迁移前写法，用于历史接口对照。当前仓库中的实际位置是 `Archive/DataCollection/`。
+
 ## Node 采集系统接口
 
 `DataCollection/` 当前提供的是命令行与编程调用接口，不直接暴露 HTTP 服务。

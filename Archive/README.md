@@ -4,7 +4,7 @@
 
 ## 归档项目
 
-### `ArticleWashing/` (Python 版)
+### `Archive/ArticleWashing/` (Python 版)
 
 - 技术栈：Python、FastAPI、`unittest`
 - 状态：已归档。其主链路功能已由当前 Go 实现（仓库根目录）完成等价替代。
@@ -18,7 +18,7 @@ python3 -m pip install -r requirements.txt
 PYTHONPATH="src" python3 -m unittest discover -s "tests/content_hub" -p "test_workflow.py"
 ```
 
-### `DataCollection/` (Node.js 版)
+### `Archive/DataCollection/` (Node.js 版)
 
 - 技术栈：Node.js、ESM、Vitest
 - 状态：已归档。其平台采集能力正逐步迁移至当前 Go collector runtime。
