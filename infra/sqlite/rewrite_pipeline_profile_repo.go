@@ -24,7 +24,6 @@ func (r *rewritePipelineProfileRepo) Upsert(ctx context.Context, profile *domain
 			stages_json, default_llm_profile, quality_policy_ref, materialization_policy, enabled
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(target_type, source_profile, version) DO UPDATE SET
-			id = excluded.id,
 			name = excluded.name,
 			description = excluded.description,
 			stages_json = excluded.stages_json,
