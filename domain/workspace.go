@@ -287,7 +287,7 @@ func NewArticleWorkspaceRecord(id, title, summary string, source ArticleWorkspac
 }
 
 var ValidWorkspaceStatusTransitions = map[string][]string{
-	ArticleWorkspaceStatusImported:       {ArticleWorkspaceStatusRewritePending, ArticleWorkspaceStatusFailed},
+	ArticleWorkspaceStatusImported:       {ArticleWorkspaceStatusRewritePending, ArticleWorkspaceStatusDraft, ArticleWorkspaceStatusFailed},
 	ArticleWorkspaceStatusRewritePending: {ArticleWorkspaceStatusRewriting, ArticleWorkspaceStatusFailed},
 	ArticleWorkspaceStatusRewriting:      {ArticleWorkspaceStatusDraft, ArticleWorkspaceStatusRewriteFailed, ArticleWorkspaceStatusFailed},
 	ArticleWorkspaceStatusRewriteFailed:  {ArticleWorkspaceStatusRewritePending, ArticleWorkspaceStatusFailed},

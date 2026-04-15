@@ -55,20 +55,20 @@ type RewritePipelineProfile struct {
 }
 
 type RewritePipelineRun struct {
-	ID                 string     `json:"id"`
-	ProfileID          string     `json:"profile_id"`
-	ProfileVersion     string     `json:"profile_version"`
-	WorkspaceArticleID string     `json:"workspace_article_id"`
-	CollectorArticleID string     `json:"collector_article_id"`
-	TargetType         string     `json:"target_type"`
-	SourceProfile      string     `json:"source_profile"`
-	Status             string     `json:"status"`
-	CurrentStage       string     `json:"current_stage"`
-	StartedAt          time.Time  `json:"started_at"`
-	CompletedAt        *time.Time `json:"completed_at"`
-	FinalDraftID       string     `json:"final_draft_id"`
-	ErrorSummary       string     `json:"error_summary"`
-	MetadataJSON       []byte     `json:"metadata_json"`
+	ID                 string         `json:"id"`
+	ProfileID          string         `json:"profile_id"`
+	ProfileVersion     string         `json:"profile_version"`
+	WorkspaceArticleID string         `json:"workspace_article_id"`
+	CollectorArticleID string         `json:"collector_article_id"`
+	TargetType         string         `json:"target_type"`
+	SourceProfile      string         `json:"source_profile"`
+	Status             string         `json:"status"`
+	CurrentStage       string         `json:"current_stage"`
+	StartedAt          time.Time      `json:"started_at"`
+	CompletedAt        *time.Time     `json:"completed_at"`
+	FinalDraftID       string         `json:"final_draft_id"`
+	ErrorSummary       string         `json:"error_summary"`
+	Metadata           map[string]any `json:"metadata"`
 }
 
 func NewRewritePipelineRun(profileID, profileVersion, workspaceArticleID, collectorArticleID, targetType, sourceProfile string) *RewritePipelineRun {
@@ -82,7 +82,8 @@ func NewRewritePipelineRun(profileID, profileVersion, workspaceArticleID, collec
 		TargetType:         targetType,
 		SourceProfile:      sourceProfile,
 		Status:             RewriteRunPending,
+		CurrentStage:       "",
 		StartedAt:          now,
-		MetadataJSON:       []byte("{}"),
+		Metadata:           map[string]any{},
 	}
 }
