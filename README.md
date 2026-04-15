@@ -224,10 +224,10 @@ go run ./cmd/cli formatting validate <draft-id> --platform wechat --template dai
 ### Rewrite
 
 ```bash
-go run ./cmd/cli rewrite run <workspace-article-id> --target wechat-longform --source sspai --version v1 --root .
+go run ./cmd/cli rewrite run <workspace-article-id> --target wechat-longform --source sspai --root .
 ```
 
-说明：rewrite CLI 会读取 workspace article 元数据，并按 `target + source + version` 解析 rewrite profile；collector 仍只负责把 source article 导入到 workspace，不负责 rewrite 编排。
+说明：rewrite CLI 会读取 workspace article 元数据，并按 `target + source + version` 解析 rewrite profile；当前 CLI 不提供 `--version` 参数，版本选择走运行时默认值。collector 仍只负责把 source article 导入到 workspace，不负责 rewrite 编排。
 
 ### Review / Publish
 
