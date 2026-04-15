@@ -1,15 +1,15 @@
 package repo
 
 import (
-	"content-hub/infra/llm"
+	"content-hub/domain"
 	"context"
 	"testing"
 )
 
 type staticLLMProvider struct{}
 
-func (staticLLMProvider) Generate(_ context.Context, _ llm.GenerateRequest) (*llm.GenerateResponse, error) {
-	return &llm.GenerateResponse{}, nil
+func (staticLLMProvider) Generate(_ context.Context, _ domain.LLMGenerateRequest) (*domain.LLMGenerateResponse, error) {
+	return &domain.LLMGenerateResponse{}, nil
 }
 
 func (staticLLMProvider) Models(_ context.Context) ([]string, error) {

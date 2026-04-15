@@ -38,3 +38,13 @@ type LLMResponse struct {
 	CompletionTokens int    `json:"completion_tokens"`
 	FinishReason     string `json:"finish_reason"`
 }
+
+type LLMGenerateRequest struct {
+	Messages []ChatMessage
+	Options  LLMOptions
+	Metadata map[string]any
+}
+
+type LLMGenerateResponse struct {
+	Response *LLMResponse
+}

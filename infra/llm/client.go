@@ -5,15 +5,9 @@ import (
 	"context"
 )
 
-type GenerateRequest struct {
-	Messages []domain.ChatMessage
-	Options  domain.LLMOptions
-	Metadata map[string]any
-}
+type GenerateRequest = domain.LLMGenerateRequest
 
-type GenerateResponse struct {
-	Response *domain.LLMResponse
-}
+type GenerateResponse = domain.LLMGenerateResponse
 
 type Client interface {
 	Generate(ctx context.Context, req GenerateRequest) (*GenerateResponse, error)

@@ -2,7 +2,6 @@ package repo
 
 import (
 	"content-hub/domain"
-	"content-hub/infra/llm"
 	"context"
 )
 
@@ -123,7 +122,7 @@ type BundleImportTxStarter interface {
 }
 
 type LLMProvider interface {
-	Generate(ctx context.Context, req llm.GenerateRequest) (*llm.GenerateResponse, error)
+	Generate(ctx context.Context, req domain.LLMGenerateRequest) (*domain.LLMGenerateResponse, error)
 	Models(ctx context.Context) ([]string, error)
 	Name() string
 }
