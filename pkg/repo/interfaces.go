@@ -80,6 +80,36 @@ type WorkspaceRepo interface {
 	Delete(ctx context.Context, id string) error
 }
 
+type RewritePipelineProfileRepo interface {
+	Upsert(ctx context.Context, profile *domain.RewritePipelineProfile) error
+	Get(ctx context.Context, targetType, sourceProfile, version string) (*domain.RewritePipelineProfile, error)
+	List(ctx context.Context) ([]domain.RewritePipelineProfile, error)
+}
+
+type RewritePipelineRunRepo interface {
+	Create(ctx context.Context, run *domain.RewritePipelineRun) error
+	Update(ctx context.Context, run *domain.RewritePipelineRun) error
+	GetByID(ctx context.Context, id string) (*domain.RewritePipelineRun, error)
+	List(ctx context.Context, limit int) ([]domain.RewritePipelineRun, error)
+}
+
+type RewriteStageRunRepo interface {
+	Create(ctx context.Context, run *domain.RewriteStageRun) error
+	ListByPipelineRunID(ctx context.Context, pipelineRunID string) ([]domain.RewriteStageRun, error)
+}
+
+type PromptTemplateRepo interface {
+	Upsert(ctx context.Context, prompt *domain.PromptTemplate) error
+	Get(ctx context.Context, key, version string) (*domain.PromptTemplate, error)
+	List(ctx context.Context) ([]domain.PromptTemplate, error)
+}
+
+type LLMProfileRepo interface {
+	Upsert(ctx context.Context, profile *domain.LLMProfile) error
+	GetByName(ctx context.Context, name string) (*domain.LLMProfile, error)
+	List(ctx context.Context) ([]domain.LLMProfile, error)
+}
+
 type BundleImportTx interface {
 	CreateWorkspaceArticle(ctx context.Context, record *domain.ArticleWorkspaceRecord) error
 	RecordIngestion(ctx context.Context, record *domain.IngestionRecord) error

@@ -32,6 +32,11 @@ type Provider struct {
 	collectorArticleRepo        repo.CollectorArticleRepo
 	collectorAttemptRepo        repo.CollectorAttemptRepo
 	collectorSchedulerStateRepo repo.CollectorSchedulerStateRepo
+	rewritePipelineProfileRepo  repo.RewritePipelineProfileRepo
+	rewritePipelineRunRepo      repo.RewritePipelineRunRepo
+	rewriteStageRunRepo         repo.RewriteStageRunRepo
+	promptTemplateRepo          repo.PromptTemplateRepo
+	llmProfileRepo              repo.LLMProfileRepo
 }
 
 func NewProvider(dbPath string) (*Provider, error) {
@@ -76,6 +81,11 @@ func NewProvider(dbPath string) (*Provider, error) {
 	p.collectorArticleRepo = &collectorArticleRepo{db: db}
 	p.collectorAttemptRepo = &collectorAttemptRepo{db: db}
 	p.collectorSchedulerStateRepo = &collectorSchedulerStateRepo{db: db}
+	p.rewritePipelineProfileRepo = &rewritePipelineProfileRepo{db: db}
+	p.rewritePipelineRunRepo = &rewritePipelineRunRepo{db: db}
+	p.rewriteStageRunRepo = &rewriteStageRunRepo{db: db}
+	p.promptTemplateRepo = &promptTemplateRepo{db: db}
+	p.llmProfileRepo = &llmProfileRepo{db: db}
 
 	return p, nil
 }
@@ -150,6 +160,26 @@ func (p *Provider) CollectorAttemptRepo() repo.CollectorAttemptRepo {
 
 func (p *Provider) CollectorSchedulerStateRepo() repo.CollectorSchedulerStateRepo {
 	return p.collectorSchedulerStateRepo
+}
+
+func (p *Provider) RewritePipelineProfileRepo() repo.RewritePipelineProfileRepo {
+	return p.rewritePipelineProfileRepo
+}
+
+func (p *Provider) RewritePipelineRunRepo() repo.RewritePipelineRunRepo {
+	return p.rewritePipelineRunRepo
+}
+
+func (p *Provider) RewriteStageRunRepo() repo.RewriteStageRunRepo {
+	return p.rewriteStageRunRepo
+}
+
+func (p *Provider) PromptTemplateRepo() repo.PromptTemplateRepo {
+	return p.promptTemplateRepo
+}
+
+func (p *Provider) LLMProfileRepo() repo.LLMProfileRepo {
+	return p.llmProfileRepo
 }
 
 func (p *Provider) runMigrations(db *sql.DB, fsys fs.FS) error {
