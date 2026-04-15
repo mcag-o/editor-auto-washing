@@ -456,12 +456,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, "missing rewrite target")
 			return 2
 		}
-		svc, cleanup, err := runtimeRewriteServiceFactory(root)
-		if err != nil {
-			fmt.Fprintln(stderr, err.Error())
-			return 1
-		}
-		defer cleanup()
 		switch args[1] {
 		case "run":
 			req, err := parseRewriteRunRequest(args[2:])
@@ -469,6 +463,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprintln(stderr, err.Error())
 				return 2
 			}
+			svc, cleanup, err := runtimeRewriteServiceFactory(root)
+			if err != nil {
+				fmt.Fprintln(stderr, err.Error())
+				return 1
+			}
+			defer cleanup()
 			result, err := svc.Run(context.Background(), req)
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
@@ -682,8 +682,8 @@ func parseReviewerNotesFlags(args []string) (string, string) {
 }
 
 func parseRewriteRunRequest(args []string) (service.RewriteRunRequest, error) {
-	if len(args) == 0 {
-		return service.RewriteRunRequest{}, fmt.Errorf("missing workspace article id")
+	if len(args) == 0 || strings.HasPrefix(strings.TrimSpace(args[0]), "--") {
+		return service.RewriteRunRequest{}, fmt.Errorf("missing positional workspace article id")
 	}
 	req := service.RewriteRunRequest{
 		WorkspaceArticleID: strings.TrimSpace(args[0]),
@@ -713,7 +713,7 @@ func parseRewriteRunRequest(args []string) (service.RewriteRunRequest, error) {
 		}
 	}
 	if req.WorkspaceArticleID == "" {
-		return service.RewriteRunRequest{}, fmt.Errorf("missing workspace article id")
+		return service.RewriteRunRequest{}, fmt.Errorf("missing positional workspace article id")
 	}
 	if req.TargetType == "" {
 		return service.RewriteRunRequest{}, fmt.Errorf("missing --target")

@@ -221,6 +221,39 @@ func TestCLIRewriteRunInvokesRuntimeRewriteService(t *testing.T) {
 	assert.Empty(t, stderr.String())
 }
 
+func TestCLIRewriteRunRequiresPositionalWorkspaceArticleID(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	exitCode := run([]string{"rewrite", "run", "--target", "wechat-longform", "--source", "sspai", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 2, exitCode)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "missing positional workspace article id")
+}
+
+func TestCLIRewriteRunArgumentFailureDoesNotInvokeRuntimeFactory(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	originalFactory := runtimeRewriteServiceFactory
+	called := false
+	runtimeRewriteServiceFactory = func(root string) (rewriteCLIService, func() error, error) {
+		called = true
+		return nil, func() error { return nil }, nil
+	}
+	defer func() { runtimeRewriteServiceFactory = originalFactory }()
+
+	exitCode := run([]string{"rewrite", "run", "--target", "wechat-longform", "--source", "sspai", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 2, exitCode)
+	assert.False(t, called)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "missing positional workspace article id")
+}
+
 func TestRuntimeRewriteCLIServiceRunDerivesWorkspaceFields(t *testing.T) {
 	called := false
 	var received service.RewriteRunRequest
