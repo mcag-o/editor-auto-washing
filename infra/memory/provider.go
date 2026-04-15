@@ -22,6 +22,8 @@ var (
 	_ repo.JobEventRepo                = (*memJobEventRepo)(nil)
 	_ repo.IngestionRepo               = (*memIngestionRepo)(nil)
 	_ repo.WorkspaceRepo               = (*memWorkspaceRepo)(nil)
+	_ repo.RewritePipelineRunRepo      = (*memRewritePipelineRunRepo)(nil)
+	_ repo.RewriteStageRunRepo         = (*memRewriteStageRunRepo)(nil)
 	_ repo.CollectorSourceRepo         = (*memCollectorSourceRepo)(nil)
 	_ repo.CollectorRunRepo            = (*memCollectorRunRepo)(nil)
 	_ repo.CollectorEntryRepo          = (*memCollectorEntryRepo)(nil)
@@ -43,6 +45,8 @@ type Provider struct {
 	jobEvents           map[string][]*domain.JobEvent
 	ingestions          map[string]*domain.IngestionRecord
 	workspaces          map[string]*domain.ArticleWorkspaceRecord
+	rewritePipelineRuns map[string]*domain.RewritePipelineRun
+	rewriteStageRuns    map[string][]*domain.RewriteStageRun
 	collectorSources    map[string]*domain.CollectorSource
 	collectorRuns       map[string]*domain.CollectorRun
 	collectorSourceRuns map[string][]*domain.CollectorSourceRun
@@ -64,6 +68,8 @@ func NewProvider() *Provider {
 		jobEvents:           make(map[string][]*domain.JobEvent),
 		ingestions:          make(map[string]*domain.IngestionRecord),
 		workspaces:          make(map[string]*domain.ArticleWorkspaceRecord),
+		rewritePipelineRuns: make(map[string]*domain.RewritePipelineRun),
+		rewriteStageRuns:    make(map[string][]*domain.RewriteStageRun),
 		collectorSources:    make(map[string]*domain.CollectorSource),
 		collectorRuns:       make(map[string]*domain.CollectorRun),
 		collectorSourceRuns: make(map[string][]*domain.CollectorSourceRun),
@@ -84,6 +90,12 @@ func (p *Provider) JobRepo() repo.JobRepo             { return &memJobRepo{p: p}
 func (p *Provider) JobEventRepo() repo.JobEventRepo   { return &memJobEventRepo{p: p} }
 func (p *Provider) IngestionRepo() repo.IngestionRepo { return &memIngestionRepo{p: p} }
 func (p *Provider) WorkspaceRepo() repo.WorkspaceRepo { return &memWorkspaceRepo{p: p} }
+func (p *Provider) RewritePipelineRunRepo() repo.RewritePipelineRunRepo {
+	return &memRewritePipelineRunRepo{p: p}
+}
+func (p *Provider) RewriteStageRunRepo() repo.RewriteStageRunRepo {
+	return &memRewriteStageRunRepo{p: p}
+}
 func (p *Provider) CollectorSourceRepo() repo.CollectorSourceRepo {
 	return &memCollectorSourceRepo{p: p}
 }
@@ -637,4 +649,108 @@ func (r *memWorkspaceRepo) Delete(_ context.Context, id string) error {
 	}
 	delete(r.p.workspaces, id)
 	return nil
+}
+
+type memRewritePipelineRunRepo struct{ p *Provider }
+
+func (r *memRewritePipelineRunRepo) Create(_ context.Context, run *domain.RewritePipelineRun) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.rewritePipelineRuns[run.ID] = cloneRewritePipelineRun(run)
+	return nil
+}
+
+func (r *memRewritePipelineRunRepo) Update(_ context.Context, run *domain.RewritePipelineRun) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	if _, ok := r.p.rewritePipelineRuns[run.ID]; !ok {
+		return domain.NewNotFoundErr("rewrite_pipeline_run", run.ID)
+	}
+	r.p.rewritePipelineRuns[run.ID] = cloneRewritePipelineRun(run)
+	return nil
+}
+
+func (r *memRewritePipelineRunRepo) GetByID(_ context.Context, id string) (*domain.RewritePipelineRun, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+	run, ok := r.p.rewritePipelineRuns[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("rewrite_pipeline_run", id)
+	}
+	return cloneRewritePipelineRun(run), nil
+}
+
+func (r *memRewritePipelineRunRepo) List(_ context.Context, limit int) ([]domain.RewritePipelineRun, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	runs := make([]domain.RewritePipelineRun, 0, len(r.p.rewritePipelineRuns))
+	for _, run := range r.p.rewritePipelineRuns {
+		runs = append(runs, *cloneRewritePipelineRun(run))
+	}
+	sort.Slice(runs, func(i, j int) bool {
+		return runs[i].StartedAt.After(runs[j].StartedAt)
+	})
+	if limit <= 0 || limit >= len(runs) {
+		return runs, nil
+	}
+	return runs[:limit], nil
+}
+
+type memRewriteStageRunRepo struct{ p *Provider }
+
+func (r *memRewriteStageRunRepo) Create(_ context.Context, run *domain.RewriteStageRun) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.rewriteStageRuns[run.PipelineRunID] = append(r.p.rewriteStageRuns[run.PipelineRunID], cloneRewriteStageRun(run))
+	return nil
+}
+
+func (r *memRewriteStageRunRepo) ListByPipelineRunID(_ context.Context, pipelineRunID string) ([]domain.RewriteStageRun, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+
+	runs := r.p.rewriteStageRuns[pipelineRunID]
+	result := make([]domain.RewriteStageRun, len(runs))
+	for i, run := range runs {
+		result[i] = *cloneRewriteStageRun(run)
+	}
+	return result, nil
+}
+
+func cloneRewritePipelineRun(run *domain.RewritePipelineRun) *domain.RewritePipelineRun {
+	if run == nil {
+		return nil
+	}
+	clone := *run
+	clone.Metadata = cloneMap(run.Metadata)
+	if run.CompletedAt != nil {
+		completedAt := *run.CompletedAt
+		clone.CompletedAt = &completedAt
+	}
+	return &clone
+}
+
+func cloneRewriteStageRun(run *domain.RewriteStageRun) *domain.RewriteStageRun {
+	if run == nil {
+		return nil
+	}
+	clone := *run
+	clone.Metadata = cloneMap(run.Metadata)
+	if run.CompletedAt != nil {
+		completedAt := *run.CompletedAt
+		clone.CompletedAt = &completedAt
+	}
+	return &clone
+}
+
+func cloneMap(source map[string]any) map[string]any {
+	if source == nil {
+		return map[string]any{}
+	}
+	clone := make(map[string]any, len(source))
+	for key, value := range source {
+		clone[key] = value
+	}
+	return clone
 }
