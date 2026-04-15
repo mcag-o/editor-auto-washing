@@ -110,12 +110,8 @@ func (o *RewriteOrchestrator) Run(ctx context.Context, req RewriteRunRequest) (*
 			return o.failRun(ctx, run, stage, inputVars, err)
 		}
 
-		if result.Quality.Action == QualityDecisionRepair {
+		if shouldRouteStageToRepair(stage, result.Quality) {
 			repairName := strings.TrimSpace(stage.OnFailure.RepairStage)
-			if repairName == "" {
-				return o.failRun(ctx, run, stage, inputVars, domain.NewValidationErr(result.Quality.Message, nil))
-			}
-
 			repairStage, ok := stagesByName[repairName]
 			if !ok {
 				return o.failRun(ctx, run, stage, inputVars, domain.NewNotFoundErr("repair stage", repairName))
@@ -147,9 +143,14 @@ func (o *RewriteOrchestrator) Run(ctx context.Context, req RewriteRunRequest) (*
 			if err := o.stageRuns.Create(ctx, repairStageRun); err != nil {
 				return o.failRun(ctx, run, repairStage, repairInputVars, err)
 			}
+			if repairResult.Quality.Action != QualityDecisionPass {
+				return o.failRun(ctx, run, repairStage, repairInputVars, domain.NewValidationErr(repairResult.Quality.Message, nil))
+			}
 
 			result = repairResult
 			skippedStages[repairStage.Name] = true
+		} else if result.Quality.Action == QualityDecisionRepair {
+			return o.failRun(ctx, run, stage, inputVars, domain.NewValidationErr(result.Quality.Message, nil))
 		}
 
 		for key, value := range result.StructuredOutput {
@@ -239,6 +240,12 @@ func indexRewriteStages(stages []domain.RewriteStageDefinition) map[string]domai
 		indexed[stage.Name] = stage
 	}
 	return indexed
+}
+
+func shouldRouteStageToRepair(stage domain.RewriteStageDefinition, quality QualityResult) bool {
+	return quality.Action == QualityDecisionRepair &&
+		strings.TrimSpace(stage.OnFailure.Action) == QualityDecisionRepair &&
+		strings.TrimSpace(stage.OnFailure.RepairStage) != ""
 }
 
 func buildRewriteStageRun(pipelineRunID string, stage domain.RewriteStageDefinition, inputVars map[string]any, result *StageExecutionResult) (*domain.RewriteStageRun, error) {
