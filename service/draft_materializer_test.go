@@ -89,6 +89,7 @@ func TestDraftMaterializerReturnsWorkspaceTransitionFailureAfterDraftPersist(t *
 
 	require.Error(t, err)
 	assert.Nil(t, draft)
+	assert.Contains(t, err.Error(), "draft persisted but workspace transition failed")
 	assert.Contains(t, err.Error(), "workspace transition failed")
 
 	storedDraft, getErr := provider.DraftRepo().GetByID(t.Context(), workspace.ID)
@@ -99,6 +100,31 @@ func TestDraftMaterializerReturnsWorkspaceTransitionFailureAfterDraftPersist(t *
 	storedWorkspace, workspaceErr := provider.WorkspaceRepo().GetByID(t.Context(), workspace.ID)
 	require.NoError(t, workspaceErr)
 	assert.Equal(t, domain.ArticleWorkspaceStatusImported, storedWorkspace.Status)
+}
+
+func TestDraftMaterializerRejectsInvalidFinalOutput(t *testing.T) {
+	provider := memory.NewProvider()
+	workspace := domain.NewArticleWorkspaceRecord("article-4", "Original Title", "Summary", domain.ArticleWorkspaceSource{SourceType: "collector"}, nil)
+	require.NoError(t, provider.WorkspaceRepo().Create(t.Context(), workspace))
+
+	materializer := NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo())
+
+	draft, err := materializer.Materialize(t.Context(), workspace.ID, map[string]any{
+		"title":    " ",
+		"body":     []any{"   "},
+		"template": "",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, draft)
+	assert.Contains(t, err.Error(), "final output template is required")
+
+	storedWorkspace, getErr := provider.WorkspaceRepo().GetByID(t.Context(), workspace.ID)
+	require.NoError(t, getErr)
+	assert.Equal(t, domain.ArticleWorkspaceStatusImported, storedWorkspace.Status)
+	_, getDraftErr := provider.DraftRepo().GetByID(t.Context(), workspace.ID)
+	require.Error(t, getDraftErr)
+	assert.Contains(t, getDraftErr.Error(), "draft article-4 not found")
 }
 
 type failingDraftRepo struct {
