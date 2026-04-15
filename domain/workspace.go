@@ -4,6 +4,9 @@ import "time"
 
 const (
 	ArticleWorkspaceStatusImported       = "imported"
+	ArticleWorkspaceStatusRewritePending = "rewrite_pending"
+	ArticleWorkspaceStatusRewriting      = "rewriting"
+	ArticleWorkspaceStatusRewriteFailed  = "rewrite_failed"
 	ArticleWorkspaceStatusDraft          = "draft"
 	ArticleWorkspaceStatusRendered       = "rendered"
 	ArticleWorkspaceStatusReviewPending  = "review_pending"
@@ -284,13 +287,16 @@ func NewArticleWorkspaceRecord(id, title, summary string, source ArticleWorkspac
 }
 
 var ValidWorkspaceStatusTransitions = map[string][]string{
-	ArticleWorkspaceStatusImported:       {ArticleWorkspaceStatusDraft, ArticleWorkspaceStatusFailed},
+	ArticleWorkspaceStatusImported:       {ArticleWorkspaceStatusRewritePending, ArticleWorkspaceStatusFailed},
+	ArticleWorkspaceStatusRewritePending: {ArticleWorkspaceStatusRewriting, ArticleWorkspaceStatusFailed},
+	ArticleWorkspaceStatusRewriting:      {ArticleWorkspaceStatusDraft, ArticleWorkspaceStatusRewriteFailed, ArticleWorkspaceStatusFailed},
+	ArticleWorkspaceStatusRewriteFailed:  {ArticleWorkspaceStatusRewritePending, ArticleWorkspaceStatusFailed},
 	ArticleWorkspaceStatusDraft:          {ArticleWorkspaceStatusRendered, ArticleWorkspaceStatusFailed},
 	ArticleWorkspaceStatusRendered:       {ArticleWorkspaceStatusReviewPending, ArticleWorkspaceStatusFailed},
 	ArticleWorkspaceStatusReviewPending:  {ArticleWorkspaceStatusApproved, ArticleWorkspaceStatusReviewRejected, ArticleWorkspaceStatusFailed},
 	ArticleWorkspaceStatusReviewRejected: {ArticleWorkspaceStatusDraft, ArticleWorkspaceStatusFailed},
 	ArticleWorkspaceStatusApproved:       {ArticleWorkspaceStatusPublished, ArticleWorkspaceStatusFailed},
-	ArticleWorkspaceStatusFailed:         {ArticleWorkspaceStatusDraft},
+	ArticleWorkspaceStatusFailed:         {ArticleWorkspaceStatusRewritePending, ArticleWorkspaceStatusDraft},
 	ArticleWorkspaceStatusPublished:      {},
 }
 
