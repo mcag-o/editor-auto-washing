@@ -17,7 +17,16 @@ func TestBuildRuntimeReposExposesRewriteRepos(t *testing.T) {
 	if repos.RewritePipelineRunRepo == nil {
 		t.Fatal("expected RewritePipelineRunRepo to be wired")
 	}
+	if repos.RewritePipelineProfileRepo == nil {
+		t.Fatal("expected RewritePipelineProfileRepo to be wired")
+	}
+	if repos.RewriteStageRunRepo == nil {
+		t.Fatal("expected RewriteStageRunRepo to be wired")
+	}
 	if repos.PromptTemplateRepo == nil {
 		t.Fatal("expected PromptTemplateRepo to be wired")
+	}
+	if repos.LLMProfileRepo == nil {
+		t.Fatal("expected LLMProfileRepo to be wired")
 	}
 }
