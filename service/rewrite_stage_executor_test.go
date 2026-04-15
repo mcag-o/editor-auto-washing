@@ -31,6 +31,20 @@ type recordingLLMClient struct {
 	gotReq   llminfra.GenerateRequest
 }
 
+type stubLLMProfileResolver struct {
+	profile *domain.LLMProfile
+	err     error
+	gotName string
+}
+
+func (s *stubLLMProfileResolver) GetByName(_ context.Context, name string) (*domain.LLMProfile, error) {
+	s.gotName = name
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.profile, nil
+}
+
 func (c *recordingLLMClient) Generate(_ context.Context, req llminfra.GenerateRequest) (*llminfra.GenerateResponse, error) {
 	c.gotReq = req
 	if c.err != nil {
@@ -112,4 +126,34 @@ func TestRewriteStageExecutorReturnsQualityDecisionFromGate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, QualityDecisionRepair, result.Quality.Action)
 	require.Contains(t, result.Quality.Message, "too short")
+}
+
+func TestRewriteStageExecutorResolvesModelProfileRefToLLMOptions(t *testing.T) {
+	prompts := &stubRewritePromptRegistry{prompt: &domain.PromptTemplate{
+		Key:            "extract_facts",
+		Version:        "v1",
+		SystemTemplate: "sys",
+		UserTemplate:   "Title: {{title}}",
+	}}
+	profiles := &stubLLMProfileResolver{profile: &domain.LLMProfile{
+		Name:        "rewrite-default",
+		Model:       "gpt-4.1-mini-real",
+		Temperature: 0.4,
+		MaxTokens:   512,
+	}}
+	client := &recordingLLMClient{response: &llminfra.GenerateResponse{Response: &domain.LLMResponse{
+		Content: `{"body":"rewritten"}`,
+		Model:   "gpt-4.1-mini-real",
+	}}}
+
+	executor := NewRewriteStageExecutorWithProfileResolver(prompts, profiles, client, NewQualityGateEngine())
+	stage := domain.RewriteStageDefinition{Name: "generate_draft", PromptRef: "extract_facts@v1", ModelProfileRef: "rewrite-default"}
+
+	result, err := executor.Execute(t.Context(), stage, StageExecutionInput{Vars: map[string]any{"title": "Hello"}})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "rewrite-default", profiles.gotName)
+	require.Equal(t, "gpt-4.1-mini-real", client.gotReq.Options.Model)
+	require.Equal(t, 0.4, client.gotReq.Options.Temperature)
+	require.Equal(t, 512, client.gotReq.Options.MaxTokens)
 }

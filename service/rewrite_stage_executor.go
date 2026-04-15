@@ -12,6 +12,10 @@ type rewriteStagePromptRegistry interface {
 	Get(ctx context.Context, key, version string) (*domain.PromptTemplate, error)
 }
 
+type rewriteStageLLMProfileResolver interface {
+	GetByName(ctx context.Context, name string) (*domain.LLMProfile, error)
+}
+
 type StageExecutionInput struct {
 	Vars      map[string]any
 	MinLength int
@@ -41,16 +45,22 @@ type StageExecutionResult struct {
 }
 
 type RewriteStageExecutor struct {
-	prompts rewriteStagePromptRegistry
-	client  llminfra.Client
-	quality *QualityGateEngine
+	prompts  rewriteStagePromptRegistry
+	profiles rewriteStageLLMProfileResolver
+	client   llminfra.Client
+	quality  *QualityGateEngine
 }
 
 func NewRewriteStageExecutor(prompts rewriteStagePromptRegistry, client llminfra.Client, quality *QualityGateEngine) *RewriteStageExecutor {
+	return NewRewriteStageExecutorWithProfileResolver(prompts, nil, client, quality)
+}
+
+func NewRewriteStageExecutorWithProfileResolver(prompts rewriteStagePromptRegistry, profiles rewriteStageLLMProfileResolver, client llminfra.Client, quality *QualityGateEngine) *RewriteStageExecutor {
 	return &RewriteStageExecutor{
-		prompts: prompts,
-		client:  client,
-		quality: quality,
+		prompts:  prompts,
+		profiles: profiles,
+		client:   client,
+		quality:  quality,
 	}
 }
 
@@ -78,9 +88,14 @@ func (e *RewriteStageExecutor) Execute(ctx context.Context, stage domain.Rewrite
 		return nil, domain.NewValidationErr("render user prompt", err)
 	}
 
+	options, err := e.buildLLMOptions(ctx, stage)
+	if err != nil {
+		return nil, err
+	}
+
 	resp, err := e.client.Generate(ctx, llminfra.GenerateRequest{
 		Messages: []domain.ChatMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
-		Options:  domain.LLMOptions{Model: stage.ModelProfileRef},
+		Options:  options,
 		Metadata: map[string]any{
 			"stage_name": stage.Name,
 			"prompt_ref": stage.PromptRef,
@@ -130,4 +145,24 @@ func parsePromptRef(promptRef string) (string, string, error) {
 	}
 
 	return strings.TrimSpace(key), strings.TrimSpace(version), nil
+}
+
+func (e *RewriteStageExecutor) buildLLMOptions(ctx context.Context, stage domain.RewriteStageDefinition) (domain.LLMOptions, error) {
+	if strings.TrimSpace(stage.ModelProfileRef) == "" || e.profiles == nil {
+		return domain.LLMOptions{Model: stage.ModelProfileRef}, nil
+	}
+
+	profile, err := e.profiles.GetByName(ctx, stage.ModelProfileRef)
+	if err != nil {
+		return domain.LLMOptions{}, fmt.Errorf("load llm profile: %w", err)
+	}
+	if profile == nil {
+		return domain.LLMOptions{}, domain.NewNotFoundErr("llm profile", stage.ModelProfileRef)
+	}
+
+	return domain.LLMOptions{
+		Model:       profile.Model,
+		Temperature: profile.Temperature,
+		MaxTokens:   profile.MaxTokens,
+	}, nil
 }
