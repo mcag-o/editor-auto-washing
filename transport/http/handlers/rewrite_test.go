@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -72,6 +73,47 @@ func TestRewriteHandlerRunMapsServiceErrors(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.Code)
 	assert.Contains(t, resp.Body.String(), "invalid rewrite request")
 	assert.Contains(t, resp.Body.String(), string(domain.ErrValidation))
+}
+
+func TestRewriteHandlerRunReturnsBadRequestForMalformedJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	runner := &stubRewriteRunner{}
+	h := NewRewriteHandler(runner)
+	router := gin.New()
+	router.POST("/rewrite/runs", h.Run)
+
+	req := httptest.NewRequest(http.MethodPost, "/rewrite/runs", bytes.NewBufferString(`{"workspace_article_id":"article-1",`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	require.Equal(t, http.StatusBadRequest, resp.Code)
+	assert.Contains(t, resp.Body.String(), "error")
+	require.Equal(t, service.RewriteRunRequest{}, runner.lastReq)
+}
+
+func TestRewriteRunRequestHasHTTPBindingTags(t *testing.T) {
+	type fieldExpectation struct {
+		name    string
+		jsonTag string
+	}
+
+	expected := []fieldExpectation{
+		{name: "WorkspaceArticleID", jsonTag: "workspace_article_id"},
+		{name: "CollectorArticleID", jsonTag: "collector_article_id"},
+		{name: "Title", jsonTag: "title"},
+		{name: "TargetType", jsonTag: "target_type"},
+		{name: "SourceProfile", jsonTag: "source_profile"},
+		{name: "Version", jsonTag: "version"},
+	}
+
+	typ := reflect.TypeOf(service.RewriteRunRequest{})
+	for _, field := range expected {
+		sf, ok := typ.FieldByName(field.name)
+		require.True(t, ok)
+		assert.Equal(t, field.jsonTag, sf.Tag.Get("json"))
+		assert.Equal(t, "required", sf.Tag.Get("binding"))
+	}
 }
 
 type stubRewriteRunner struct {

@@ -18,12 +18,12 @@ const (
 )
 
 type RewriteRunRequest struct {
-	WorkspaceArticleID string
-	CollectorArticleID string
-	Title              string
-	TargetType         string
-	SourceProfile      string
-	Version            string
+	WorkspaceArticleID string `json:"workspace_article_id" binding:"required"`
+	CollectorArticleID string `json:"collector_article_id" binding:"required"`
+	Title              string `json:"title" binding:"required"`
+	TargetType         string `json:"target_type" binding:"required"`
+	SourceProfile      string `json:"source_profile" binding:"required"`
+	Version            string `json:"version" binding:"required"`
 }
 
 type RewriteOrchestrator struct {

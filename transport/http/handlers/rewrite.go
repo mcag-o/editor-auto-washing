@@ -27,27 +27,13 @@ func (h *RewriteHandler) Run(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		WorkspaceArticleID string `json:"workspace_article_id" binding:"required"`
-		CollectorArticleID string `json:"collector_article_id" binding:"required"`
-		Title              string `json:"title" binding:"required"`
-		TargetType         string `json:"target_type" binding:"required"`
-		SourceProfile      string `json:"source_profile" binding:"required"`
-		Version            string `json:"version" binding:"required"`
-	}
+	var req service.RewriteRunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	run, err := h.svc.Run(c.Request.Context(), service.RewriteRunRequest{
-		WorkspaceArticleID: req.WorkspaceArticleID,
-		CollectorArticleID: req.CollectorArticleID,
-		Title:              req.Title,
-		TargetType:         req.TargetType,
-		SourceProfile:      req.SourceProfile,
-		Version:            req.Version,
-	})
+	run, err := h.svc.Run(c.Request.Context(), req)
 	if err != nil {
 		HandleError(c, err)
 		return
