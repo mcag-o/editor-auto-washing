@@ -14,6 +14,7 @@ import (
 const (
 	rewritePendingNote = "rewrite queued"
 	rewritingNote      = "rewrite in progress"
+	rewriteFailedNote  = "rewrite failed"
 )
 
 type RewriteRunRequest struct {
@@ -79,7 +80,12 @@ func (o *RewriteOrchestrator) Run(ctx context.Context, req RewriteRunRequest) (*
 
 	vars := map[string]any{"title": req.Title}
 	var finalOutput map[string]any
+	stagesByName := indexRewriteStages(profile.Stages)
+	skippedStages := map[string]bool{}
 	for _, stage := range profile.Stages {
+		if skippedStages[stage.Name] {
+			continue
+		}
 		if !stage.Enabled {
 			continue
 		}
@@ -93,15 +99,57 @@ func (o *RewriteOrchestrator) Run(ctx context.Context, req RewriteRunRequest) (*
 		inputVars := mergeStageVars(vars, stage.InputBindings)
 		result, err := o.executor.Execute(ctx, stage, StageExecutionInput{Vars: inputVars})
 		if err != nil {
-			return nil, err
+			return o.failRun(ctx, run, stage, inputVars, err)
 		}
 
 		stageRun, err := buildRewriteStageRun(run.ID, stage, inputVars, result)
 		if err != nil {
-			return nil, err
+			return o.failRun(ctx, run, stage, inputVars, err)
 		}
 		if err := o.stageRuns.Create(ctx, stageRun); err != nil {
-			return nil, err
+			return o.failRun(ctx, run, stage, inputVars, err)
+		}
+
+		if result.Quality.Action == QualityDecisionRepair {
+			repairName := strings.TrimSpace(stage.OnFailure.RepairStage)
+			if repairName == "" {
+				return o.failRun(ctx, run, stage, inputVars, domain.NewValidationErr(result.Quality.Message, nil))
+			}
+
+			repairStage, ok := stagesByName[repairName]
+			if !ok {
+				return o.failRun(ctx, run, stage, inputVars, domain.NewNotFoundErr("repair stage", repairName))
+			}
+			if !repairStage.Enabled {
+				return o.failRun(ctx, run, stage, inputVars, domain.NewValidationErr(fmt.Sprintf("repair stage %s is disabled", repairName), nil))
+			}
+
+			repairStage = applyProfileDefaultsToStage(profile, repairStage)
+			repairInputVars := mergeStageVars(vars, repairStage.InputBindings)
+			for key, value := range result.StructuredOutput {
+				repairInputVars[key] = value
+			}
+
+			run.CurrentStage = repairStage.Name
+			if err := o.runs.Update(ctx, run); err != nil {
+				return nil, err
+			}
+
+			repairResult, err := o.executor.Execute(ctx, repairStage, StageExecutionInput{Vars: repairInputVars})
+			if err != nil {
+				return o.failRun(ctx, run, repairStage, repairInputVars, err)
+			}
+
+			repairStageRun, err := buildRewriteStageRun(run.ID, repairStage, repairInputVars, repairResult)
+			if err != nil {
+				return o.failRun(ctx, run, repairStage, repairInputVars, err)
+			}
+			if err := o.stageRuns.Create(ctx, repairStageRun); err != nil {
+				return o.failRun(ctx, run, repairStage, repairInputVars, err)
+			}
+
+			result = repairResult
+			skippedStages[repairStage.Name] = true
 		}
 
 		for key, value := range result.StructuredOutput {
@@ -112,7 +160,7 @@ func (o *RewriteOrchestrator) Run(ctx context.Context, req RewriteRunRequest) (*
 
 	draft, err := o.materialize.Materialize(ctx, req.WorkspaceArticleID, finalOutput)
 	if err != nil {
-		return nil, err
+		return o.failRun(ctx, run, domain.RewriteStageDefinition{Name: run.CurrentStage}, nil, err)
 	}
 
 	completedAt := time.Now().UTC()
@@ -124,6 +172,35 @@ func (o *RewriteOrchestrator) Run(ctx context.Context, req RewriteRunRequest) (*
 	}
 
 	return run, nil
+}
+
+func (o *RewriteOrchestrator) failRun(ctx context.Context, run *domain.RewritePipelineRun, stage domain.RewriteStageDefinition, inputVars map[string]any, runErr error) (*domain.RewritePipelineRun, error) {
+	if run == nil {
+		return nil, runErr
+	}
+
+	if strings.TrimSpace(stage.Name) != "" {
+		run.CurrentStage = stage.Name
+	}
+	completedAt := time.Now().UTC()
+	run.Status = domain.RewriteRunFailed
+	run.ErrorSummary = runErr.Error()
+	run.CompletedAt = &completedAt
+
+	stageRunErr := o.persistFailedStageRun(ctx, run.ID, stage, inputVars, runErr)
+	workspaceErr := o.workspaces.TransitionStatus(ctx, run.WorkspaceArticleID, domain.ArticleWorkspaceStatusRewriteFailed, rewriteFailedNote)
+	runUpdateErr := o.runs.Update(ctx, run)
+
+	if stageRunErr != nil {
+		return run, fmt.Errorf("%w: persist failed stage run: %v", runErr, stageRunErr)
+	}
+	if workspaceErr != nil {
+		return run, fmt.Errorf("%w: mark workspace rewrite failed: %v", runErr, workspaceErr)
+	}
+	if runUpdateErr != nil {
+		return run, fmt.Errorf("%w: update rewrite pipeline run: %v", runErr, runUpdateErr)
+	}
+	return run, runErr
 }
 
 func (o *RewriteOrchestrator) validate() error {
@@ -156,6 +233,14 @@ func applyProfileDefaultsToStage(profile *domain.RewritePipelineProfile, stage d
 	return stage
 }
 
+func indexRewriteStages(stages []domain.RewriteStageDefinition) map[string]domain.RewriteStageDefinition {
+	indexed := make(map[string]domain.RewriteStageDefinition, len(stages))
+	for _, stage := range stages {
+		indexed[stage.Name] = stage
+	}
+	return indexed
+}
+
 func buildRewriteStageRun(pipelineRunID string, stage domain.RewriteStageDefinition, inputVars map[string]any, result *StageExecutionResult) (*domain.RewriteStageRun, error) {
 	inputJSON, err := json.Marshal(inputVars)
 	if err != nil {
@@ -181,4 +266,36 @@ func buildRewriteStageRun(pipelineRunID string, stage domain.RewriteStageDefinit
 		StartedAt:     completedAt,
 		CompletedAt:   &completedAt,
 	}, nil
+}
+
+func (o *RewriteOrchestrator) persistFailedStageRun(ctx context.Context, pipelineRunID string, stage domain.RewriteStageDefinition, inputVars map[string]any, runErr error) error {
+	if strings.TrimSpace(stage.Name) == "" {
+		return nil
+	}
+
+	inputJSON, err := json.Marshal(inputVars)
+	if err != nil {
+		return fmt.Errorf("marshal rewrite stage input: %w", err)
+	}
+	completedAt := time.Now().UTC()
+	stageRun := &domain.RewriteStageRun{
+		ID:            id.New(),
+		PipelineRunID: pipelineRunID,
+		StageName:     stage.Name,
+		StageType:     stage.Type,
+		PromptRef:     stage.PromptRef,
+		LLMProfileRef: stage.ModelProfileRef,
+		Status:        domain.RewriteStageFailed,
+		Attempt:       1,
+		InputJSON:     string(inputJSON),
+		OutputJSON:    "{}",
+		ErrorSummary:  runErr.Error(),
+		Metadata:      map[string]any{},
+		StartedAt:     completedAt,
+		CompletedAt:   &completedAt,
+	}
+	if err := o.stageRuns.Create(ctx, stageRun); err != nil {
+		return err
+	}
+	return nil
 }
