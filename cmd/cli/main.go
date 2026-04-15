@@ -44,6 +44,14 @@ type reviewPublishCLIService interface {
 	History(ctx context.Context, articleID string) ([]domain.PublishRecord, error)
 }
 
+type rewriteCLIService interface {
+	Run(ctx context.Context, req service.RewriteRunRequest) (*domain.RewritePipelineRun, error)
+}
+
+type rewriteRunner interface {
+	Run(ctx context.Context, req service.RewriteRunRequest) (*domain.RewritePipelineRun, error)
+}
+
 type automationCLIService interface {
 	RunOnce(ctx context.Context) (*domain.AutomationRunResult, error)
 	RunDaemon(ctx context.Context) (*domain.AutomationRunResult, error)
@@ -93,6 +101,49 @@ var runtimeReviewPublishServiceFactory = func(root string) (reviewPublishCLIServ
 	reviewSvc := service.NewReviewService(repos.ReviewRepo, repos.WorkspaceRepo)
 	publishSvc := service.NewPublishGateService(repos.ReviewRepo, repos.AssetRepo, repos.DraftRepo, repos.PublishRepo, repos.WorkspaceRepo, map[string]service.PublisherProvider{"wechat": cliPublishProvider{}})
 	return &runtimeReviewPublishService{review: reviewSvc, publish: publishSvc}, cleanup, nil
+}
+
+type runtimeRewriteCLIService struct {
+	workspaceRepo repoWorkspaceReader
+	runner        rewriteRunner
+}
+
+type repoWorkspaceReader interface {
+	GetByID(ctx context.Context, id string) (*domain.ArticleWorkspaceRecord, error)
+}
+
+func (s *runtimeRewriteCLIService) Run(ctx context.Context, req service.RewriteRunRequest) (*domain.RewritePipelineRun, error) {
+	workspace, err := s.workspaceRepo.GetByID(ctx, req.WorkspaceArticleID)
+	if err != nil {
+		return nil, err
+	}
+	if workspace == nil {
+		return nil, domain.NewNotFoundErr("workspace article", req.WorkspaceArticleID)
+	}
+	if strings.TrimSpace(workspace.Title) == "" {
+		return nil, domain.NewValidationErr("workspace article title is required for rewrite", nil)
+	}
+	collectorArticleID, _ := workspace.Metadata["collector_article_id"].(string)
+	if strings.TrimSpace(collectorArticleID) == "" {
+		return nil, domain.NewValidationErr("workspace article collector_article_id is required for rewrite", nil)
+	}
+	request := req
+	request.Title = workspace.Title
+	request.CollectorArticleID = collectorArticleID
+	return s.runner.Run(ctx, request)
+}
+
+var runtimeRewriteServiceFactory = func(root string) (rewriteCLIService, func() error, error) {
+	repos, cleanup, err := service.BuildRuntimeRepos(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	rewriteRuntime, err := service.BuildRewriteRuntime(repos)
+	if err != nil {
+		_ = cleanup()
+		return nil, nil, err
+	}
+	return &runtimeRewriteCLIService{workspaceRepo: repos.WorkspaceRepo, runner: rewriteRuntime.Orchestrator}, cleanup, nil
 }
 
 type runtimeAutomationCLIService struct {
@@ -206,7 +257,7 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: cli workspace <...> | ingestion <import|retry-failed> | formatting <render|validate> | automation <run-once|daemon|retry-failed|status|health|stop> | collector <sources|runs|scheduler> [--root PATH]")
+		fmt.Fprintln(stderr, "usage: cli workspace <...> | ingestion <import|retry-failed> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> | collector <sources|runs|scheduler> [--root PATH]")
 		return 2
 	}
 	if len(args) < 2 {
@@ -398,6 +449,35 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 0
 		default:
 			fmt.Fprintf(stderr, "unknown publish subcommand: %s\n", args[1])
+			return 2
+		}
+	case "rewrite":
+		if len(args) < 3 {
+			fmt.Fprintln(stderr, "missing rewrite target")
+			return 2
+		}
+		svc, cleanup, err := runtimeRewriteServiceFactory(root)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		defer cleanup()
+		switch args[1] {
+		case "run":
+			req, err := parseRewriteRunRequest(args[2:])
+			if err != nil {
+				fmt.Fprintln(stderr, err.Error())
+				return 2
+			}
+			result, err := svc.Run(context.Background(), req)
+			if err != nil {
+				fmt.Fprintln(stderr, err.Error())
+				return 1
+			}
+			fmt.Fprint(stdout, formatResolvedConfig(result))
+			return 0
+		default:
+			fmt.Fprintf(stderr, "unknown rewrite subcommand: %s\n", args[1])
 			return 2
 		}
 	case "automation":
@@ -599,6 +679,49 @@ func parseReviewerNotesFlags(args []string) (string, string) {
 		}
 	}
 	return reviewer, notes
+}
+
+func parseRewriteRunRequest(args []string) (service.RewriteRunRequest, error) {
+	if len(args) == 0 {
+		return service.RewriteRunRequest{}, fmt.Errorf("missing workspace article id")
+	}
+	req := service.RewriteRunRequest{
+		WorkspaceArticleID: strings.TrimSpace(args[0]),
+		Version:            "latest",
+	}
+	for idx := 1; idx < len(args); idx++ {
+		switch args[idx] {
+		case "--target":
+			if idx+1 >= len(args) || strings.HasPrefix(args[idx+1], "--") {
+				return service.RewriteRunRequest{}, fmt.Errorf("missing value for --target")
+			}
+			req.TargetType = strings.TrimSpace(args[idx+1])
+			idx++
+		case "--source":
+			if idx+1 >= len(args) || strings.HasPrefix(args[idx+1], "--") {
+				return service.RewriteRunRequest{}, fmt.Errorf("missing value for --source")
+			}
+			req.SourceProfile = strings.TrimSpace(args[idx+1])
+			idx++
+		case "--root":
+			if idx+1 >= len(args) || strings.HasPrefix(args[idx+1], "--") {
+				return service.RewriteRunRequest{}, fmt.Errorf("missing value for --root")
+			}
+			idx++
+		default:
+			return service.RewriteRunRequest{}, fmt.Errorf("unknown rewrite flag: %s", args[idx])
+		}
+	}
+	if req.WorkspaceArticleID == "" {
+		return service.RewriteRunRequest{}, fmt.Errorf("missing workspace article id")
+	}
+	if req.TargetType == "" {
+		return service.RewriteRunRequest{}, fmt.Errorf("missing --target")
+	}
+	if req.SourceProfile == "" {
+		return service.RewriteRunRequest{}, fmt.Errorf("missing --source")
+	}
+	return req, nil
 }
 
 func safeArg(args []string, idx int) string {

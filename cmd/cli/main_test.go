@@ -190,6 +190,76 @@ func TestReviewApproveRejectPublishAndHistoryCommands(t *testing.T) {
 	assert.Empty(t, stderr.String())
 }
 
+func TestCLIRewriteRunInvokesRuntimeRewriteService(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	originalFactory := runtimeRewriteServiceFactory
+	called := false
+	var received service.RewriteRunRequest
+	runtimeRewriteServiceFactory = func(root string) (rewriteCLIService, func() error, error) {
+		return &stubRewriteCLIService{runFn: func(_ context.Context, req service.RewriteRunRequest) (*domain.RewritePipelineRun, error) {
+			called = true
+			received = req
+			return &domain.RewritePipelineRun{ID: "run-1", Status: domain.RewriteRunSucceeded}, nil
+		}}, func() error { return nil }, nil
+	}
+	defer func() { runtimeRewriteServiceFactory = originalFactory }()
+
+	exitCode := run([]string{"rewrite", "run", "article-1", "--target", "wechat-longform", "--source", "sspai", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 0, exitCode)
+	assert.True(t, called)
+	assert.Equal(t, service.RewriteRunRequest{
+		WorkspaceArticleID: "article-1",
+		TargetType:         "wechat-longform",
+		SourceProfile:      "sspai",
+		Version:            "latest",
+	}, received)
+	assert.Contains(t, stdout.String(), "run-1")
+	assert.Empty(t, stderr.String())
+}
+
+func TestRuntimeRewriteCLIServiceRunDerivesWorkspaceFields(t *testing.T) {
+	called := false
+	var received service.RewriteRunRequest
+	svc := &runtimeRewriteCLIService{
+		workspaceRepo: stubWorkspaceReader{workspace: &domain.ArticleWorkspaceRecord{
+			ID:       "article-1",
+			Title:    "Source Title",
+			Metadata: map[string]any{"collector_article_id": "collector-1"},
+		}},
+		runner: &stubRewriteCLIService{runFn: func(_ context.Context, req service.RewriteRunRequest) (*domain.RewritePipelineRun, error) {
+			called = true
+			received = req
+			return &domain.RewritePipelineRun{ID: "run-1", Status: domain.RewriteRunSucceeded}, nil
+		}},
+	}
+
+	result, err := svc.Run(t.Context(), service.RewriteRunRequest{WorkspaceArticleID: "article-1", TargetType: "wechat-longform", SourceProfile: "sspai", Version: "latest"})
+
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Equal(t, &domain.RewritePipelineRun{ID: "run-1", Status: domain.RewriteRunSucceeded}, result)
+	assert.Equal(t, service.RewriteRunRequest{WorkspaceArticleID: "article-1", CollectorArticleID: "collector-1", Title: "Source Title", TargetType: "wechat-longform", SourceProfile: "sspai", Version: "latest"}, received)
+}
+
+func TestRuntimeRewriteCLIServiceRunReturnsErrorWhenCollectorArticleIDMissing(t *testing.T) {
+	runtime := &runtimeRewriteCLIService{
+		workspaceRepo: stubWorkspaceReader{workspace: &domain.ArticleWorkspaceRecord{ID: "article-1", Title: "Source Title", Metadata: map[string]any{}}},
+		runner: &stubRewriteCLIService{runFn: func(_ context.Context, req service.RewriteRunRequest) (*domain.RewritePipelineRun, error) {
+			return nil, nil
+		}},
+	}
+
+	result, err := runtime.Run(t.Context(), service.RewriteRunRequest{WorkspaceArticleID: "article-1", TargetType: "wechat-longform", SourceProfile: "sspai", Version: "latest"})
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "collector_article_id")
+}
+
 func TestAutomationCommandsRunOnceDaemonStatusHealthRetryFailedAndStop(t *testing.T) {
 	root := t.TempDir()
 	stdout := &bytes.Buffer{}
@@ -519,6 +589,15 @@ type cliAutomationServiceStub struct {
 	stopResult   *domain.AutomationStopResult
 }
 
+type stubRewriteCLIService struct {
+	runFn func(context.Context, service.RewriteRunRequest) (*domain.RewritePipelineRun, error)
+}
+
+type stubWorkspaceReader struct {
+	workspace *domain.ArticleWorkspaceRecord
+	err       error
+}
+
 type cliCollectorServiceStub struct{}
 
 type cliBlockingCollectorServiceStub struct {
@@ -604,6 +683,20 @@ func (s *cliAutomationServiceStub) Health(_ context.Context) (*domain.Automation
 
 func (s *cliAutomationServiceStub) Stop(_ context.Context) (*domain.AutomationStopResult, error) {
 	return s.stopResult, nil
+}
+
+func (s *stubRewriteCLIService) Run(ctx context.Context, req service.RewriteRunRequest) (*domain.RewritePipelineRun, error) {
+	return s.runFn(ctx, req)
+}
+
+func (s stubWorkspaceReader) GetByID(_ context.Context, id string) (*domain.ArticleWorkspaceRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.workspace == nil || s.workspace.ID != id {
+		return nil, domain.NewNotFoundErr("workspace article", id)
+	}
+	return s.workspace, nil
 }
 
 func (s *cliCollectorServiceStub) ListSources(_ context.Context) ([]domain.CollectorSource, error) {
