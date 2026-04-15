@@ -1,6 +1,9 @@
 package service
 
-import "fmt"
+import (
+	"fmt"
+	"unicode/utf8"
+)
 
 const (
 	QualityDecisionPass   = "pass"
@@ -27,8 +30,23 @@ func NewQualityGateEngine() *QualityGateEngine {
 }
 
 func (g *QualityGateEngine) Evaluate(input QualityInput) QualityResult {
-	body, _ := input.StructuredOutput["body"].(string)
-	bodyLength := len(body)
+	rawBody, ok := input.StructuredOutput["body"]
+	if !ok {
+		return QualityResult{
+			Action:  QualityDecisionRepair,
+			Message: "body is missing",
+		}
+	}
+
+	body, ok := rawBody.(string)
+	if !ok {
+		return QualityResult{
+			Action:  QualityDecisionRepair,
+			Message: "body must be a string",
+		}
+	}
+
+	bodyLength := utf8.RuneCountInString(body)
 
 	if bodyLength < input.MinLength {
 		return QualityResult{
@@ -44,8 +62,13 @@ func (g *QualityGateEngine) Evaluate(input QualityInput) QualityResult {
 		}
 	}
 
+	upperBoundMessage := fmt.Sprintf("body length %d within quality bounds", bodyLength)
+	if input.MaxLength <= 0 {
+		upperBoundMessage = fmt.Sprintf("body length %d within quality bounds (max length unbounded)", bodyLength)
+	}
+
 	return QualityResult{
 		Action:  QualityDecisionPass,
-		Message: fmt.Sprintf("body length %d within quality bounds", bodyLength),
+		Message: upperBoundMessage,
 	}
 }
