@@ -296,7 +296,7 @@ var ValidWorkspaceStatusTransitions = map[string][]string{
 	ArticleWorkspaceStatusReviewPending:  {ArticleWorkspaceStatusApproved, ArticleWorkspaceStatusReviewRejected, ArticleWorkspaceStatusFailed},
 	ArticleWorkspaceStatusReviewRejected: {ArticleWorkspaceStatusDraft, ArticleWorkspaceStatusFailed},
 	ArticleWorkspaceStatusApproved:       {ArticleWorkspaceStatusPublished, ArticleWorkspaceStatusFailed},
-	ArticleWorkspaceStatusFailed:         {ArticleWorkspaceStatusRewritePending, ArticleWorkspaceStatusDraft},
+	ArticleWorkspaceStatusFailed:         {ArticleWorkspaceStatusDraft},
 	ArticleWorkspaceStatusPublished:      {},
 }
 

@@ -35,3 +35,9 @@ func TestWorkspaceTransitionsPreserveImportedToDraftCompatibility(t *testing.T) 
 		t.Fatalf("expected imported -> draft to remain valid: %v", err)
 	}
 }
+
+func TestWorkspaceTransitionsDoNotAllowFailedToRewritePending(t *testing.T) {
+	if err := ValidateWorkspaceTransition(ArticleWorkspaceStatusFailed, ArticleWorkspaceStatusRewritePending); err == nil {
+		t.Fatal("expected failed -> rewrite_pending to be invalid")
+	}
+}
