@@ -3,12 +3,14 @@ package service
 import (
 	"content-hub/infra/config"
 	"content-hub/infra/formatter"
+	llminfra "content-hub/infra/llm"
 	"content-hub/infra/sqlite"
 	workspaceinfra "content-hub/infra/workspace"
 	"content-hub/pkg/repo"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 type RuntimeRepos struct {
@@ -36,6 +38,7 @@ type RuntimeRepos struct {
 	RewriteStageRunRepo        repo.RewriteStageRunRepo
 	PromptTemplateRepo         repo.PromptTemplateRepo
 	LLMProfileRepo             repo.LLMProfileRepo
+	LLMClient                  llminfra.Client
 }
 
 func BuildRuntimeRepos(root string) (*RuntimeRepos, func() error, error) {
@@ -100,5 +103,6 @@ func buildRuntimeReposFromResolved(runtimeCfg config.Config, renderedDir string,
 		RewriteStageRunRepo:        sqliteProvider.RewriteStageRunRepo(),
 		PromptTemplateRepo:         sqliteProvider.PromptTemplateRepo(),
 		LLMProfileRepo:             sqliteProvider.LLMProfileRepo(),
+		LLMClient:                  llminfra.NewProvider(runtimeCfg.LLM.BaseURL, runtimeCfg.LLM.APIKey, runtimeCfg.LLM.Model, time.Duration(runtimeCfg.LLM.TimeoutSec)*time.Second),
 	}, sqliteProvider.Close, nil
 }

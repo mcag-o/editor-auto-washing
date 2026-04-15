@@ -86,6 +86,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	rewriteRuntime, err := service.BuildRewriteRuntime(runtimeRepos)
+	if err != nil {
+		return err
+	}
 
 	workflowEngine := service.BuildDefaultWorkflowEngine(workspaceRoot, automationSvc)
 	jobSvc := service.NewJobService(
@@ -118,6 +122,7 @@ func run() error {
 		CollectorSourceSvc: collectorRuntime.RegistryService,
 		CollectorRunSvc:    collectorRuntime.RunService,
 		CollectorScheduler: collectorRuntime.SchedulerService,
+		RewriteRuntime:     rewriteRuntime,
 		WorkflowEngine:     workflowEngine,
 		ConfigLoader:       loader,
 		WorkspaceRoot:      workspaceRoot,

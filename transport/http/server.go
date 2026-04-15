@@ -38,6 +38,7 @@ type Provider struct {
 	CollectorSourceSvc collectorserviceLikeSource
 	CollectorRunSvc    collectorserviceLikeRun
 	CollectorScheduler collectorserviceLikeScheduler
+	RewriteRuntime     *service.RewriteRuntime
 	WorkflowEngine     *service.WorkflowEngine
 	ConfigLoader       *config.Loader
 	WorkspaceRoot      string
