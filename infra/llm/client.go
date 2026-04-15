@@ -1,18 +1,18 @@
 package llm
 
-import "context"
+import (
+	"content-hub/domain"
+	"context"
+)
 
 type GenerateRequest struct {
-	SystemPrompt string
-	UserPrompt   string
-	Model        string
-	TimeoutMS    int
-	Metadata     map[string]any
+	Messages []domain.ChatMessage
+	Options  domain.LLMOptions
+	Metadata map[string]any
 }
 
 type GenerateResponse struct {
-	Raw   []byte
-	Model string
+	Response *domain.LLMResponse
 }
 
 type Client interface {
@@ -20,8 +20,7 @@ type Client interface {
 }
 
 type StaticClient struct {
-	Response []byte
-	Model    string
+	Response domain.LLMResponse
 	Err      error
 }
 
@@ -31,7 +30,12 @@ func (c StaticClient) Generate(_ context.Context, _ GenerateRequest) (*GenerateR
 	}
 
 	return &GenerateResponse{
-		Raw:   append([]byte(nil), c.Response...),
-		Model: c.Model,
+		Response: &domain.LLMResponse{
+			Content:          c.Response.Content,
+			Model:            c.Response.Model,
+			PromptTokens:     c.Response.PromptTokens,
+			CompletionTokens: c.Response.CompletionTokens,
+			FinishReason:     c.Response.FinishReason,
+		},
 	}, nil
 }
