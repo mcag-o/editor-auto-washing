@@ -24,3 +24,9 @@ func TestPromptRendererStringifiesNonStringValues(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Count: 3", rendered)
 }
+
+func TestPromptRendererAllowsLiteralPlaceholderTextInValue(t *testing.T) {
+	rendered, err := RenderPrompt("Body: {{body}}", map[string]any{"body": "literal {{example}} text"})
+	require.NoError(t, err)
+	require.Equal(t, "Body: literal {{example}} text", rendered)
+}
