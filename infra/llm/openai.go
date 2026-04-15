@@ -78,8 +78,11 @@ func (p *Provider) Generate(ctx context.Context, genReq GenerateRequest) (*Gener
 
 	return &GenerateResponse{
 		Response: &domain.LLMResponse{
-			Content: apiResp.Choices[0].Message.Content,
-			Model:   reqBody.Model,
+			Content:          apiResp.Choices[0].Message.Content,
+			Model:            reqBody.Model,
+			PromptTokens:     apiResp.Usage.PromptTokens,
+			CompletionTokens: apiResp.Usage.CompletionTokens,
+			FinishReason:     apiResp.Choices[0].FinishReason,
 		},
 	}, nil
 }
@@ -179,7 +182,12 @@ type chatResponse struct {
 		Message struct {
 			Content string `json:"content"`
 		} `json:"message"`
+		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
 }
 
 type streamChunk struct {
