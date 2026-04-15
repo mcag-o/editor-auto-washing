@@ -3,6 +3,7 @@ package llm
 import (
 	"bufio"
 	"bytes"
+	"content-hub/domain"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -29,16 +30,16 @@ func NewProvider(baseURL, apiKey, model string, timeout time.Duration) *Provider
 	}
 }
 
-func (p *Provider) Generate(ctx context.Context, messages []ChatMessage, opts LLMOptions) (*LLMResponse, error) {
+func (p *Provider) Generate(ctx context.Context, genReq GenerateRequest) (*GenerateResponse, error) {
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("LLM API key not configured")
 	}
 
 	reqBody := chatRequest{
-		Model:       p.model,
-		Messages:    messages,
-		Temperature: opts.Temperature,
-		MaxTokens:   opts.MaxTokens,
+		Model:       p.requestModel(genReq.Options),
+		Messages:    genReq.Messages,
+		Temperature: genReq.Options.Temperature,
+		MaxTokens:   genReq.Options.MaxTokens,
 		Stream:      false,
 	}
 
@@ -75,22 +76,24 @@ func (p *Provider) Generate(ctx context.Context, messages []ChatMessage, opts LL
 		return nil, fmt.Errorf("no choices in response")
 	}
 
-	return &LLMResponse{
-		Content: apiResp.Choices[0].Message.Content,
-		Model:   p.model,
+	return &GenerateResponse{
+		Response: &domain.LLMResponse{
+			Content: apiResp.Choices[0].Message.Content,
+			Model:   reqBody.Model,
+		},
 	}, nil
 }
 
-func (p *Provider) GenerateStream(ctx context.Context, messages []ChatMessage, opts LLMOptions, onChunk func(string) error) error {
+func (p *Provider) GenerateStream(ctx context.Context, genReq GenerateRequest, onChunk func(string) error) error {
 	if p.apiKey == "" {
 		return fmt.Errorf("LLM API key not configured")
 	}
 
 	reqBody := chatRequest{
-		Model:       p.model,
-		Messages:    messages,
-		Temperature: opts.Temperature,
-		MaxTokens:   opts.MaxTokens,
+		Model:       p.requestModel(genReq.Options),
+		Messages:    genReq.Messages,
+		Temperature: genReq.Options.Temperature,
+		MaxTokens:   genReq.Options.MaxTokens,
 		Stream:      true,
 	}
 
@@ -155,27 +158,20 @@ func (p *Provider) Model() string          { return p.model }
 func (p *Provider) Name() string           { return "openai-compatible" }
 func (p *Provider) Timeout() time.Duration { return p.timeout }
 
-type ChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
+func (p *Provider) requestModel(opts domain.LLMOptions) string {
+	if opts.Model != "" {
+		return opts.Model
+	}
 
-type LLMOptions struct {
-	Temperature float64
-	MaxTokens   int
-}
-
-type LLMResponse struct {
-	Content string `json:"content"`
-	Model   string `json:"model"`
+	return p.model
 }
 
 type chatRequest struct {
-	Model       string        `json:"model"`
-	Messages    []ChatMessage `json:"messages"`
-	Temperature float64       `json:"temperature"`
-	MaxTokens   int           `json:"max_tokens,omitempty"`
-	Stream      bool          `json:"stream"`
+	Model       string               `json:"model"`
+	Messages    []domain.ChatMessage `json:"messages"`
+	Temperature float64              `json:"temperature"`
+	MaxTokens   int                  `json:"max_tokens,omitempty"`
+	Stream      bool                 `json:"stream"`
 }
 
 type chatResponse struct {

@@ -1,9 +1,16 @@
 package llm
 
 import (
+	"content-hub/domain"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
+
+func TestProviderImplementsClient(t *testing.T) {
+	var _ Client = NewProvider("https://api.openai.com/v1", "sk-test", "gpt-4", 30*time.Second)
+}
 
 func TestNewProvider(t *testing.T) {
 	p := NewProvider("https://api.openai.com/v1", "sk-test", "gpt-4", 30*time.Second)
@@ -32,25 +39,15 @@ func TestProviderName(t *testing.T) {
 func TestProviderEmptyAPIKey(t *testing.T) {
 	p := NewProvider("https://api.openai.com/v1", "", "gpt-4", 30*time.Second)
 
-	_, err := p.Generate(nil, nil, LLMOptions{})
-	if err == nil {
-		t.Fatal("expected error for empty API key")
-	}
-	if got := err.Error(); got != "LLM API key not configured" {
-		t.Errorf("expected error %q, got %q", "LLM API key not configured", got)
-	}
+	_, err := p.Generate(nil, GenerateRequest{Options: domain.LLMOptions{Model: "gpt-4"}})
+	require.EqualError(t, err, "LLM API key not configured")
 }
 
 func TestProviderEmptyAPIKeyStream(t *testing.T) {
 	p := NewProvider("https://api.openai.com/v1", "", "gpt-4", 30*time.Second)
 
-	err := p.GenerateStream(nil, nil, LLMOptions{}, func(s string) error { return nil })
-	if err == nil {
-		t.Fatal("expected error for empty API key in stream mode")
-	}
-	if got := err.Error(); got != "LLM API key not configured" {
-		t.Errorf("expected error %q, got %q", "LLM API key not configured", got)
-	}
+	err := p.GenerateStream(nil, GenerateRequest{Options: domain.LLMOptions{Model: "gpt-4"}}, func(s string) error { return nil })
+	require.EqualError(t, err, "LLM API key not configured")
 }
 
 func TestProviderDefaults(t *testing.T) {
