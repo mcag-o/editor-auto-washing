@@ -98,6 +98,13 @@ func (s *Server) registerRoutes() {
 	collectorSourcesHandler := handlers.NewCollectorSourcesHandler(s.provider.CollectorSourceSvc)
 	collectorRunsHandler := handlers.NewCollectorRunsHandler(s.provider.CollectorRunSvc)
 	collectorSchedulerHandler := handlers.NewCollectorSchedulerHandler(s.provider.CollectorScheduler)
+	var rewriteRunner interface {
+		Run(context.Context, service.RewriteRunRequest) (*domain.RewritePipelineRun, error)
+	}
+	if s.provider != nil && s.provider.RewriteRuntime != nil {
+		rewriteRunner = s.provider.RewriteRuntime.Orchestrator
+	}
+	rewriteHandler := handlers.NewRewriteHandler(rewriteRunner)
 
 	s.engine.GET("/health", healthHandler.Health)
 	s.engine.GET("/ready", healthHandler.Ready)
@@ -188,6 +195,11 @@ func (s *Server) registerRoutes() {
 	{
 		publish.POST("", publishHandler.Publish)
 		publish.GET("/history", publishHandler.History)
+	}
+
+	rewrite := s.engine.Group("/rewrite")
+	{
+		rewrite.POST("/runs", rewriteHandler.Run)
 	}
 
 	workflows := s.engine.Group("/workflows")

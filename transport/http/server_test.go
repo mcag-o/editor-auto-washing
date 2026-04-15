@@ -194,6 +194,23 @@ func TestCreateContentMissingTitle(t *testing.T) {
 	}
 }
 
+func TestRewriteRunsRouteIsRegistered(t *testing.T) {
+	s, _ := newTestServer(t)
+
+	body := strings.NewReader(`{"workspace_article_id":"article-1","collector_article_id":"collector-1","title":"Source","target_type":"wechat-longform","source_profile":"sspai","version":"v1"}`)
+	req := httptest.NewRequest(http.MethodPost, "/rewrite/runs", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "rewrite orchestrator is not configured") {
+		t.Fatalf("expected rewrite route error, got %s", w.Body.String())
+	}
+}
+
 func TestListContent(t *testing.T) {
 	s, _ := newTestServer(t)
 
