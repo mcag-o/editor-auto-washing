@@ -1,0 +1,25 @@
+package repo
+
+import (
+	"content-hub/infra/llm"
+	"context"
+	"testing"
+)
+
+type staticLLMProvider struct{}
+
+func (staticLLMProvider) Generate(_ context.Context, _ llm.GenerateRequest) (*llm.GenerateResponse, error) {
+	return &llm.GenerateResponse{}, nil
+}
+
+func (staticLLMProvider) Models(_ context.Context) ([]string, error) {
+	return []string{"mock-1"}, nil
+}
+
+func (staticLLMProvider) Name() string {
+	return "static"
+}
+
+func TestLLMProviderUsesLLMClientContract(t *testing.T) {
+	var _ LLMProvider = staticLLMProvider{}
+}
