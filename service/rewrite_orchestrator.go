@@ -57,6 +57,9 @@ func (o *RewriteOrchestrator) Run(ctx context.Context, req RewriteRunRequest) (*
 	if profile == nil {
 		return nil, domain.NewNotFoundErr("rewrite profile", fmt.Sprintf("%s/%s@%s", req.TargetType, req.SourceProfile, req.Version))
 	}
+	if !profile.Enabled {
+		return nil, domain.NewValidationErr(fmt.Sprintf("rewrite profile %s/%s@%s is disabled", req.TargetType, req.SourceProfile, req.Version), nil)
+	}
 
 	run := domain.NewRewritePipelineRun(profile.ID, profile.Version, strings.TrimSpace(req.WorkspaceArticleID), strings.TrimSpace(req.CollectorArticleID), strings.TrimSpace(req.TargetType), strings.TrimSpace(req.SourceProfile))
 	run.Status = domain.RewriteRunRunning
@@ -80,6 +83,7 @@ func (o *RewriteOrchestrator) Run(ctx context.Context, req RewriteRunRequest) (*
 		if !stage.Enabled {
 			continue
 		}
+		stage = applyProfileDefaultsToStage(profile, stage)
 
 		run.CurrentStage = stage.Name
 		if err := o.runs.Update(ctx, run); err != nil {
@@ -140,6 +144,16 @@ func mergeStageVars(vars map[string]any, bindings map[string]string) map[string]
 		}
 	}
 	return merged
+}
+
+func applyProfileDefaultsToStage(profile *domain.RewritePipelineProfile, stage domain.RewriteStageDefinition) domain.RewriteStageDefinition {
+	if profile == nil {
+		return stage
+	}
+	if strings.TrimSpace(stage.ModelProfileRef) == "" {
+		stage.ModelProfileRef = strings.TrimSpace(profile.DefaultLLMProfile)
+	}
+	return stage
 }
 
 func buildRewriteStageRun(pipelineRunID string, stage domain.RewriteStageDefinition, inputVars map[string]any, result *StageExecutionResult) (*domain.RewriteStageRun, error) {
