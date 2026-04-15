@@ -97,6 +97,20 @@
 - `service/collector_runtime.go`
 - `docs/collector-migration-matrix.md`
 
+### 2.6. AI Rewrite Pipeline
+
+- imported workspace article 可以在 draft 创建前进入独立 rewrite pipeline
+- rewrite run 由 `target type + source profile + version` 选择对应 profile
+- rewrite 执行会持久化 stage history、prompt snapshot 与最终 draft linkage
+- rewrite 成功后由 materializer 创建 draft，并把 workspace article 推进到后续状态
+
+相关代码：
+
+- `service/rewrite_orchestrator.go`
+- `service/rewrite_stage_executor.go`
+- `service/draft_materializer.go`
+- `infra/llm/client.go`
+
 ### 3. 结构化排版
 
 - draft 创建与读取
@@ -207,6 +221,14 @@ go run ./cmd/cli formatting render <draft-id> --platform wechat --template daily
 go run ./cmd/cli formatting validate <draft-id> --platform wechat --template daily-intelligence --root .
 ```
 
+### Rewrite
+
+```bash
+go run ./cmd/cli rewrite run <workspace-article-id> --target wechat-longform --source sspai --version v1 --root .
+```
+
+说明：rewrite CLI 会读取 workspace article 元数据，并按 `target + source + version` 解析 rewrite profile；collector 仍只负责把 source article 导入到 workspace，不负责 rewrite 编排。
+
 ### Review / Publish
 
 ```bash
@@ -277,6 +299,10 @@ go run ./cmd/cli collector scheduler stop --root .
 - `GET /ingestion/:id`
 - `GET /workspace/articles`
 
+### Rewrite
+
+- `POST /rewrite/runs`
+
 ### Review / Publish
 
 - `POST /reviews`
@@ -341,6 +367,7 @@ go test ./...
 
 - workspace/config
 - collector hotlist/detail/bridge integration
+- rewrite orchestrator/stage execution/draft materialization
 - ingestion/article workspace
 - formatting/render/validate/assets
 - review/publish
