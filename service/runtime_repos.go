@@ -12,25 +12,30 @@ import (
 )
 
 type RuntimeRepos struct {
-	ArticleRepo            repo.ArticleRepo
-	TemplateRepo           repo.TemplateRepo
-	DraftRepo              repo.DraftRepo
-	AssetRepo              repo.AssetRepo
-	ReviewRepo             repo.ReviewRepo
-	Formatter              DraftFormatter
-	RenderedDir            string
-	PublishRepo            repo.PublishRepo
-	JobRepo                repo.JobRepo
-	JobEventRepo           repo.JobEventRepo
-	IngestionRepo          repo.IngestionRepo
-	WorkspaceRepo          repo.WorkspaceRepo
-	BundleImportTxStarter  repo.BundleImportTxStarter
-	CollectorSourceRepo    repo.CollectorSourceRepo
-	CollectorRunRepo       repo.CollectorRunRepo
-	CollectorEntryRepo     repo.CollectorEntryRepo
-	CollectorArticleRepo   repo.CollectorArticleRepo
-	CollectorAttemptRepo   repo.CollectorAttemptRepo
-	CollectorSchedulerRepo repo.CollectorSchedulerStateRepo
+	ArticleRepo                repo.ArticleRepo
+	TemplateRepo               repo.TemplateRepo
+	DraftRepo                  repo.DraftRepo
+	AssetRepo                  repo.AssetRepo
+	ReviewRepo                 repo.ReviewRepo
+	Formatter                  DraftFormatter
+	RenderedDir                string
+	PublishRepo                repo.PublishRepo
+	JobRepo                    repo.JobRepo
+	JobEventRepo               repo.JobEventRepo
+	IngestionRepo              repo.IngestionRepo
+	WorkspaceRepo              repo.WorkspaceRepo
+	BundleImportTxStarter      repo.BundleImportTxStarter
+	CollectorSourceRepo        repo.CollectorSourceRepo
+	CollectorRunRepo           repo.CollectorRunRepo
+	CollectorEntryRepo         repo.CollectorEntryRepo
+	CollectorArticleRepo       repo.CollectorArticleRepo
+	CollectorAttemptRepo       repo.CollectorAttemptRepo
+	CollectorSchedulerRepo     repo.CollectorSchedulerStateRepo
+	RewritePipelineProfileRepo repo.RewritePipelineProfileRepo
+	RewritePipelineRunRepo     repo.RewritePipelineRunRepo
+	RewriteStageRunRepo        repo.RewriteStageRunRepo
+	PromptTemplateRepo         repo.PromptTemplateRepo
+	LLMProfileRepo             repo.LLMProfileRepo
 }
 
 func BuildRuntimeRepos(root string) (*RuntimeRepos, func() error, error) {
@@ -71,24 +76,29 @@ func buildRuntimeReposFromResolved(runtimeCfg config.Config, renderedDir string,
 	}
 	wechatFormatter := formatter.NewWechatHtmlFormatter(templateDirs)
 	return &RuntimeRepos{
-		ArticleRepo:            sqliteProvider.ArticleRepo(),
-		TemplateRepo:           sqliteProvider.TemplateRepo(),
-		DraftRepo:              sqliteProvider.DraftRepo(),
-		AssetRepo:              sqliteProvider.AssetRepo(),
-		ReviewRepo:             sqliteProvider.ReviewRepo(),
-		Formatter:              wechatFormatter,
-		RenderedDir:            renderedDir,
-		PublishRepo:            sqliteProvider.PublishRepo(),
-		JobRepo:                sqliteProvider.JobRepo(),
-		JobEventRepo:           sqliteProvider.JobEventRepo(),
-		IngestionRepo:          sqliteProvider.IngestionRepo(),
-		WorkspaceRepo:          sqliteProvider.WorkspaceRepo(),
-		BundleImportTxStarter:  sqliteProvider,
-		CollectorSourceRepo:    sqliteProvider.CollectorSourceRepo(),
-		CollectorRunRepo:       sqliteProvider.CollectorRunRepo(),
-		CollectorEntryRepo:     sqliteProvider.CollectorEntryRepo(),
-		CollectorArticleRepo:   sqliteProvider.CollectorArticleRepo(),
-		CollectorAttemptRepo:   sqliteProvider.CollectorAttemptRepo(),
-		CollectorSchedulerRepo: sqliteProvider.CollectorSchedulerStateRepo(),
+		ArticleRepo:                sqliteProvider.ArticleRepo(),
+		TemplateRepo:               sqliteProvider.TemplateRepo(),
+		DraftRepo:                  sqliteProvider.DraftRepo(),
+		AssetRepo:                  sqliteProvider.AssetRepo(),
+		ReviewRepo:                 sqliteProvider.ReviewRepo(),
+		Formatter:                  wechatFormatter,
+		RenderedDir:                renderedDir,
+		PublishRepo:                sqliteProvider.PublishRepo(),
+		JobRepo:                    sqliteProvider.JobRepo(),
+		JobEventRepo:               sqliteProvider.JobEventRepo(),
+		IngestionRepo:              sqliteProvider.IngestionRepo(),
+		WorkspaceRepo:              sqliteProvider.WorkspaceRepo(),
+		BundleImportTxStarter:      sqliteProvider,
+		CollectorSourceRepo:        sqliteProvider.CollectorSourceRepo(),
+		CollectorRunRepo:           sqliteProvider.CollectorRunRepo(),
+		CollectorEntryRepo:         sqliteProvider.CollectorEntryRepo(),
+		CollectorArticleRepo:       sqliteProvider.CollectorArticleRepo(),
+		CollectorAttemptRepo:       sqliteProvider.CollectorAttemptRepo(),
+		CollectorSchedulerRepo:     sqliteProvider.CollectorSchedulerStateRepo(),
+		RewritePipelineProfileRepo: sqliteProvider.RewritePipelineProfileRepo(),
+		RewritePipelineRunRepo:     sqliteProvider.RewritePipelineRunRepo(),
+		RewriteStageRunRepo:        sqliteProvider.RewriteStageRunRepo(),
+		PromptTemplateRepo:         sqliteProvider.PromptTemplateRepo(),
+		LLMProfileRepo:             sqliteProvider.LLMProfileRepo(),
 	}, sqliteProvider.Close, nil
 }
