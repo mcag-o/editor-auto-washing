@@ -127,6 +127,42 @@ func TestDraftMaterializerRejectsInvalidFinalOutput(t *testing.T) {
 	assert.Contains(t, getDraftErr.Error(), "draft article-4 not found")
 }
 
+func TestDraftMaterializerRequiresWorkspaceRepo(t *testing.T) {
+	provider := memory.NewProvider()
+	materializer := NewDraftMaterializer(provider.DraftRepo(), nil)
+
+	draft, err := materializer.Materialize(t.Context(), "article-5", map[string]any{
+		"title":    "New Title",
+		"body":     "Body",
+		"template": "daily-intelligence",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, draft)
+	assert.Contains(t, err.Error(), "draft materializer is not configured")
+	_, getDraftErr := provider.DraftRepo().GetByID(t.Context(), "article-5")
+	require.Error(t, getDraftErr)
+	assert.Contains(t, getDraftErr.Error(), "draft article-5 not found")
+}
+
+func TestDraftMaterializerRejectsWhitespaceOnlyWorkspaceID(t *testing.T) {
+	provider := memory.NewProvider()
+	materializer := NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo())
+
+	draft, err := materializer.Materialize(t.Context(), "   ", map[string]any{
+		"title":    "New Title",
+		"body":     "Body",
+		"template": "daily-intelligence",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, draft)
+	assert.Contains(t, err.Error(), "workspace id is required")
+	_, getDraftErr := provider.DraftRepo().GetByID(t.Context(), "")
+	require.Error(t, getDraftErr)
+	assert.Contains(t, getDraftErr.Error(), "draft  not found")
+}
+
 type failingDraftRepo struct {
 	err error
 }

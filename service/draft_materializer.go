@@ -5,6 +5,7 @@ import (
 	"content-hub/pkg/repo"
 	"context"
 	"fmt"
+	"strings"
 )
 
 const draftMaterializedNote = "rewrite draft materialized"
@@ -19,9 +20,10 @@ func NewDraftMaterializer(drafts repo.DraftRepo, workspaces repo.WorkspaceRepo) 
 }
 
 func (m *DraftMaterializer) Materialize(ctx context.Context, workspaceID string, finalOutput map[string]any) (*domain.ArticleDraft, error) {
-	if m.drafts == nil {
+	if m.drafts == nil || m.workspaces == nil {
 		return nil, domain.NewInternalErr("draft materializer is not configured", nil)
 	}
+	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return nil, domain.NewValidationErr("workspace id is required", nil)
 	}
@@ -49,10 +51,8 @@ func (m *DraftMaterializer) Materialize(ctx context.Context, workspaceID string,
 		return nil, err
 	}
 
-	if m.workspaces != nil {
-		if err := m.workspaces.TransitionStatus(ctx, workspaceID, domain.ArticleWorkspaceStatusDraft, draftMaterializedNote); err != nil {
-			return nil, fmt.Errorf("draft persisted but workspace transition failed: %w", err)
-		}
+	if err := m.workspaces.TransitionStatus(ctx, workspaceID, domain.ArticleWorkspaceStatusDraft, draftMaterializedNote); err != nil {
+		return nil, fmt.Errorf("draft persisted but workspace transition failed: %w", err)
 	}
 
 	return draft, nil
