@@ -7,7 +7,29 @@ import (
 	"time"
 )
 
-const RSSPullRunStatusPending = "pending"
+const (
+	RSSPullRunStatusPending   = "pending"
+	RSSPullRunStatusSucceeded = "succeeded"
+	RSSPullRunStatusFailed    = "failed"
+
+	RSSItemStatusPending          = "pending"
+	RSSItemStatusImported         = "imported"
+	RSSItemStatusSkippedDuplicate = "skipped_duplicate"
+	RSSItemStatusFailed           = "failed"
+)
+
+var validRSSPullRunStatuses = map[string]struct{}{
+	RSSPullRunStatusPending:   {},
+	RSSPullRunStatusSucceeded: {},
+	RSSPullRunStatusFailed:    {},
+}
+
+var validRSSItemStatuses = map[string]struct{}{
+	RSSItemStatusPending:          {},
+	RSSItemStatusImported:         {},
+	RSSItemStatusSkippedDuplicate: {},
+	RSSItemStatusFailed:           {},
+}
 
 type RSSSubscription struct {
 	ID                    string         `json:"id"`
@@ -115,8 +137,12 @@ func (r RSSPullRun) Validate() error {
 	if strings.TrimSpace(r.SubscriptionID) == "" {
 		return NewValidationErr("subscription id is required", nil)
 	}
-	if strings.TrimSpace(r.Status) == "" {
+	status := strings.TrimSpace(r.Status)
+	if status == "" {
 		return NewValidationErr("status is required", nil)
+	}
+	if _, ok := validRSSPullRunStatuses[status]; !ok {
+		return NewValidationErr("unsupported pull run status", nil)
 	}
 	return nil
 }
@@ -125,11 +151,18 @@ func (r RSSItemRecord) Validate() error {
 	if strings.TrimSpace(r.SubscriptionID) == "" {
 		return NewValidationErr("subscription id is required", nil)
 	}
+	if strings.TrimSpace(r.PullRunID) == "" {
+		return NewValidationErr("pull run id is required", nil)
+	}
 	if strings.TrimSpace(r.Title) == "" {
 		return NewValidationErr("title is required", nil)
 	}
-	if strings.TrimSpace(r.Status) == "" {
+	status := strings.TrimSpace(r.Status)
+	if status == "" {
 		return NewValidationErr("status is required", nil)
+	}
+	if _, ok := validRSSItemStatuses[status]; !ok {
+		return NewValidationErr("unsupported item status", nil)
 	}
 	if strings.TrimSpace(r.GUID) == "" && strings.TrimSpace(r.Link) == "" && strings.TrimSpace(r.ContentHash) == "" {
 		return NewValidationErr("at least one of guid, link, or content hash is required", nil)
@@ -158,7 +191,7 @@ func NewRSSItemRecord(subscriptionID, pullRunID, guid, link, contentHash, title 
 		Link:           link,
 		ContentHash:    contentHash,
 		Title:          title,
-		Status:         "pending",
+		Status:         RSSItemStatusPending,
 		Metadata:       map[string]any{},
 		CreatedAt:      now,
 		UpdatedAt:      now,

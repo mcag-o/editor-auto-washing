@@ -128,6 +128,13 @@ func TestRSSPullRunValidateAcceptsValidRun(t *testing.T) {
 	}
 }
 
+func TestRSSPullRunValidateRejectsUnsupportedStatus(t *testing.T) {
+	run := RSSPullRun{SubscriptionID: "sub-1", Status: "unknown"}
+	if err := run.Validate(); err == nil {
+		t.Fatal("expected pull run validation to reject unsupported status")
+	}
+}
+
 func TestRSSItemRecordValidateRejectsMissingFields(t *testing.T) {
 	item := RSSItemRecord{}
 	if err := item.Validate(); err == nil {
@@ -135,11 +142,37 @@ func TestRSSItemRecordValidateRejectsMissingFields(t *testing.T) {
 	}
 }
 
-func TestRSSItemRecordValidateAcceptsValidItem(t *testing.T) {
+func TestRSSItemRecordValidateRejectsMissingPullRunID(t *testing.T) {
 	item := RSSItemRecord{
 		SubscriptionID: "sub-1",
 		Title:          "Item title",
-		Status:         "pending",
+		Status:         RSSItemStatusPending,
+		GUID:           "guid-1",
+	}
+	if err := item.Validate(); err == nil {
+		t.Fatal("expected item record validation to reject missing pull run id")
+	}
+}
+
+func TestRSSItemRecordValidateRejectsUnsupportedStatus(t *testing.T) {
+	item := RSSItemRecord{
+		SubscriptionID: "sub-1",
+		PullRunID:      "run-1",
+		Title:          "Item title",
+		Status:         "unknown",
+		GUID:           "guid-1",
+	}
+	if err := item.Validate(); err == nil {
+		t.Fatal("expected item record validation to reject unsupported status")
+	}
+}
+
+func TestRSSItemRecordValidateAcceptsValidItem(t *testing.T) {
+	item := RSSItemRecord{
+		SubscriptionID: "sub-1",
+		PullRunID:      "run-1",
+		Title:          "Item title",
+		Status:         RSSItemStatusPending,
 		GUID:           "guid-1",
 	}
 	if err := item.Validate(); err != nil {
