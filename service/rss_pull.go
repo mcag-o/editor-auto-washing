@@ -1,0 +1,346 @@
+package service
+
+import (
+	"content-hub/domain"
+	"content-hub/pkg/repo"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"encoding/xml"
+	"fmt"
+	"strings"
+	"time"
+)
+
+type RSSFeedFetcher interface {
+	Fetch(ctx context.Context, feedURL string) ([]byte, error)
+}
+
+type rssArticleIntaker interface {
+	Intake(ctx context.Context, article domain.IntakeArticle) error
+}
+
+type RSSPullResult struct {
+	Run           *domain.RSSPullRun
+	FetchedItems  int
+	ImportedItems int
+	SkippedItems  int
+}
+
+type RSSPullService struct {
+	feeds  RSSFeedFetcher
+	runs   repo.RSSPullRunRepo
+	items  repo.RSSItemRepo
+	intake rssArticleIntaker
+}
+
+func NewRSSPullService(feeds RSSFeedFetcher, runs repo.RSSPullRunRepo, items repo.RSSItemRepo, intake rssArticleIntaker) *RSSPullService {
+	return &RSSPullService{feeds: feeds, runs: runs, items: items, intake: intake}
+}
+
+func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription) (*RSSPullResult, error) {
+	if err := s.validate(); err != nil {
+		return nil, err
+	}
+	if err := sub.Validate(); err != nil {
+		return nil, err
+	}
+
+	run := domain.NewRSSPullRun(sub.ID)
+	if err := s.runs.Create(ctx, run); err != nil {
+		return nil, fmt.Errorf("create rss pull run: %w", err)
+	}
+
+	result := &RSSPullResult{Run: run}
+	body, err := s.feeds.Fetch(ctx, sub.FeedURL)
+	if err != nil {
+		return result, s.failRun(ctx, run, result, fmt.Errorf("fetch rss feed: %w", err))
+	}
+
+	parsedItems, err := parseRSSFeed(body)
+	if err != nil {
+		return result, s.failRun(ctx, run, result, fmt.Errorf("parse rss feed: %w", err))
+	}
+	result.FetchedItems = len(parsedItems)
+
+	for _, parsedItem := range parsedItems {
+		normalized, err := NormalizeRSSItem(sub.ID, sub.TargetType, sub.SourceProfile, sub.RewriteProfileVersion, parsedItem)
+		if err != nil {
+			return result, s.failRun(ctx, run, result, err)
+		}
+		normalized.PublishedAt = parsedItem.PublishedAt
+
+		rawPayloadJSON, err := json.Marshal(parsedItem)
+		if err != nil {
+			return result, s.failRun(ctx, run, result, fmt.Errorf("marshal rss item payload: %w", err))
+		}
+
+		contentHash := hashRSSItem(parsedItem)
+		duplicate, err := s.items.FindDuplicate(ctx, domain.RSSDuplicateKey{
+			SubscriptionID: sub.ID,
+			GUID:           strings.TrimSpace(parsedItem.GUID),
+			Link:           strings.TrimSpace(parsedItem.Link),
+			ContentHash:    contentHash,
+		})
+		if err != nil {
+			return result, s.failRun(ctx, run, result, fmt.Errorf("find duplicate rss item: %w", err))
+		}
+
+		item := domain.NewRSSItemRecord(sub.ID, run.ID, parsedItem.GUID, parsedItem.Link, contentHash, parsedItem.Title)
+		item.PublishedAt = parsedItem.PublishedAt
+		item.RawPayloadJSON = rawPayloadJSON
+
+		if duplicate != nil {
+			item.Status = domain.RSSItemStatusSkippedDuplicate
+			item.Metadata["duplicate_item_id"] = duplicate.ID
+			if err := s.items.Create(ctx, item); err != nil {
+				return result, s.failRun(ctx, run, result, fmt.Errorf("create duplicate rss item record: %w", err))
+			}
+			result.SkippedItems++
+			continue
+		}
+
+		if err := s.items.Create(ctx, item); err != nil {
+			return result, s.failRun(ctx, run, result, fmt.Errorf("create rss item record: %w", err))
+		}
+
+		if err := s.intake.Intake(ctx, normalized); err != nil {
+			item.Status = domain.RSSItemStatusFailed
+			item.UpdatedAt = time.Now().UTC()
+			item.Metadata["error"] = err.Error()
+			if updateErr := s.items.Update(ctx, item); updateErr != nil {
+				return result, s.failRun(ctx, run, result, fmt.Errorf("intake rss item: %w: mark item failed: %v", err, updateErr))
+			}
+			return result, s.failRun(ctx, run, result, fmt.Errorf("intake rss item: %w", err))
+		}
+
+		importedAt := time.Now().UTC()
+		item.Status = domain.RSSItemStatusImported
+		item.ImportedAt = &importedAt
+		item.UpdatedAt = importedAt
+		if err := s.items.Update(ctx, item); err != nil {
+			return result, s.failRun(ctx, run, result, fmt.Errorf("mark rss item imported: %w", err))
+		}
+		result.ImportedItems++
+	}
+
+	return result, s.completeRun(ctx, run, result)
+}
+
+func (s *RSSPullService) validate() error {
+	if s.feeds == nil || s.runs == nil || s.items == nil || s.intake == nil {
+		return domain.NewInternalErr("rss pull service is not configured", nil)
+	}
+	return nil
+}
+
+func (s *RSSPullService) completeRun(ctx context.Context, run *domain.RSSPullRun, result *RSSPullResult) error {
+	completedAt := time.Now().UTC()
+	run.Status = domain.RSSPullRunStatusSucceeded
+	run.CompletedAt = &completedAt
+	run.ErrorSummary = ""
+	run.Metadata = buildRSSPullRunMetadata(result)
+	if err := s.runs.Update(ctx, run); err != nil {
+		return fmt.Errorf("update rss pull run: %w", err)
+	}
+	return nil
+}
+
+func (s *RSSPullService) failRun(ctx context.Context, run *domain.RSSPullRun, result *RSSPullResult, runErr error) error {
+	completedAt := time.Now().UTC()
+	run.Status = domain.RSSPullRunStatusFailed
+	run.CompletedAt = &completedAt
+	run.ErrorSummary = runErr.Error()
+	run.Metadata = buildRSSPullRunMetadata(result)
+	if err := s.runs.Update(ctx, run); err != nil {
+		return fmt.Errorf("%w: update rss pull run: %v", runErr, err)
+	}
+	return runErr
+}
+
+func buildRSSPullRunMetadata(result *RSSPullResult) map[string]any {
+	return map[string]any{
+		"fetched_items":  float64(result.FetchedItems),
+		"imported_items": float64(result.ImportedItems),
+		"skipped_items":  float64(result.SkippedItems),
+	}
+}
+
+type rssEnvelope struct {
+	Channel rssChannel    `xml:"channel"`
+	Entries []atomXMLItem `xml:"entry"`
+}
+
+type rssChannel struct {
+	Items []rssXMLItem `xml:"item"`
+}
+
+type rssXMLItem struct {
+	GUID        string   `xml:"guid"`
+	Title       string   `xml:"title"`
+	Link        string   `xml:"link"`
+	Description string   `xml:"description"`
+	Content     string   `xml:"encoded"`
+	Author      string   `xml:"author"`
+	DCCreator   string   `xml:"creator"`
+	PubDate     string   `xml:"pubDate"`
+	Categories  []string `xml:"category"`
+}
+
+type atomXMLItem struct {
+	GUID       string     `xml:"id"`
+	Title      string     `xml:"title"`
+	Summary    string     `xml:"summary"`
+	Content    string     `xml:"content"`
+	Published  string     `xml:"published"`
+	Updated    string     `xml:"updated"`
+	Categories []string   `xml:"category"`
+	Links      []rssLink  `xml:"link"`
+	Author     *rssAuthor `xml:"author"`
+}
+
+type rssLink struct {
+	Href string `xml:"href,attr"`
+	Rel  string `xml:"rel,attr"`
+	Text string `xml:",chardata"`
+}
+
+type rssAuthor struct {
+	Name string `xml:"name"`
+	Text string `xml:",chardata"`
+}
+
+func parseRSSFeed(body []byte) ([]RSSFeedItem, error) {
+	var feed rssEnvelope
+	if err := xml.Unmarshal(body, &feed); err != nil {
+		return nil, err
+	}
+
+	parsed := make([]RSSFeedItem, 0, len(feed.Channel.Items)+len(feed.Entries))
+	for _, item := range feed.Channel.Items {
+		feedItem := RSSFeedItem{
+			GUID:        strings.TrimSpace(item.GUID),
+			Title:       strings.TrimSpace(item.Title),
+			Link:        strings.TrimSpace(item.Link),
+			Description: strings.TrimSpace(item.Description),
+			Content:     strings.TrimSpace(item.Content),
+			Author:      firstNonEmpty(item.Author, item.DCCreator),
+			Tags:        trimRSSValues(item.Categories),
+		}
+		publishedAt, err := parseRSSPublishedAt(item)
+		if err != nil {
+			return nil, err
+		}
+		feedItem.PublishedAt = publishedAt
+		parsed = append(parsed, feedItem)
+	}
+
+	for _, entry := range feed.Entries {
+		feedItem := RSSFeedItem{
+			GUID:        strings.TrimSpace(entry.GUID),
+			Title:       strings.TrimSpace(entry.Title),
+			Link:        selectAtomLink(entry.Links),
+			Description: strings.TrimSpace(entry.Summary),
+			Content:     strings.TrimSpace(entry.Content),
+			Author:      selectAtomAuthor(entry.Author),
+			Tags:        trimRSSValues(entry.Categories),
+		}
+		publishedAt, err := parseAtomPublishedAt(entry)
+		if err != nil {
+			return nil, err
+		}
+		feedItem.PublishedAt = publishedAt
+		parsed = append(parsed, feedItem)
+	}
+
+	return parsed, nil
+}
+
+func selectAtomLink(links []rssLink) string {
+	for _, link := range links {
+		if strings.TrimSpace(link.Rel) == "alternate" && strings.TrimSpace(link.Href) != "" {
+			return strings.TrimSpace(link.Href)
+		}
+	}
+	for _, link := range links {
+		if strings.TrimSpace(link.Href) != "" {
+			return strings.TrimSpace(link.Href)
+		}
+	}
+	return ""
+}
+
+func selectAtomAuthor(author *rssAuthor) string {
+	if author == nil {
+		return ""
+	}
+	return firstNonEmpty(author.Name, author.Text)
+}
+
+func parseRSSPublishedAt(item rssXMLItem) (*time.Time, error) {
+	for _, raw := range []string{item.PubDate} {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			continue
+		}
+		for _, layout := range []string{time.RFC1123Z, time.RFC1123, time.RFC822Z, time.RFC822, time.RFC3339, time.RFC3339Nano} {
+			parsed, err := time.Parse(layout, value)
+			if err == nil {
+				parsed = parsed.UTC()
+				return &parsed, nil
+			}
+		}
+		return nil, fmt.Errorf("parse rss published_at: unsupported time format %q", value)
+	}
+	return nil, nil
+}
+
+func parseAtomPublishedAt(item atomXMLItem) (*time.Time, error) {
+	for _, raw := range []string{item.Published, item.Updated} {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			continue
+		}
+		for _, layout := range []string{time.RFC1123Z, time.RFC1123, time.RFC822Z, time.RFC822, time.RFC3339, time.RFC3339Nano} {
+			parsed, err := time.Parse(layout, value)
+			if err == nil {
+				parsed = parsed.UTC()
+				return &parsed, nil
+			}
+		}
+		return nil, fmt.Errorf("parse rss published_at: unsupported time format %q", value)
+	}
+	return nil, nil
+}
+
+func trimRSSValues(values []string) []string {
+	trimmed := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			trimmed = append(trimmed, value)
+		}
+	}
+	return trimmed
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func hashRSSItem(item RSSFeedItem) string {
+	checksum := sha256.Sum256([]byte(strings.Join([]string{
+		strings.TrimSpace(item.Title),
+		strings.TrimSpace(item.Link),
+		strings.TrimSpace(item.Description),
+		strings.TrimSpace(item.Content),
+	}, "\n")))
+	return hex.EncodeToString(checksum[:])
+}

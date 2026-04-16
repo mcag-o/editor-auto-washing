@@ -4,6 +4,7 @@ import (
 	"content-hub/domain"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type RSSFeedItem struct {
@@ -14,6 +15,7 @@ type RSSFeedItem struct {
 	Content     string
 	Author      string
 	Tags        []string
+	PublishedAt *time.Time
 }
 
 func NormalizeRSSItem(subscriptionID, targetType, sourceProfile, rewriteProfileVersion string, item RSSFeedItem) (domain.IntakeArticle, error) {
@@ -31,6 +33,7 @@ func NormalizeRSSItem(subscriptionID, targetType, sourceProfile, rewriteProfileV
 		Summary:               strings.TrimSpace(item.Description),
 		Author:                strings.TrimSpace(item.Author),
 		OriginalURL:           strings.TrimSpace(item.Link),
+		PublishedAt:           item.PublishedAt,
 		Tags:                  append([]string(nil), item.Tags...),
 		TargetType:            strings.TrimSpace(targetType),
 		SourceProfile:         strings.TrimSpace(sourceProfile),
