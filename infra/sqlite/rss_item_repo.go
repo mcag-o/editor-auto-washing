@@ -12,6 +12,7 @@ import (
 )
 
 const rssDuplicateSelect = `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items WHERE subscription_id = ? AND (%s) ORDER BY CASE status WHEN 'imported' THEN 0 WHEN 'skipped_duplicate' THEN 1 WHEN 'failed' THEN 2 WHEN 'import_diverged' THEN 2 ELSE 3 END, created_at DESC, id DESC LIMIT 1`
+const rssRetryableDuplicateSelect = `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items WHERE subscription_id = ? AND (%s) AND status IN ('failed', 'import_diverged') ORDER BY CASE status WHEN 'import_diverged' THEN 0 WHEN 'failed' THEN 1 ELSE 2 END, created_at DESC, id DESC LIMIT 1`
 
 var _ repo.RSSItemRepo = (*rssItemRepo)(nil)
 
@@ -63,6 +64,14 @@ func (r *rssItemRepo) Update(ctx context.Context, item *domain.RSSItemRecord) er
 }
 
 func (r *rssItemRepo) FindDuplicate(ctx context.Context, key domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
+	return r.findDuplicateWithQuery(ctx, key, rssDuplicateSelect)
+}
+
+func (r *rssItemRepo) FindRetryableDuplicate(ctx context.Context, key domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
+	return r.findDuplicateWithQuery(ctx, key, rssRetryableDuplicateSelect)
+}
+
+func (r *rssItemRepo) findDuplicateWithQuery(ctx context.Context, key domain.RSSDuplicateKey, queryTemplate string) (*domain.RSSItemRecord, error) {
 	if err := key.Validate(); err != nil {
 		return nil, err
 	}
@@ -80,7 +89,7 @@ func (r *rssItemRepo) FindDuplicate(ctx context.Context, key domain.RSSDuplicate
 		clauses = append(clauses, "content_hash = ?")
 		args = append(args, contentHash)
 	}
-	row := r.db.QueryRowContext(ctx, fmt.Sprintf(rssDuplicateSelect, strings.Join(clauses, " OR ")), args...)
+	row := r.db.QueryRowContext(ctx, fmt.Sprintf(queryTemplate, strings.Join(clauses, " OR ")), args...)
 	item, err := scanRSSItem(row)
 	if err != nil {
 		if err == sql.ErrNoRows {

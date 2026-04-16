@@ -117,7 +117,20 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 			Link:           strings.TrimSpace(parsedItem.Link),
 			ContentHash:    contentHash,
 		}
-		duplicate, err := s.items.FindDuplicate(ctx, duplicateKey)
+		retryableDuplicate, err := s.items.FindRetryableDuplicate(ctx, duplicateKey)
+		if err != nil {
+			itemErrors = append(itemErrors, fmt.Sprintf("%s: find retryable duplicate rss item: %v", itemLabel, err))
+			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, contentHash, fmt.Errorf("find retryable duplicate rss item: %w", err), earlyDuplicate); recordErr != nil {
+				return result, s.failRun(ctx, run, result, recordErr)
+			}
+			result.FailedItems++
+			continue
+		}
+
+		duplicate := retryableDuplicate
+		if duplicate == nil {
+			duplicate, err = s.items.FindDuplicate(ctx, duplicateKey)
+		}
 		if err != nil {
 			itemErrors = append(itemErrors, fmt.Sprintf("%s: find duplicate rss item: %v", itemLabel, err))
 			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, contentHash, fmt.Errorf("find duplicate rss item: %w", err), earlyDuplicate); recordErr != nil {

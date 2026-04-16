@@ -117,6 +117,7 @@ type RSSItemRepo interface {
 	Create(ctx context.Context, item *domain.RSSItemRecord) error
 	Update(ctx context.Context, item *domain.RSSItemRecord) error
 	FindDuplicate(ctx context.Context, key domain.RSSDuplicateKey) (*domain.RSSItemRecord, error)
+	FindRetryableDuplicate(ctx context.Context, key domain.RSSDuplicateKey) (*domain.RSSItemRecord, error)
 	GetByID(ctx context.Context, id string) (*domain.RSSItemRecord, error)
 	List(ctx context.Context, limit int) ([]domain.RSSItemRecord, error)
 }

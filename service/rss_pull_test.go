@@ -59,8 +59,11 @@ type stubRSSItemRepo struct {
 	created               []*domain.RSSItemRecord
 	updated               []*domain.RSSItemRecord
 	duplicates            map[string]*domain.RSSItemRecord
+	retryableDuplicates   map[string]*domain.RSSItemRecord
 	duplicateChecks       int
+	retryableChecks       int
 	lastDuplicateKey      domain.RSSDuplicateKey
+	lastRetryableKey      domain.RSSDuplicateKey
 	findDuplicateErr      error
 	findDuplicateErrCalls map[int]error
 	createErr             error
@@ -118,6 +121,33 @@ func (r *stubRSSItemRepo) FindDuplicate(_ context.Context, key domain.RSSDuplica
 		return &copyValue, nil
 	}
 	if item, ok := r.duplicates[key.ContentHash]; ok {
+		copyValue := *item
+		return &copyValue, nil
+	}
+	return nil, nil
+}
+
+func (r *stubRSSItemRepo) FindRetryableDuplicate(_ context.Context, key domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
+	r.retryableChecks++
+	r.lastRetryableKey = key
+	if r.findDuplicateErr != nil {
+		return nil, r.findDuplicateErr
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.retryableDuplicates == nil {
+		return nil, nil
+	}
+	if item, ok := r.retryableDuplicates[key.GUID]; ok {
+		copyValue := *item
+		return &copyValue, nil
+	}
+	if item, ok := r.retryableDuplicates[key.Link]; ok {
+		copyValue := *item
+		return &copyValue, nil
+	}
+	if item, ok := r.retryableDuplicates[key.ContentHash]; ok {
 		copyValue := *item
 		return &copyValue, nil
 	}
@@ -483,6 +513,29 @@ func TestRSSPullServicePersistsEarlyLookupWarningOnDuplicateSkip(t *testing.T) {
 	require.Equal(t, 1, result.SkippedItems)
 	require.Len(t, itemRepo.created, 1)
 	require.Contains(t, itemRepo.created[0].Metadata["warnings"], "failed-row lookup: duplicate lookup warning")
+}
+
+func TestRSSPullServicePrefersRetryableRowOverImportedDuplicateForRecovery(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/shared</link><description>Body</description></item></channel></rss>`)}
+	retryable := domain.NewRSSItemRecord("sub-1", "run-retry", "guid-1", "https://example.com/shared", hashRSSItem(RSSFeedItem{GUID: "guid-1", Title: "Title", Link: "https://example.com/shared", Description: "Body"}), "Retry")
+	retryable.Status = domain.RSSItemStatusImportDiverged
+	retryable.WorkspaceArticleID = "workspace-retry"
+	itemRepo := &stubRSSItemRepo{duplicates: map[string]*domain.RSSItemRecord{"guid-1": {ID: "imported-older", Status: domain.RSSItemStatusImported}}, retryableDuplicates: map[string]*domain.RSSItemRecord{"https://example.com/shared": retryable}}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-retry"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+	sub.ID = "sub-1"
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.ImportedItems)
+	require.Equal(t, 0, result.SkippedItems)
+	require.Equal(t, []string{"workspace-retry"}, intake.reusedIDs)
+	require.Len(t, itemRepo.updated, 2)
+	require.Equal(t, retryable.ID, itemRepo.updated[0].ID)
+	require.Equal(t, retryable.ID, itemRepo.updated[1].ID)
 }
 
 func TestRSSPullServiceReusesFailedRowForRepeatedEarlyNormalizationFailure(t *testing.T) {

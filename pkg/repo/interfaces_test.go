@@ -55,6 +55,9 @@ func (rssItemRepoCompileStub) Update(context.Context, *domain.RSSItemRecord) err
 func (rssItemRepoCompileStub) FindDuplicate(context.Context, domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
 	return nil, nil
 }
+func (rssItemRepoCompileStub) FindRetryableDuplicate(context.Context, domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
+	return nil, nil
+}
 func (rssItemRepoCompileStub) GetByID(context.Context, string) (*domain.RSSItemRecord, error) {
 	return nil, nil
 }
