@@ -107,22 +107,26 @@ func (r *stubRSSItemRepo) List(context.Context, int) ([]domain.RSSItemRecord, er
 }
 
 type stubRSSArticleIntake struct {
-	called   bool
-	articles []domain.IntakeArticle
-	err      error
+	called      bool
+	articles    []domain.IntakeArticle
+	workspaceID string
+	err         error
 }
 
-func (i *stubRSSArticleIntake) Intake(_ context.Context, article domain.IntakeArticle) error {
+func (i *stubRSSArticleIntake) Intake(_ context.Context, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error) {
 	i.called = true
 	i.articles = append(i.articles, article)
-	return i.err
+	if i.err != nil {
+		return nil, i.err
+	}
+	return &domain.ArticleWorkspaceRecord{ID: i.workspaceID}, nil
 }
 
 func TestRSSPullServiceImportsNewItemsAndSkipsDuplicates(t *testing.T) {
 	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
 	itemRepo := &stubRSSItemRepo{}
 	runs := &stubRSSPullRunRepo{}
-	intake := &stubRSSArticleIntake{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
 	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
 	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
 
@@ -138,6 +142,7 @@ func TestRSSPullServiceImportsNewItemsAndSkipsDuplicates(t *testing.T) {
 	require.Equal(t, domain.RSSItemStatusPending, itemRepo.created[0].Status)
 	require.Len(t, itemRepo.updated, 1)
 	require.Equal(t, domain.RSSItemStatusImported, itemRepo.updated[0].Status)
+	require.Equal(t, "workspace-1", itemRepo.updated[0].WorkspaceArticleID)
 	require.Equal(t, "guid-1", itemRepo.lastDuplicateKey.GUID)
 	require.Equal(t, float64(1), result.Run.Metadata["fetched_items"])
 	require.Equal(t, float64(1), result.Run.Metadata["imported_items"])
@@ -165,7 +170,7 @@ func TestRSSPullServiceFailsRunAndMarksItemFailedWhenIntakeFails(t *testing.T) {
 	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
 	itemRepo := &stubRSSItemRepo{}
 	runs := &stubRSSPullRunRepo{}
-	intake := &stubRSSArticleIntake{err: errors.New("rewrite failed")}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1", err: errors.New("rewrite failed")}
 	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
 	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
 

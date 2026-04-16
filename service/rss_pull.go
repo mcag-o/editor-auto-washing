@@ -18,7 +18,7 @@ type RSSFeedFetcher interface {
 }
 
 type rssArticleIntaker interface {
-	Intake(ctx context.Context, article domain.IntakeArticle) error
+	Intake(ctx context.Context, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error)
 }
 
 type RSSPullResult struct {
@@ -105,7 +105,8 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 			return result, s.failRun(ctx, run, result, fmt.Errorf("create rss item record: %w", err))
 		}
 
-		if err := s.intake.Intake(ctx, normalized); err != nil {
+		workspace, err := s.intake.Intake(ctx, normalized)
+		if err != nil {
 			item.Status = domain.RSSItemStatusFailed
 			item.UpdatedAt = time.Now().UTC()
 			item.Metadata["error"] = err.Error()
@@ -118,6 +119,9 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		importedAt := time.Now().UTC()
 		item.Status = domain.RSSItemStatusImported
 		item.ImportedAt = &importedAt
+		if workspace != nil {
+			item.WorkspaceArticleID = strings.TrimSpace(workspace.ID)
+		}
 		item.UpdatedAt = importedAt
 		if err := s.items.Update(ctx, item); err != nil {
 			return result, s.failRun(ctx, run, result, fmt.Errorf("mark rss item imported: %w", err))

@@ -74,11 +74,12 @@ func TestArticleIntakeServiceCreatesWorkspaceArticleAndTriggersRewrite(t *testin
 		RewriteProfileVersion: "latest",
 	}
 
-	err := svc.Intake(t.Context(), article)
+	workspace, err := svc.Intake(t.Context(), article)
 
 	require.NoError(t, err)
 	require.Len(t, workspaceRepo.created, 1)
-	workspace := workspaceRepo.created[0]
+	created := workspaceRepo.created[0]
+	require.Equal(t, created.ID, workspace.ID)
 	require.Equal(t, "Title", workspace.Title)
 	require.Equal(t, "Summary", workspace.Summary)
 	require.Equal(t, "rss", workspace.Source.SourceType)

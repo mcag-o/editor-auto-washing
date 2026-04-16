@@ -26,12 +26,12 @@ func NewArticleIntakeService(workspaces workspaceArticleWriter, rewrite rewriteR
 	return &ArticleIntakeService{workspaces: workspaces, rewrite: rewrite}
 }
 
-func (s *ArticleIntakeService) Intake(ctx context.Context, article domain.IntakeArticle) error {
+func (s *ArticleIntakeService) Intake(ctx context.Context, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error) {
 	if err := article.Validate(); err != nil {
-		return err
+		return nil, err
 	}
 	if s.workspaces == nil || s.rewrite == nil {
-		return domain.NewInternalErr("article intake service is not configured", nil)
+		return nil, domain.NewInternalErr("article intake service is not configured", nil)
 	}
 
 	workspaceID := id.New()
@@ -46,7 +46,7 @@ func (s *ArticleIntakeService) Intake(ctx context.Context, article domain.Intake
 	}}
 
 	if err := s.workspaces.Create(ctx, workspace); err != nil {
-		return fmt.Errorf("create workspace article: %w", err)
+		return nil, fmt.Errorf("create workspace article: %w", err)
 	}
 
 	if _, err := s.rewrite.Run(ctx, RewriteRunRequest{
@@ -57,10 +57,10 @@ func (s *ArticleIntakeService) Intake(ctx context.Context, article domain.Intake
 		SourceProfile:      article.SourceProfile,
 		Version:            normalizeRewriteProfileVersion(article.RewriteProfileVersion),
 	}); err != nil {
-		return fmt.Errorf("run rewrite orchestrator: %w", err)
+		return nil, fmt.Errorf("run rewrite orchestrator: %w", err)
 	}
 
-	return nil
+	return workspace, nil
 }
 
 func buildIntakeWorkspaceMetadata(article domain.IntakeArticle) map[string]any {
