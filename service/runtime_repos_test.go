@@ -30,3 +30,23 @@ func TestBuildRuntimeReposExposesRewriteRepos(t *testing.T) {
 		t.Fatal("expected LLMProfileRepo to be wired")
 	}
 }
+
+func TestBuildRuntimeReposExposesRSSRepos(t *testing.T) {
+	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
+	if cleanup != nil {
+		defer func() {
+			if closeErr := cleanup(); closeErr != nil {
+				t.Fatalf("cleanup returned error: %v", closeErr)
+			}
+		}()
+	}
+	if err != nil {
+		t.Fatalf("BuildRuntimeRepos returned error: %v", err)
+	}
+	if repos.RSSSubscriptionRepo == nil {
+		t.Fatal("expected RSSSubscriptionRepo to be wired")
+	}
+	if repos.RSSItemRepo == nil {
+		t.Fatal("expected RSSItemRepo to be wired")
+	}
+}

@@ -36,6 +36,9 @@ type RuntimeRepos struct {
 	RewritePipelineProfileRepo repo.RewritePipelineProfileRepo
 	RewritePipelineRunRepo     repo.RewritePipelineRunRepo
 	RewriteStageRunRepo        repo.RewriteStageRunRepo
+	RSSSubscriptionRepo        repo.RSSSubscriptionRepo
+	RSSPullRunRepo             repo.RSSPullRunRepo
+	RSSItemRepo                repo.RSSItemRepo
 	PromptTemplateRepo         repo.PromptTemplateRepo
 	LLMProfileRepo             repo.LLMProfileRepo
 	LLMClient                  llminfra.Client
@@ -101,6 +104,9 @@ func buildRuntimeReposFromResolved(runtimeCfg config.Config, renderedDir string,
 		RewritePipelineProfileRepo: sqliteProvider.RewritePipelineProfileRepo(),
 		RewritePipelineRunRepo:     sqliteProvider.RewritePipelineRunRepo(),
 		RewriteStageRunRepo:        sqliteProvider.RewriteStageRunRepo(),
+		RSSSubscriptionRepo:        sqliteProvider.RSSSubscriptionRepo(),
+		RSSPullRunRepo:             sqliteProvider.RSSPullRunRepo(),
+		RSSItemRepo:                sqliteProvider.RSSItemRepo(),
 		PromptTemplateRepo:         sqliteProvider.PromptTemplateRepo(),
 		LLMProfileRepo:             sqliteProvider.LLMProfileRepo(),
 		LLMClient:                  llminfra.NewProvider(runtimeCfg.LLM.BaseURL, runtimeCfg.LLM.APIKey, runtimeCfg.LLM.Model, time.Duration(runtimeCfg.LLM.TimeoutSec)*time.Second),
