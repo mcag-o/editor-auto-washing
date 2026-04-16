@@ -185,7 +185,7 @@ func TestRSSPullServiceImportsNewItemsAndSkipsDuplicates(t *testing.T) {
 	require.Equal(t, 0, result.ImportedItems)
 	require.Equal(t, 1, result.SkippedItems)
 	require.False(t, intake.called)
-	require.Equal(t, 2, itemRepo.duplicateChecks)
+	require.Equal(t, 4, itemRepo.duplicateChecks)
 	require.Len(t, itemRepo.created, 2)
 	require.Equal(t, domain.RSSItemStatusSkippedDuplicate, itemRepo.created[1].Status)
 	require.Equal(t, domain.RSSPullRunStatusSucceeded, result.Run.Status)
@@ -360,4 +360,52 @@ func TestRSSPullServiceFailsRunWhenImportedStateUpdateFailsAfterIntake(t *testin
 	require.Equal(t, 0, result.FailedItems)
 	require.Len(t, intake.articles, 1)
 	require.Equal(t, float64(2), runs.updated[len(runs.updated)-1].Metadata["fetched_items"])
+}
+
+func TestRSSPullServiceReusesFailedRowForRepeatedEarlyNormalizationFailure(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title></title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
+	itemRepo := &stubRSSItemRepo{}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.Error(t, err)
+	require.Equal(t, 1, result.FailedItems)
+	require.Len(t, itemRepo.created, 1)
+	require.Len(t, itemRepo.updated, 0)
+	firstFailed := itemRepo.created[0]
+	itemRepo.duplicates = map[string]*domain.RSSItemRecord{"guid-1": firstFailed}
+
+	result, err = svc.RunOnce(t.Context(), *sub)
+
+	require.Error(t, err)
+	require.Equal(t, 1, result.FailedItems)
+	require.Len(t, itemRepo.created, 1)
+	require.Len(t, itemRepo.updated, 1)
+	require.Equal(t, firstFailed.ID, itemRepo.updated[0].ID)
+	require.Equal(t, domain.RSSItemStatusFailed, itemRepo.updated[0].Status)
+}
+
+func TestRSSPullServiceDoesNotOverwriteImportedRowForEarlyNormalizationFailure(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title></title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
+	existing := domain.NewRSSItemRecord("sub-1", "run-1", "guid-1", "https://example.com/a", "hash-1", "Existing")
+	existing.Status = domain.RSSItemStatusImported
+	itemRepo := &stubRSSItemRepo{duplicates: map[string]*domain.RSSItemRecord{"guid-1": existing}}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+	sub.ID = "sub-1"
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.Error(t, err)
+	require.Equal(t, 1, result.FailedItems)
+	require.Len(t, itemRepo.created, 1)
+	require.Len(t, itemRepo.updated, 0)
+	require.NotEqual(t, existing.ID, itemRepo.created[0].ID)
+	require.Equal(t, domain.RSSItemStatusFailed, itemRepo.created[0].Status)
 }

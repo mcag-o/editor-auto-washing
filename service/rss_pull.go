@@ -69,10 +69,17 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 	var itemErrors []string
 	for _, parsedItem := range parsedItems {
 		itemLabel := firstNonEmpty(strings.TrimSpace(parsedItem.GUID), strings.TrimSpace(parsedItem.Link), strings.TrimSpace(parsedItem.Title), "unknown-item")
+		earlyContentHash := hashRSSItem(parsedItem)
+		earlyDuplicate := s.findRetryableFailedDuplicate(ctx, domain.RSSDuplicateKey{
+			SubscriptionID: sub.ID,
+			GUID:           strings.TrimSpace(parsedItem.GUID),
+			Link:           strings.TrimSpace(parsedItem.Link),
+			ContentHash:    earlyContentHash,
+		})
 		normalized, err := NormalizeRSSItem(sub.ID, sub.TargetType, sub.SourceProfile, sub.RewriteProfileVersion, parsedItem)
 		if err != nil {
 			itemErrors = append(itemErrors, fmt.Sprintf("%s: %v", itemLabel, err))
-			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, hashRSSItem(parsedItem), fmt.Errorf("normalize rss item: %w", err), nil); recordErr != nil {
+			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, earlyContentHash, fmt.Errorf("normalize rss item: %w", err), earlyDuplicate); recordErr != nil {
 				return result, s.failRun(ctx, run, result, recordErr)
 			}
 			result.FailedItems++
@@ -83,7 +90,7 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		rawPayloadJSON, err := json.Marshal(parsedItem)
 		if err != nil {
 			itemErrors = append(itemErrors, fmt.Sprintf("%s: marshal rss item payload: %v", itemLabel, err))
-			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, hashRSSItem(parsedItem), fmt.Errorf("marshal rss item payload: %w", err), nil); recordErr != nil {
+			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, earlyContentHash, fmt.Errorf("marshal rss item payload: %w", err), earlyDuplicate); recordErr != nil {
 				return result, s.failRun(ctx, run, result, recordErr)
 			}
 			result.FailedItems++
@@ -100,7 +107,7 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		duplicate, err := s.items.FindDuplicate(ctx, duplicateKey)
 		if err != nil {
 			itemErrors = append(itemErrors, fmt.Sprintf("%s: find duplicate rss item: %v", itemLabel, err))
-			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, contentHash, fmt.Errorf("find duplicate rss item: %w", err), nil); recordErr != nil {
+			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, contentHash, fmt.Errorf("find duplicate rss item: %w", err), earlyDuplicate); recordErr != nil {
 				return result, s.failRun(ctx, run, result, recordErr)
 			}
 			result.FailedItems++
@@ -232,6 +239,17 @@ func (s *RSSPullService) recordFailedRSSItem(ctx context.Context, run *domain.RS
 		return s.items.Update(ctx, item)
 	}
 	return s.items.Create(ctx, item)
+}
+
+func (s *RSSPullService) findRetryableFailedDuplicate(ctx context.Context, key domain.RSSDuplicateKey) *domain.RSSItemRecord {
+	duplicate, err := s.items.FindDuplicate(ctx, key)
+	if err != nil || duplicate == nil {
+		return nil
+	}
+	if duplicate.Status != domain.RSSItemStatusFailed {
+		return nil
+	}
+	return duplicate
 }
 
 type rssEnvelope struct {
