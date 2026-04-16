@@ -227,3 +227,50 @@ func TestRSSPullServiceFailsRunAndMarksItemFailedWhenIntakeFails(t *testing.T) {
 	require.Equal(t, float64(0), result.Run.Metadata["imported_items"])
 	require.Equal(t, float64(0), result.Run.Metadata["skipped_items"])
 }
+
+func TestRSSPullServiceRetriesPreviouslyFailedMatchingItem(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
+	itemRepo := &stubRSSItemRepo{duplicates: map[string]*domain.RSSItemRecord{
+		"guid-1": {ID: "existing-failed", Status: domain.RSSItemStatusFailed, WorkspaceArticleID: "workspace-old"},
+	}}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-2"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.FetchedItems)
+	require.Equal(t, 1, result.ImportedItems)
+	require.Equal(t, 0, result.SkippedItems)
+	require.True(t, intake.called)
+	require.Len(t, itemRepo.created, 0)
+	require.Len(t, itemRepo.updated, 2)
+	require.Equal(t, "existing-failed", itemRepo.updated[0].ID)
+	require.Equal(t, domain.RSSItemStatusPending, itemRepo.updated[0].Status)
+	require.Equal(t, "existing-failed", itemRepo.updated[1].ID)
+	require.Equal(t, domain.RSSItemStatusImported, itemRepo.updated[1].Status)
+	require.Equal(t, "workspace-2", itemRepo.updated[1].WorkspaceArticleID)
+	require.Nil(t, itemRepo.updated[0].Metadata["duplicate_item_id"])
+}
+
+func TestRSSPullServiceIgnoresInvalidRSSDate(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/a</link><description>Body</description><pubDate>not-a-date</pubDate></item></channel></rss>`)}
+	itemRepo := &stubRSSItemRepo{}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.ImportedItems)
+	require.Len(t, intake.articles, 1)
+	require.Nil(t, intake.articles[0].PublishedAt)
+	require.Len(t, itemRepo.created, 1)
+	require.Nil(t, itemRepo.created[0].PublishedAt)
+	require.Len(t, itemRepo.updated, 1)
+	require.Nil(t, itemRepo.updated[0].PublishedAt)
+}

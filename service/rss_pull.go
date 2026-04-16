@@ -89,10 +89,14 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		}
 
 		item := domain.NewRSSItemRecord(sub.ID, run.ID, parsedItem.GUID, parsedItem.Link, contentHash, parsedItem.Title)
+		if duplicate != nil && duplicate.Status == domain.RSSItemStatusFailed {
+			item.ID = duplicate.ID
+			item.CreatedAt = duplicate.CreatedAt
+		}
 		item.PublishedAt = parsedItem.PublishedAt
 		item.RawPayloadJSON = rawPayloadJSON
 
-		if duplicate != nil {
+		if duplicate != nil && duplicate.Status != domain.RSSItemStatusFailed {
 			item.Status = domain.RSSItemStatusSkippedDuplicate
 			item.Metadata["duplicate_item_id"] = duplicate.ID
 			if err := s.items.Create(ctx, item); err != nil {
@@ -102,8 +106,14 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 			continue
 		}
 
-		if err := s.items.Create(ctx, item); err != nil {
-			return result, s.failRun(ctx, run, result, fmt.Errorf("create rss item record: %w", err))
+		if duplicate != nil && duplicate.Status == domain.RSSItemStatusFailed {
+			if err := s.items.Update(ctx, item); err != nil {
+				return result, s.failRun(ctx, run, result, fmt.Errorf("reset failed rss item record: %w", err))
+			}
+		} else {
+			if err := s.items.Create(ctx, item); err != nil {
+				return result, s.failRun(ctx, run, result, fmt.Errorf("create rss item record: %w", err))
+			}
 		}
 
 		workspace, err := s.intake.Intake(ctx, normalized)
@@ -299,7 +309,7 @@ func parseRSSPublishedAt(item rssXMLItem) (*time.Time, error) {
 				return &parsed, nil
 			}
 		}
-		return nil, fmt.Errorf("parse rss published_at: unsupported time format %q", value)
+		return nil, nil
 	}
 	return nil, nil
 }
@@ -317,7 +327,7 @@ func parseAtomPublishedAt(item atomXMLItem) (*time.Time, error) {
 				return &parsed, nil
 			}
 		}
-		return nil, fmt.Errorf("parse rss published_at: unsupported time format %q", value)
+		return nil, nil
 	}
 	return nil, nil
 }
