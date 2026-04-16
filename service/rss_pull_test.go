@@ -66,6 +66,8 @@ type stubRSSItemRepo struct {
 	lastRetryableKey      domain.RSSDuplicateKey
 	findDuplicateErr      error
 	findDuplicateErrCalls map[int]error
+	findRetryableErr      error
+	findRetryableErrCalls map[int]error
 	createErr             error
 	updateErrCalls        map[int]error
 	updateCalls           int
@@ -130,6 +132,12 @@ func (r *stubRSSItemRepo) FindDuplicate(_ context.Context, key domain.RSSDuplica
 func (r *stubRSSItemRepo) FindRetryableDuplicate(_ context.Context, key domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
 	r.retryableChecks++
 	r.lastRetryableKey = key
+	if err, ok := r.findRetryableErrCalls[r.retryableChecks]; ok {
+		return nil, err
+	}
+	if r.findRetryableErr != nil {
+		return nil, r.findRetryableErr
+	}
 	if r.findDuplicateErr != nil {
 		return nil, r.findDuplicateErr
 	}
@@ -238,7 +246,8 @@ func TestRSSPullServiceImportsNewItemsAndSkipsDuplicates(t *testing.T) {
 	require.Equal(t, 0, result.ImportedItems)
 	require.Equal(t, 1, result.SkippedItems)
 	require.False(t, intake.called)
-	require.Equal(t, 4, itemRepo.duplicateChecks)
+	require.Equal(t, 2, itemRepo.duplicateChecks)
+	require.Equal(t, 4, itemRepo.retryableChecks)
 	require.Len(t, itemRepo.created, 2)
 	require.Equal(t, domain.RSSItemStatusSkippedDuplicate, itemRepo.created[1].Status)
 	require.Equal(t, domain.RSSPullRunStatusSucceeded, result.Run.Status)
@@ -460,7 +469,7 @@ func TestRSSPullServiceMarksDivergenceAndRetriesItOnRerun(t *testing.T) {
 
 func TestRSSPullServicePreservesEarlyLookupErrorWhenLaterFailureOccurs(t *testing.T) {
 	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
-	itemRepo := &stubRSSItemRepo{findDuplicateErrCalls: map[int]error{1: errors.New("duplicate lookup failed")}}
+	itemRepo := &stubRSSItemRepo{findRetryableErrCalls: map[int]error{1: errors.New("duplicate lookup failed")}}
 	runs := &stubRSSPullRunRepo{}
 	intake := &stubRSSArticleIntake{workspaceID: "workspace-1", returnOnErr: true, err: errors.New("rewrite failed")}
 	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
@@ -482,7 +491,7 @@ func TestRSSPullServicePersistsEarlyLookupWarningOnSuccessfulRetryableImport(t *
 	existing := domain.NewRSSItemRecord("sub-1", "run-1", "guid-1", "https://example.com/a", "hash-1", "Existing")
 	existing.Status = domain.RSSItemStatusFailed
 	existing.WorkspaceArticleID = "workspace-old"
-	itemRepo := &stubRSSItemRepo{duplicates: map[string]*domain.RSSItemRecord{"guid-1": existing}, findDuplicateErrCalls: map[int]error{1: errors.New("duplicate lookup warning")}}
+	itemRepo := &stubRSSItemRepo{duplicates: map[string]*domain.RSSItemRecord{"guid-1": existing}, retryableDuplicates: map[string]*domain.RSSItemRecord{"guid-1": existing}, findRetryableErrCalls: map[int]error{1: errors.New("duplicate lookup warning")}}
 	runs := &stubRSSPullRunRepo{}
 	intake := &stubRSSArticleIntake{workspaceID: "workspace-old"}
 	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
@@ -501,7 +510,7 @@ func TestRSSPullServicePersistsEarlyLookupWarningOnSuccessfulRetryableImport(t *
 
 func TestRSSPullServicePersistsEarlyLookupWarningOnDuplicateSkip(t *testing.T) {
 	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-2</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
-	itemRepo := &stubRSSItemRepo{duplicates: map[string]*domain.RSSItemRecord{"https://example.com/a": {ID: "existing-1", Status: domain.RSSItemStatusImported}}, findDuplicateErrCalls: map[int]error{1: errors.New("duplicate lookup warning")}}
+	itemRepo := &stubRSSItemRepo{duplicates: map[string]*domain.RSSItemRecord{"https://example.com/a": {ID: "existing-1", Status: domain.RSSItemStatusImported}}, findRetryableErrCalls: map[int]error{1: errors.New("duplicate lookup warning")}}
 	runs := &stubRSSPullRunRepo{}
 	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
 	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
@@ -553,7 +562,7 @@ func TestRSSPullServiceReusesFailedRowForRepeatedEarlyNormalizationFailure(t *te
 	require.Len(t, itemRepo.created, 1)
 	require.Len(t, itemRepo.updated, 0)
 	firstFailed := itemRepo.created[0]
-	itemRepo.duplicates = map[string]*domain.RSSItemRecord{"guid-1": firstFailed}
+	itemRepo.retryableDuplicates = map[string]*domain.RSSItemRecord{"guid-1": firstFailed}
 
 	result, err = svc.RunOnce(t.Context(), *sub)
 
@@ -563,6 +572,28 @@ func TestRSSPullServiceReusesFailedRowForRepeatedEarlyNormalizationFailure(t *te
 	require.Len(t, itemRepo.updated, 1)
 	require.Equal(t, firstFailed.ID, itemRepo.updated[0].ID)
 	require.Equal(t, domain.RSSItemStatusFailed, itemRepo.updated[0].Status)
+}
+
+func TestRSSPullServiceEarlyFailurePrefersRetryableRowOverImportedDuplicate(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title></title><link>https://example.com/shared</link><description>Body</description></item></channel></rss>`)}
+	retryable := domain.NewRSSItemRecord("sub-1", "run-retry", "guid-1", "https://example.com/shared", hashRSSItem(RSSFeedItem{GUID: "guid-1", Title: "", Link: "https://example.com/shared", Description: "Body"}), "Retry")
+	retryable.Status = domain.RSSItemStatusFailed
+	retryable.WorkspaceArticleID = "workspace-retry"
+	itemRepo := &stubRSSItemRepo{duplicates: map[string]*domain.RSSItemRecord{"guid-1": {ID: "imported-older", Status: domain.RSSItemStatusImported}}, retryableDuplicates: map[string]*domain.RSSItemRecord{"https://example.com/shared": retryable}}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-retry"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+	sub.ID = "sub-1"
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.Error(t, err)
+	require.Equal(t, 1, result.FailedItems)
+	require.Len(t, itemRepo.created, 0)
+	require.Len(t, itemRepo.updated, 1)
+	require.Equal(t, retryable.ID, itemRepo.updated[0].ID)
+	require.Equal(t, "workspace-retry", itemRepo.updated[0].WorkspaceArticleID)
 }
 
 func TestRSSPullServiceDoesNotOverwriteImportedRowForEarlyNormalizationFailure(t *testing.T) {
@@ -604,4 +635,28 @@ func TestRSSPullServiceReportsEarlyFailedRowLookupErrorExplicitly(t *testing.T) 
 	require.Len(t, itemRepo.updated, 0)
 	require.Equal(t, domain.RSSItemStatusFailed, itemRepo.created[0].Status)
 	require.Contains(t, result.Run.ErrorSummary, "failed-row lookup")
+}
+
+func TestRSSPullServiceRetryableReusePreservesAndAppendsWarnings(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
+	existing := domain.NewRSSItemRecord("sub-1", "run-1", "guid-1", "https://example.com/a", hashRSSItem(RSSFeedItem{GUID: "guid-1", Title: "Title", Link: "https://example.com/a", Description: "Body"}), "Existing")
+	existing.Status = domain.RSSItemStatusFailed
+	existing.WorkspaceArticleID = "workspace-old"
+	existing.Metadata["warnings"] = []string{"old warning"}
+	itemRepo := &stubRSSItemRepo{retryableDuplicates: map[string]*domain.RSSItemRecord{"guid-1": existing}, findRetryableErrCalls: map[int]error{1: errors.New("new warning")}}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-old"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+	sub.ID = "sub-1"
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.ImportedItems)
+	require.Len(t, itemRepo.updated, 2)
+	require.Contains(t, itemRepo.updated[0].Metadata["warnings"], "old warning")
+	require.Contains(t, itemRepo.updated[1].Metadata["warnings"], "old warning")
+	require.Contains(t, itemRepo.updated[0].Metadata["warnings"], "failed-row lookup: new warning")
+	require.Contains(t, itemRepo.updated[1].Metadata["warnings"], "failed-row lookup: new warning")
 }

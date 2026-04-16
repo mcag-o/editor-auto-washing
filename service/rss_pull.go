@@ -145,6 +145,7 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 			item.ID = duplicate.ID
 			item.CreatedAt = duplicate.CreatedAt
 			item.WorkspaceArticleID = duplicate.WorkspaceArticleID
+			item.Metadata = copyRSSItemMetadata(duplicate.Metadata)
 		}
 		item.PublishedAt = parsedItem.PublishedAt
 		item.RawPayloadJSON = rawPayloadJSON
@@ -269,6 +270,7 @@ func (s *RSSPullService) recordFailedRSSItem(ctx context.Context, run *domain.RS
 		item.ID = duplicate.ID
 		item.CreatedAt = duplicate.CreatedAt
 		item.WorkspaceArticleID = duplicate.WorkspaceArticleID
+		item.Metadata = copyRSSItemMetadata(duplicate.Metadata)
 	}
 	item.Status = domain.RSSItemStatusFailed
 	item.PublishedAt = parsedItem.PublishedAt
@@ -281,7 +283,7 @@ func (s *RSSPullService) recordFailedRSSItem(ctx context.Context, run *domain.RS
 }
 
 func (s *RSSPullService) findRetryableFailedDuplicate(ctx context.Context, key domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
-	duplicate, err := s.items.FindDuplicate(ctx, key)
+	duplicate, err := s.items.FindRetryableDuplicate(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -312,6 +314,22 @@ func appendRSSItemWarning(item *domain.RSSItemRecord, warning string) {
 	}
 	warnings, _ := item.Metadata["warnings"].([]string)
 	item.Metadata["warnings"] = append(warnings, warning)
+}
+
+func copyRSSItemMetadata(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return map[string]any{}
+	}
+	dst := make(map[string]any, len(src))
+	for key, value := range src {
+		switch v := value.(type) {
+		case []string:
+			dst[key] = append([]string(nil), v...)
+		default:
+			dst[key] = v
+		}
+	}
+	return dst
 }
 
 type rssEnvelope struct {
