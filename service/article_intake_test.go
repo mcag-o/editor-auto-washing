@@ -3,6 +3,7 @@ package service
 import (
 	"content-hub/domain"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -97,4 +98,31 @@ func TestArticleIntakeServiceCreatesWorkspaceArticleAndTriggersRewrite(t *testin
 		SourceProfile:      "sspai",
 		Version:            "latest",
 	}, rewrite.lastReq)
+}
+
+func TestArticleIntakeServiceReturnsCreatedWorkspaceWhenRewriteFails(t *testing.T) {
+	workspaceRepo := &stubArticleIntakeWorkspaceRepo{}
+	rewrite := &stubArticleIntakeRewriteRunner{err: errors.New("rewrite failed")}
+	svc := NewArticleIntakeService(workspaceRepo, rewrite)
+	article := domain.IntakeArticle{
+		ExternalID:            "guid-1",
+		SourceType:            "rss",
+		SubscriptionID:        "sub-1",
+		Title:                 "Title",
+		Body:                  "Body",
+		Summary:               "Summary",
+		OriginalURL:           "https://example.com/a",
+		TargetType:            "wechat-longform",
+		SourceProfile:         "sspai",
+		RewriteProfileVersion: "latest",
+	}
+
+	workspace, err := svc.Intake(t.Context(), article)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "run rewrite orchestrator")
+	require.Len(t, workspaceRepo.created, 1)
+	require.NotNil(t, workspace)
+	require.Equal(t, workspaceRepo.created[0].ID, workspace.ID)
+	require.True(t, rewrite.called)
 }

@@ -53,7 +53,7 @@ func TestRSSItemRepoFindDuplicateByStructuredKey(t *testing.T) {
 	require.Equal(t, "feed", dup.Metadata["source"])
 }
 
-func TestRSSItemRepoFindDuplicatePrefersGUIDOverOtherFields(t *testing.T) {
+func TestRSSItemRepoFindDuplicateMatchesAnyProvidedIdentifier(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
 	require.NoError(t, provider.RSSSubscriptionRepo().Create(t.Context(), sub))
@@ -65,8 +65,8 @@ func TestRSSItemRepoFindDuplicatePrefersGUIDOverOtherFields(t *testing.T) {
 
 	dup, err := provider.RSSItemRepo().FindDuplicate(t.Context(), domain.RSSDuplicateKey{
 		SubscriptionID: sub.ID,
-		GUID:           "guid-1",
-		Link:           "https://example.com/different",
+		GUID:           "guid-2",
+		Link:           "https://example.com/original",
 		ContentHash:    "different-hash",
 	})
 	require.NoError(t, err)
@@ -74,20 +74,21 @@ func TestRSSItemRepoFindDuplicatePrefersGUIDOverOtherFields(t *testing.T) {
 	require.Equal(t, item.ID, dup.ID)
 }
 
-func TestRSSItemRepoFindDuplicateFallsBackToLinkWhenGUIDAbsent(t *testing.T) {
+func TestRSSItemRepoFindDuplicateMatchesByContentHashWhenGUIDAndLinkDiffer(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
 	require.NoError(t, provider.RSSSubscriptionRepo().Create(t.Context(), sub))
 	run := domain.NewRSSPullRun(sub.ID)
 	require.NoError(t, provider.RSSPullRunRepo().Create(t.Context(), run))
 
-	item := domain.NewRSSItemRecord(sub.ID, run.ID, "", "https://example.com/by-link", "hash-1", "A")
+	item := domain.NewRSSItemRecord(sub.ID, run.ID, "guid-1", "https://example.com/by-link", "hash-1", "A")
 	require.NoError(t, provider.RSSItemRepo().Create(t.Context(), item))
 
 	dup, err := provider.RSSItemRepo().FindDuplicate(t.Context(), domain.RSSDuplicateKey{
 		SubscriptionID: sub.ID,
-		Link:           "https://example.com/by-link",
-		ContentHash:    "different-hash",
+		GUID:           "different-guid",
+		Link:           "https://example.com/different",
+		ContentHash:    "hash-1",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, dup)

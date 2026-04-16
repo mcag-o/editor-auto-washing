@@ -77,12 +77,13 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		}
 
 		contentHash := hashRSSItem(parsedItem)
-		duplicate, err := s.items.FindDuplicate(ctx, domain.RSSDuplicateKey{
+		duplicateKey := domain.RSSDuplicateKey{
 			SubscriptionID: sub.ID,
 			GUID:           strings.TrimSpace(parsedItem.GUID),
 			Link:           strings.TrimSpace(parsedItem.Link),
 			ContentHash:    contentHash,
-		})
+		}
+		duplicate, err := s.items.FindDuplicate(ctx, duplicateKey)
 		if err != nil {
 			return result, s.failRun(ctx, run, result, fmt.Errorf("find duplicate rss item: %w", err))
 		}
@@ -109,6 +110,9 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		if err != nil {
 			item.Status = domain.RSSItemStatusFailed
 			item.UpdatedAt = time.Now().UTC()
+			if workspace != nil {
+				item.WorkspaceArticleID = strings.TrimSpace(workspace.ID)
+			}
 			item.Metadata["error"] = err.Error()
 			if updateErr := s.items.Update(ctx, item); updateErr != nil {
 				return result, s.failRun(ctx, run, result, fmt.Errorf("intake rss item: %w: mark item failed: %v", err, updateErr))

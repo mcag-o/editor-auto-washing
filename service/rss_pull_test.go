@@ -95,6 +95,14 @@ func (r *stubRSSItemRepo) FindDuplicate(_ context.Context, key domain.RSSDuplica
 		copyValue := *item
 		return &copyValue, nil
 	}
+	if item, ok := r.duplicates[key.Link]; ok {
+		copyValue := *item
+		return &copyValue, nil
+	}
+	if item, ok := r.duplicates[key.ContentHash]; ok {
+		copyValue := *item
+		return &copyValue, nil
+	}
 	return nil, nil
 }
 
@@ -110,6 +118,7 @@ type stubRSSArticleIntake struct {
 	called      bool
 	articles    []domain.IntakeArticle
 	workspaceID string
+	returnOnErr bool
 	err         error
 }
 
@@ -117,6 +126,9 @@ func (i *stubRSSArticleIntake) Intake(_ context.Context, article domain.IntakeAr
 	i.called = true
 	i.articles = append(i.articles, article)
 	if i.err != nil {
+		if i.returnOnErr {
+			return &domain.ArticleWorkspaceRecord{ID: i.workspaceID}, i.err
+		}
 		return nil, i.err
 	}
 	return &domain.ArticleWorkspaceRecord{ID: i.workspaceID}, nil
@@ -166,11 +178,33 @@ func TestRSSPullServiceImportsNewItemsAndSkipsDuplicates(t *testing.T) {
 	require.Equal(t, domain.RSSPullRunStatusSucceeded, result.Run.Status)
 }
 
+func TestRSSPullServiceSkipsItemWhenDuplicateMatchesByLinkEvenWithNewGUID(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-2</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
+	itemRepo := &stubRSSItemRepo{duplicates: map[string]*domain.RSSItemRecord{"https://example.com/a": {ID: "existing-1"}}}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.FetchedItems)
+	require.Equal(t, 0, result.ImportedItems)
+	require.Equal(t, 1, result.SkippedItems)
+	require.False(t, intake.called)
+	require.Equal(t, "guid-2", itemRepo.lastDuplicateKey.GUID)
+	require.Equal(t, "https://example.com/a", itemRepo.lastDuplicateKey.Link)
+	require.Len(t, itemRepo.created, 1)
+	require.Equal(t, domain.RSSItemStatusSkippedDuplicate, itemRepo.created[0].Status)
+	require.Equal(t, "existing-1", itemRepo.created[0].Metadata["duplicate_item_id"])
+}
+
 func TestRSSPullServiceFailsRunAndMarksItemFailedWhenIntakeFails(t *testing.T) {
 	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
 	itemRepo := &stubRSSItemRepo{}
 	runs := &stubRSSPullRunRepo{}
-	intake := &stubRSSArticleIntake{workspaceID: "workspace-1", err: errors.New("rewrite failed")}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1", returnOnErr: true, err: errors.New("rewrite failed")}
 	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
 	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
 
@@ -187,6 +221,7 @@ func TestRSSPullServiceFailsRunAndMarksItemFailedWhenIntakeFails(t *testing.T) {
 	require.Len(t, itemRepo.created, 1)
 	require.Len(t, itemRepo.updated, 1)
 	require.Equal(t, domain.RSSItemStatusFailed, itemRepo.updated[0].Status)
+	require.Equal(t, "workspace-1", itemRepo.updated[0].WorkspaceArticleID)
 	require.Len(t, runs.updated, 1)
 	require.Equal(t, float64(1), result.Run.Metadata["fetched_items"])
 	require.Equal(t, float64(0), result.Run.Metadata["imported_items"])

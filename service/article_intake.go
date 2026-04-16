@@ -57,7 +57,7 @@ func (s *ArticleIntakeService) Intake(ctx context.Context, article domain.Intake
 		SourceProfile:      article.SourceProfile,
 		Version:            normalizeRewriteProfileVersion(article.RewriteProfileVersion),
 	}); err != nil {
-		return nil, fmt.Errorf("run rewrite orchestrator: %w", err)
+		return workspace, fmt.Errorf("run rewrite orchestrator: %w", err)
 	}
 
 	return workspace, nil

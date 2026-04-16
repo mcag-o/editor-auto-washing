@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -63,20 +64,22 @@ func (r *rssItemRepo) FindDuplicate(ctx context.Context, key domain.RSSDuplicate
 	if err := key.Validate(); err != nil {
 		return nil, err
 	}
-	query := `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items WHERE subscription_id = ? AND %s = ? ORDER BY created_at DESC, id DESC LIMIT 1`
-	column := ""
-	value := ""
-	if key.GUID != "" {
-		column = "guid"
-		value = key.GUID
-	} else if key.Link != "" {
-		column = "link"
-		value = key.Link
-	} else {
-		column = "content_hash"
-		value = key.ContentHash
+	clauses := make([]string, 0, 3)
+	args := []any{key.SubscriptionID}
+	if guid := strings.TrimSpace(key.GUID); guid != "" {
+		clauses = append(clauses, "guid = ?")
+		args = append(args, guid)
 	}
-	row := r.db.QueryRowContext(ctx, fmt.Sprintf(query, column), key.SubscriptionID, value)
+	if link := strings.TrimSpace(key.Link); link != "" {
+		clauses = append(clauses, "link = ?")
+		args = append(args, link)
+	}
+	if contentHash := strings.TrimSpace(key.ContentHash); contentHash != "" {
+		clauses = append(clauses, "content_hash = ?")
+		args = append(args, contentHash)
+	}
+	query := fmt.Sprintf(`SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items WHERE subscription_id = ? AND (%s) ORDER BY created_at DESC, id DESC LIMIT 1`, strings.Join(clauses, " OR "))
+	row := r.db.QueryRowContext(ctx, query, args...)
 	item, err := scanRSSItem(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
