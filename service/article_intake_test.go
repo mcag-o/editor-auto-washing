@@ -4,7 +4,6 @@ import (
 	"content-hub/domain"
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -58,47 +57,10 @@ func (r *stubArticleIntakeRewriteRunner) Run(_ context.Context, req RewriteRunRe
 	return &domain.RewritePipelineRun{ID: "run-1"}, nil
 }
 
-type stubArticleIntakeRSSItemRepo struct {
-	stored    *domain.RSSItemRecord
-	items     []*domain.RSSItemRecord
-	updateErr error
-}
-
-func (r *stubArticleIntakeRSSItemRepo) Create(context.Context, *domain.RSSItemRecord) error {
-	return nil
-}
-
-func (r *stubArticleIntakeRSSItemRepo) Update(_ context.Context, item *domain.RSSItemRecord) error {
-	if r.updateErr != nil {
-		return r.updateErr
-	}
-	copyValue := *item
-	r.items = append(r.items, &copyValue)
-	return nil
-}
-
-func (r *stubArticleIntakeRSSItemRepo) FindDuplicate(context.Context, domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
-	if r.stored == nil {
-		return nil, nil
-	}
-	copyValue := *r.stored
-	return &copyValue, nil
-}
-
-func (r *stubArticleIntakeRSSItemRepo) GetByID(context.Context, string) (*domain.RSSItemRecord, error) {
-	return nil, nil
-}
-
-func (r *stubArticleIntakeRSSItemRepo) List(context.Context, int) ([]domain.RSSItemRecord, error) {
-	return nil, nil
-}
-
 func TestArticleIntakeServiceCreatesWorkspaceArticleAndTriggersRewrite(t *testing.T) {
 	workspaceRepo := &stubArticleIntakeWorkspaceRepo{}
 	rewrite := &stubArticleIntakeRewriteRunner{}
-	itemRepo := &stubArticleIntakeRSSItemRepo{stored: domain.NewRSSItemRecord("sub-1", "pull-1", "guid-1", "https://example.com/a", "hash-1", "Title")}
-	svc := NewArticleIntakeService(itemRepo, workspaceRepo, rewrite)
-	publishedAt := time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)
+	svc := NewArticleIntakeService(workspaceRepo, rewrite)
 	article := domain.IntakeArticle{
 		ExternalID:            "guid-1",
 		SourceType:            "rss",
@@ -107,7 +69,6 @@ func TestArticleIntakeServiceCreatesWorkspaceArticleAndTriggersRewrite(t *testin
 		Body:                  "Body",
 		Summary:               "Summary",
 		OriginalURL:           "https://example.com/a",
-		PublishedAt:           &publishedAt,
 		TargetType:            "wechat-longform",
 		SourceProfile:         "sspai",
 		RewriteProfileVersion: "latest",
@@ -135,9 +96,4 @@ func TestArticleIntakeServiceCreatesWorkspaceArticleAndTriggersRewrite(t *testin
 		SourceProfile:      "sspai",
 		Version:            "latest",
 	}, rewrite.lastReq)
-	require.Len(t, itemRepo.items, 1)
-	require.Equal(t, domain.RSSItemStatusImported, itemRepo.items[0].Status)
-	require.Equal(t, "guid-1", itemRepo.items[0].GUID)
-	require.Equal(t, workspace.ID, itemRepo.items[0].WorkspaceArticleID)
-	require.NotNil(t, itemRepo.items[0].ImportedAt)
 }

@@ -3,7 +3,6 @@ package service
 import (
 	"content-hub/domain"
 	"content-hub/pkg/id"
-	"content-hub/pkg/repo"
 	"context"
 	"fmt"
 	"strings"
@@ -15,20 +14,23 @@ type rewriteRunner interface {
 }
 
 type ArticleIntakeService struct {
-	items      repo.RSSItemRepo
-	workspaces repo.WorkspaceRepo
+	workspaces workspaceArticleWriter
 	rewrite    rewriteRunner
 }
 
-func NewArticleIntakeService(items repo.RSSItemRepo, workspaces repo.WorkspaceRepo, rewrite rewriteRunner) *ArticleIntakeService {
-	return &ArticleIntakeService{items: items, workspaces: workspaces, rewrite: rewrite}
+type workspaceArticleWriter interface {
+	Create(ctx context.Context, record *domain.ArticleWorkspaceRecord) error
+}
+
+func NewArticleIntakeService(workspaces workspaceArticleWriter, rewrite rewriteRunner) *ArticleIntakeService {
+	return &ArticleIntakeService{workspaces: workspaces, rewrite: rewrite}
 }
 
 func (s *ArticleIntakeService) Intake(ctx context.Context, article domain.IntakeArticle) error {
 	if err := article.Validate(); err != nil {
 		return err
 	}
-	if s.items == nil || s.workspaces == nil || s.rewrite == nil {
+	if s.workspaces == nil || s.rewrite == nil {
 		return domain.NewInternalErr("article intake service is not configured", nil)
 	}
 
@@ -58,42 +60,6 @@ func (s *ArticleIntakeService) Intake(ctx context.Context, article domain.Intake
 		return fmt.Errorf("run rewrite orchestrator: %w", err)
 	}
 
-	if err := s.markRSSItemImported(ctx, article, workspace.ID); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (s *ArticleIntakeService) markRSSItemImported(ctx context.Context, article domain.IntakeArticle, workspaceID string) error {
-	item, err := s.items.FindDuplicate(ctx, domain.RSSDuplicateKey{
-		SubscriptionID: article.SubscriptionID,
-		GUID:           article.ExternalID,
-		Link:           article.OriginalURL,
-	})
-	if err != nil {
-		return fmt.Errorf("lookup rss item record: %w", err)
-	}
-	if item == nil {
-		return nil
-	}
-
-	item.Status = domain.RSSItemStatusImported
-	importedAt := time.Now().UTC()
-	item.ImportedAt = &importedAt
-	item.WorkspaceArticleID = workspaceID
-	if item.Metadata == nil {
-		item.Metadata = map[string]any{}
-	}
-	item.Metadata["source_type"] = article.SourceType
-	if article.PublishedAt != nil {
-		publishedAt := *article.PublishedAt
-		item.PublishedAt = &publishedAt
-	}
-
-	if err := s.items.Update(ctx, item); err != nil {
-		return fmt.Errorf("update rss item record: %w", err)
-	}
 	return nil
 }
 
