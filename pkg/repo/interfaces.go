@@ -98,6 +98,29 @@ type RewriteStageRunRepo interface {
 	ListByPipelineRunID(ctx context.Context, pipelineRunID string) ([]domain.RewriteStageRun, error)
 }
 
+type RSSSubscriptionRepo interface {
+	Create(ctx context.Context, subscription *domain.RSSSubscription) error
+	Update(ctx context.Context, subscription *domain.RSSSubscription) error
+	Delete(ctx context.Context, id string) error
+	GetByID(ctx context.Context, id string) (*domain.RSSSubscription, error)
+	List(ctx context.Context) ([]domain.RSSSubscription, error)
+}
+
+type RSSPullRunRepo interface {
+	Create(ctx context.Context, run *domain.RSSPullRun) error
+	Update(ctx context.Context, run *domain.RSSPullRun) error
+	GetByID(ctx context.Context, id string) (*domain.RSSPullRun, error)
+	List(ctx context.Context, limit int) ([]domain.RSSPullRun, error)
+}
+
+type RSSItemRepo interface {
+	Create(ctx context.Context, item *domain.RSSItemRecord) error
+	Update(ctx context.Context, item *domain.RSSItemRecord) error
+	FindDuplicate(ctx context.Context, subscriptionID, guid, link, hash string) (*domain.RSSItemRecord, error)
+	GetByID(ctx context.Context, id string) (*domain.RSSItemRecord, error)
+	List(ctx context.Context, limit int) ([]domain.RSSItemRecord, error)
+}
+
 type PromptTemplateRepo interface {
 	Upsert(ctx context.Context, prompt *domain.PromptTemplate) error
 	Get(ctx context.Context, key, version string) (*domain.PromptTemplate, error)
