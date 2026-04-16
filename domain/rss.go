@@ -16,6 +16,7 @@ const (
 	RSSItemStatusImported         = "imported"
 	RSSItemStatusSkippedDuplicate = "skipped_duplicate"
 	RSSItemStatusFailed           = "failed"
+	RSSItemStatusImportDiverged   = "import_diverged"
 )
 
 var validRSSPullRunStatuses = map[string]struct{}{
@@ -29,6 +30,7 @@ var validRSSItemStatuses = map[string]struct{}{
 	RSSItemStatusImported:         {},
 	RSSItemStatusSkippedDuplicate: {},
 	RSSItemStatusFailed:           {},
+	RSSItemStatusImportDiverged:   {},
 }
 
 type RSSSubscription struct {

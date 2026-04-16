@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const rssDuplicateSelect = `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items WHERE subscription_id = ? AND (%s) ORDER BY CASE status WHEN 'imported' THEN 0 WHEN 'skipped_duplicate' THEN 1 WHEN 'failed' THEN 2 ELSE 3 END, created_at DESC, id DESC LIMIT 1`
+const rssDuplicateSelect = `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items WHERE subscription_id = ? AND (%s) ORDER BY CASE status WHEN 'imported' THEN 0 WHEN 'skipped_duplicate' THEN 1 WHEN 'failed' THEN 2 WHEN 'import_diverged' THEN 2 ELSE 3 END, created_at DESC, id DESC LIMIT 1`
 
 var _ repo.RSSItemRepo = (*rssItemRepo)(nil)
 

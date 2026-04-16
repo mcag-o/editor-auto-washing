@@ -63,7 +63,7 @@ type stubRSSItemRepo struct {
 	lastDuplicateKey domain.RSSDuplicateKey
 	findDuplicateErr error
 	createErr        error
-	updateErrAtCall  int
+	updateErrCalls   map[int]error
 	updateCalls      int
 	err              error
 }
@@ -82,8 +82,8 @@ func (r *stubRSSItemRepo) Create(_ context.Context, item *domain.RSSItemRecord) 
 
 func (r *stubRSSItemRepo) Update(_ context.Context, item *domain.RSSItemRecord) error {
 	r.updateCalls++
-	if r.updateErrAtCall > 0 && r.updateCalls == r.updateErrAtCall {
-		return errors.New("update failed")
+	if err, ok := r.updateErrCalls[r.updateCalls]; ok {
+		return err
 	}
 	if r.err != nil {
 		return r.err
@@ -346,7 +346,7 @@ func TestRSSPullServiceFailsRunWhenAllItemsFail(t *testing.T) {
 
 func TestRSSPullServiceFailsRunWhenImportedStateUpdateFailsAfterIntake(t *testing.T) {
 	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item><item><guid>guid-2</guid><title>Second</title><link>https://example.com/b</link><description>Body</description></item></channel></rss>`)}
-	itemRepo := &stubRSSItemRepo{updateErrAtCall: 1}
+	itemRepo := &stubRSSItemRepo{updateErrCalls: map[int]error{1: errors.New("update failed")}}
 	runs := &stubRSSPullRunRepo{}
 	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
 	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
@@ -364,6 +364,45 @@ func TestRSSPullServiceFailsRunWhenImportedStateUpdateFailsAfterIntake(t *testin
 	require.Equal(t, 0, result.FailedItems)
 	require.Len(t, intake.articles, 1)
 	require.Equal(t, float64(2), runs.updated[len(runs.updated)-1].Metadata["fetched_items"])
+}
+
+func TestRSSPullServiceMarksDivergenceAndRetriesItOnRerun(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
+	itemRepo := &stubRSSItemRepo{updateErrCalls: map[int]error{1: errors.New("update failed")}}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "mark rss item imported")
+	require.Len(t, itemRepo.created, 1)
+	require.Len(t, itemRepo.updated, 1)
+	require.Equal(t, domain.RSSItemStatusImportDiverged, itemRepo.updated[0].Status)
+	diverged := itemRepo.updated[0]
+	require.Equal(t, "workspace-1", diverged.WorkspaceArticleID)
+	require.Contains(t, diverged.Metadata["error"], "update failed")
+	require.Equal(t, domain.RSSPullRunStatusFailed, result.Run.Status)
+
+	itemRepo.duplicates = map[string]*domain.RSSItemRecord{"guid-1": diverged}
+	itemRepo.updateErrCalls = nil
+	itemRepo.updateCalls = 0
+	intake.called = false
+
+	result, err = svc.RunOnce(t.Context(), *sub)
+
+	require.NoError(t, err)
+	require.True(t, intake.called)
+	require.Equal(t, 1, result.ImportedItems)
+	require.Equal(t, 0, result.SkippedItems)
+	require.Equal(t, domain.RSSPullRunStatusSucceeded, result.Run.Status)
+	require.Len(t, itemRepo.updated, 3)
+	require.Equal(t, domain.RSSItemStatusPending, itemRepo.updated[1].Status)
+	require.Equal(t, domain.RSSItemStatusImported, itemRepo.updated[2].Status)
+	require.Equal(t, diverged.ID, itemRepo.updated[1].ID)
+	require.Equal(t, diverged.ID, itemRepo.updated[2].ID)
 }
 
 func TestRSSPullServiceReusesFailedRowForRepeatedEarlyNormalizationFailure(t *testing.T) {

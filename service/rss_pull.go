@@ -123,14 +123,14 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		}
 
 		item := domain.NewRSSItemRecord(sub.ID, run.ID, parsedItem.GUID, parsedItem.Link, contentHash, parsedItem.Title)
-		if duplicate != nil && duplicate.Status == domain.RSSItemStatusFailed {
+		if duplicate != nil && isRetryableRSSItemStatus(duplicate.Status) {
 			item.ID = duplicate.ID
 			item.CreatedAt = duplicate.CreatedAt
 		}
 		item.PublishedAt = parsedItem.PublishedAt
 		item.RawPayloadJSON = rawPayloadJSON
 
-		if duplicate != nil && duplicate.Status != domain.RSSItemStatusFailed {
+		if duplicate != nil && !isRetryableRSSItemStatus(duplicate.Status) {
 			item.Status = domain.RSSItemStatusSkippedDuplicate
 			item.Metadata["duplicate_item_id"] = duplicate.ID
 			if err := s.items.Create(ctx, item); err != nil {
@@ -140,7 +140,7 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 			continue
 		}
 
-		if duplicate != nil && duplicate.Status == domain.RSSItemStatusFailed {
+		if duplicate != nil && isRetryableRSSItemStatus(duplicate.Status) {
 			if err := s.items.Update(ctx, item); err != nil {
 				itemErrors = append(itemErrors, fmt.Sprintf("%s: reset failed rss item record: %v", itemLabel, err))
 				result.FailedItems++
@@ -178,6 +178,12 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		}
 		item.UpdatedAt = importedAt
 		if err := s.items.Update(ctx, item); err != nil {
+			item.Status = domain.RSSItemStatusImportDiverged
+			item.Metadata["error"] = fmt.Sprintf("mark rss item imported: %v", err)
+			item.UpdatedAt = time.Now().UTC()
+			if markErr := s.items.Update(ctx, item); markErr != nil {
+				return result, s.failRun(ctx, run, result, fmt.Errorf("mark rss item imported: %w: mark divergence: %v", err, markErr))
+			}
 			return result, s.failRun(ctx, run, result, fmt.Errorf("mark rss item imported: %w", err))
 		}
 		result.ImportedItems++
@@ -235,7 +241,7 @@ func buildRSSPullRunMetadata(result *RSSPullResult) map[string]any {
 func (s *RSSPullService) recordFailedRSSItem(ctx context.Context, run *domain.RSSPullRun, parsedItem RSSFeedItem, contentHash string, itemErr error, duplicate *domain.RSSItemRecord) error {
 	title := firstNonEmpty(parsedItem.Title, parsedItem.GUID, parsedItem.Link, "untitled")
 	item := domain.NewRSSItemRecord(run.SubscriptionID, run.ID, parsedItem.GUID, parsedItem.Link, contentHash, title)
-	if duplicate != nil && duplicate.Status == domain.RSSItemStatusFailed {
+	if duplicate != nil && isRetryableRSSItemStatus(duplicate.Status) {
 		item.ID = duplicate.ID
 		item.CreatedAt = duplicate.CreatedAt
 	}
@@ -243,7 +249,7 @@ func (s *RSSPullService) recordFailedRSSItem(ctx context.Context, run *domain.RS
 	item.PublishedAt = parsedItem.PublishedAt
 	item.Metadata["error"] = itemErr.Error()
 	item.UpdatedAt = time.Now().UTC()
-	if duplicate != nil && duplicate.Status == domain.RSSItemStatusFailed {
+	if duplicate != nil && isRetryableRSSItemStatus(duplicate.Status) {
 		return s.items.Update(ctx, item)
 	}
 	return s.items.Create(ctx, item)
@@ -257,10 +263,14 @@ func (s *RSSPullService) findRetryableFailedDuplicate(ctx context.Context, key d
 	if duplicate == nil {
 		return nil, nil
 	}
-	if duplicate.Status != domain.RSSItemStatusFailed {
+	if !isRetryableRSSItemStatus(duplicate.Status) {
 		return nil, nil
 	}
 	return duplicate, nil
+}
+
+func isRetryableRSSItemStatus(status string) bool {
+	return status == domain.RSSItemStatusFailed || status == domain.RSSItemStatusImportDiverged
 }
 
 type rssEnvelope struct {

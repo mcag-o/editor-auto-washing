@@ -234,6 +234,29 @@ func TestRSSItemRepoToleratesMalformedOptionalTimestampsOnRead(t *testing.T) {
 	require.Nil(t, dup.ImportedAt)
 }
 
+func TestRSSItemRepoRoundTripsImportDivergedStatus(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+	require.NoError(t, provider.RSSSubscriptionRepo().Create(t.Context(), sub))
+	run := domain.NewRSSPullRun(sub.ID)
+	require.NoError(t, provider.RSSPullRunRepo().Create(t.Context(), run))
+
+	item := domain.NewRSSItemRecord(sub.ID, run.ID, "guid-1", "https://example.com/a", "hash-1", "A")
+	item.Status = domain.RSSItemStatusImportDiverged
+	item.WorkspaceArticleID = "workspace-1"
+	item.Metadata["error"] = "mark rss item imported: update failed"
+	require.NoError(t, provider.RSSItemRepo().Create(t.Context(), item))
+
+	stored, err := provider.RSSItemRepo().GetByID(t.Context(), item.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.RSSItemStatusImportDiverged, stored.Status)
+	require.Equal(t, "workspace-1", stored.WorkspaceArticleID)
+	dup, err := provider.RSSItemRepo().FindDuplicate(t.Context(), domain.RSSDuplicateKey{SubscriptionID: sub.ID, GUID: "guid-1"})
+	require.NoError(t, err)
+	require.NotNil(t, dup)
+	require.Equal(t, domain.RSSItemStatusImportDiverged, dup.Status)
+}
+
 func TestRSSPullRunRepoCreateAndList(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
