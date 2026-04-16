@@ -2,6 +2,7 @@ package domain
 
 import (
 	"content-hub/pkg/id"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -76,14 +77,35 @@ func (s RSSSubscription) Validate() error {
 	if strings.TrimSpace(s.Name) == "" {
 		return NewValidationErr("name is required", nil)
 	}
-	if strings.TrimSpace(s.FeedURL) == "" {
+	feedURL := strings.TrimSpace(s.FeedURL)
+	if feedURL == "" {
 		return NewValidationErr("feed url is required", nil)
+	}
+	parsedURL, err := url.Parse(feedURL)
+	if err != nil || parsedURL == nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return NewValidationErr("feed url must be an absolute http or https url", err)
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return NewValidationErr("feed url must be an absolute http or https url", nil)
 	}
 	if strings.TrimSpace(s.TargetType) == "" {
 		return NewValidationErr("target type is required", nil)
 	}
 	if strings.TrimSpace(s.SourceProfile) == "" {
 		return NewValidationErr("source profile is required", nil)
+	}
+	if s.PollIntervalSec < 0 {
+		return NewValidationErr("poll interval must be greater than or equal to zero", nil)
+	}
+	return nil
+}
+
+func (k RSSDuplicateKey) Validate() error {
+	if strings.TrimSpace(k.SubscriptionID) == "" {
+		return NewValidationErr("subscription id is required", nil)
+	}
+	if strings.TrimSpace(k.GUID) == "" && strings.TrimSpace(k.Link) == "" && strings.TrimSpace(k.ContentHash) == "" {
+		return NewValidationErr("at least one of guid, link, or content hash is required", nil)
 	}
 	return nil
 }

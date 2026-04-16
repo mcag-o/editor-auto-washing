@@ -22,6 +22,56 @@ func TestRSSSubscriptionValidateRequiresCoreFields(t *testing.T) {
 	}
 }
 
+func TestRSSSubscriptionValidateRejectsWhitespaceOnlyFields(t *testing.T) {
+	sub := &RSSSubscription{
+		Name:          "   ",
+		FeedURL:       "https://example.com/feed.xml",
+		TargetType:    "wechat-longform",
+		SourceProfile: "sspai",
+	}
+	if err := sub.Validate(); err == nil {
+		t.Fatal("expected validate to reject whitespace-only required fields")
+	}
+}
+
+func TestRSSSubscriptionValidateRejectsInvalidFeedURL(t *testing.T) {
+	sub := &RSSSubscription{
+		Name:          "Tech Feed",
+		FeedURL:       "not-a-url",
+		TargetType:    "wechat-longform",
+		SourceProfile: "sspai",
+	}
+	if err := sub.Validate(); err == nil {
+		t.Fatal("expected validate to reject invalid feed url")
+	}
+}
+
+func TestRSSSubscriptionValidateRejectsNegativePollInterval(t *testing.T) {
+	sub := &RSSSubscription{
+		Name:            "Tech Feed",
+		FeedURL:         "https://example.com/feed.xml",
+		TargetType:      "wechat-longform",
+		SourceProfile:   "sspai",
+		PollIntervalSec: -1,
+	}
+	if err := sub.Validate(); err == nil {
+		t.Fatal("expected validate to reject negative poll interval")
+	}
+}
+
+func TestRSSSubscriptionValidateAcceptsZeroPollInterval(t *testing.T) {
+	sub := &RSSSubscription{
+		Name:            "Tech Feed",
+		FeedURL:         "https://example.com/feed.xml",
+		TargetType:      "wechat-longform",
+		SourceProfile:   "sspai",
+		PollIntervalSec: 0,
+	}
+	if err := sub.Validate(); err != nil {
+		t.Fatalf("expected zero poll interval to validate: %v", err)
+	}
+}
+
 func TestIntakeArticleRequiresRequiredFields(t *testing.T) {
 	article := IntakeArticle{SourceType: "", Title: "", Body: "", OriginalURL: "", TargetType: "", SourceProfile: ""}
 	if err := article.Validate(); err == nil {
@@ -40,5 +90,26 @@ func TestIntakeArticleValidateAcceptsCompleteArticle(t *testing.T) {
 	}
 	if err := article.Validate(); err != nil {
 		t.Fatalf("expected intake article to validate: %v", err)
+	}
+}
+
+func TestRSSDuplicateKeyValidateRequiresSubscriptionID(t *testing.T) {
+	key := RSSDuplicateKey{GUID: "guid-1"}
+	if err := key.Validate(); err == nil {
+		t.Fatal("expected validate to reject missing subscription id")
+	}
+}
+
+func TestRSSDuplicateKeyValidateRequiresIdentityValue(t *testing.T) {
+	key := RSSDuplicateKey{SubscriptionID: "sub-1"}
+	if err := key.Validate(); err == nil {
+		t.Fatal("expected validate to reject empty duplicate identity")
+	}
+}
+
+func TestRSSDuplicateKeyValidateAcceptsValidKey(t *testing.T) {
+	key := RSSDuplicateKey{SubscriptionID: "sub-1", GUID: "guid-1"}
+	if err := key.Validate(); err != nil {
+		t.Fatalf("expected duplicate key to validate: %v", err)
 	}
 }
