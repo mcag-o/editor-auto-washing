@@ -57,19 +57,21 @@ type RSSPullRun struct {
 }
 
 type RSSItemRecord struct {
-	ID             string         `json:"id"`
-	SubscriptionID string         `json:"subscription_id"`
-	PullRunID      string         `json:"pull_run_id"`
-	GUID           string         `json:"guid"`
-	Link           string         `json:"link"`
-	ContentHash    string         `json:"content_hash"`
-	Title          string         `json:"title"`
-	Status         string         `json:"status"`
-	PublishedAt    *time.Time     `json:"published_at"`
-	ImportedAt     *time.Time     `json:"imported_at"`
-	Metadata       map[string]any `json:"metadata"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
+	ID                 string         `json:"id"`
+	SubscriptionID     string         `json:"subscription_id"`
+	PullRunID          string         `json:"pull_run_id"`
+	GUID               string         `json:"guid"`
+	Link               string         `json:"link"`
+	ContentHash        string         `json:"content_hash"`
+	Title              string         `json:"title"`
+	Status             string         `json:"status"`
+	PublishedAt        *time.Time     `json:"published_at"`
+	ImportedAt         *time.Time     `json:"imported_at"`
+	WorkspaceArticleID string         `json:"workspace_article_id"`
+	RawPayloadJSON     []byte         `json:"raw_payload_json"`
+	Metadata           map[string]any `json:"metadata"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
 }
 
 type RSSDuplicateKey struct {
@@ -192,6 +194,7 @@ func NewRSSItemRecord(subscriptionID, pullRunID, guid, link, contentHash, title 
 		ContentHash:    contentHash,
 		Title:          title,
 		Status:         RSSItemStatusPending,
+		RawPayloadJSON: []byte(`{}`),
 		Metadata:       map[string]any{},
 		CreatedAt:      now,
 		UpdatedAt:      now,

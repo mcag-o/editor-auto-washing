@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -23,7 +22,11 @@ func (r *rssItemRepo) Create(ctx context.Context, item *domain.RSSItemRecord) er
 	if err != nil {
 		return fmt.Errorf("marshal rss item metadata: %w", err)
 	}
-	_, err = r.db.ExecContext(ctx, `INSERT INTO rss_items (id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, metadata_json, raw_payload_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, item.ID, item.SubscriptionID, item.PullRunID, item.GUID, item.Link, item.ContentHash, item.Title, item.Status, nullableTimeNano(item.PublishedAt), nullableTimeNano(item.ImportedAt), string(metadataJSON), string(metadataJSON), item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano))
+	rawPayloadJSON := item.RawPayloadJSON
+	if len(rawPayloadJSON) == 0 {
+		rawPayloadJSON = []byte(`{}`)
+	}
+	_, err = r.db.ExecContext(ctx, `INSERT INTO rss_items (id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, item.ID, item.SubscriptionID, item.PullRunID, item.GUID, item.Link, item.ContentHash, item.Title, item.Status, nullableTimeNano(item.PublishedAt), nullableTimeNano(item.ImportedAt), nullableString(emptyToNil(item.WorkspaceArticleID)), string(metadataJSON), string(rawPayloadJSON), item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano))
 	if err != nil {
 		return fmt.Errorf("insert rss item: %w", err)
 	}
@@ -38,7 +41,11 @@ func (r *rssItemRepo) Update(ctx context.Context, item *domain.RSSItemRecord) er
 	if err != nil {
 		return fmt.Errorf("marshal rss item metadata: %w", err)
 	}
-	result, err := r.db.ExecContext(ctx, `UPDATE rss_items SET subscription_id = ?, pull_run_id = ?, guid = ?, link = ?, content_hash = ?, title = ?, status = ?, published_at = ?, imported_at = ?, metadata_json = ?, raw_payload_json = ?, created_at = ?, updated_at = ? WHERE id = ?`, item.SubscriptionID, item.PullRunID, item.GUID, item.Link, item.ContentHash, item.Title, item.Status, nullableTimeNano(item.PublishedAt), nullableTimeNano(item.ImportedAt), string(metadataJSON), string(metadataJSON), item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), item.ID)
+	rawPayloadJSON := item.RawPayloadJSON
+	if len(rawPayloadJSON) == 0 {
+		rawPayloadJSON = []byte(`{}`)
+	}
+	result, err := r.db.ExecContext(ctx, `UPDATE rss_items SET subscription_id = ?, pull_run_id = ?, guid = ?, link = ?, content_hash = ?, title = ?, status = ?, published_at = ?, imported_at = ?, workspace_article_id = ?, metadata_json = ?, raw_payload_json = ?, created_at = ?, updated_at = ? WHERE id = ?`, item.SubscriptionID, item.PullRunID, item.GUID, item.Link, item.ContentHash, item.Title, item.Status, nullableTimeNano(item.PublishedAt), nullableTimeNano(item.ImportedAt), nullableString(emptyToNil(item.WorkspaceArticleID)), string(metadataJSON), string(rawPayloadJSON), item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), item.ID)
 	if err != nil {
 		return fmt.Errorf("update rss item: %w", err)
 	}
@@ -56,22 +63,20 @@ func (r *rssItemRepo) FindDuplicate(ctx context.Context, key domain.RSSDuplicate
 	if err := key.Validate(); err != nil {
 		return nil, err
 	}
-	conditions := []string{"subscription_id = ?"}
-	args := []any{key.SubscriptionID}
-	if guid := strings.TrimSpace(key.GUID); guid != "" {
-		conditions = append(conditions, "guid = ?")
-		args = append(args, guid)
+	query := `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items WHERE subscription_id = ? AND %s = ? ORDER BY created_at DESC, id DESC LIMIT 1`
+	column := ""
+	value := ""
+	if key.GUID != "" {
+		column = "guid"
+		value = key.GUID
+	} else if key.Link != "" {
+		column = "link"
+		value = key.Link
+	} else {
+		column = "content_hash"
+		value = key.ContentHash
 	}
-	if link := strings.TrimSpace(key.Link); link != "" {
-		conditions = append(conditions, "link = ?")
-		args = append(args, link)
-	}
-	if contentHash := strings.TrimSpace(key.ContentHash); contentHash != "" {
-		conditions = append(conditions, "content_hash = ?")
-		args = append(args, contentHash)
-	}
-	query := `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, metadata_json, created_at, updated_at FROM rss_items WHERE ` + strings.Join(conditions, " AND ") + ` ORDER BY created_at DESC, id DESC LIMIT 1`
-	row := r.db.QueryRowContext(ctx, query, args...)
+	row := r.db.QueryRowContext(ctx, fmt.Sprintf(query, column), key.SubscriptionID, value)
 	item, err := scanRSSItem(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -83,7 +88,7 @@ func (r *rssItemRepo) FindDuplicate(ctx context.Context, key domain.RSSDuplicate
 }
 
 func (r *rssItemRepo) GetByID(ctx context.Context, id string) (*domain.RSSItemRecord, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, metadata_json, created_at, updated_at FROM rss_items WHERE id = ?`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items WHERE id = ?`, id)
 	item, err := scanRSSItem(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -98,7 +103,7 @@ func (r *rssItemRepo) List(ctx context.Context, limit int) ([]domain.RSSItemReco
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, metadata_json, created_at, updated_at FROM rss_items ORDER BY created_at DESC, id DESC LIMIT ?`, limit)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items ORDER BY created_at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query rss items: %w", err)
 	}
@@ -118,9 +123,10 @@ type rssItemScanner interface{ Scan(dest ...any) error }
 
 func scanRSSItem(row rssItemScanner) (*domain.RSSItemRecord, error) {
 	var item domain.RSSItemRecord
+	var workspaceArticleID sql.NullString
 	var publishedAt, importedAt sql.NullString
-	var metadataJSON, createdAt, updatedAt string
-	if err := row.Scan(&item.ID, &item.SubscriptionID, &item.PullRunID, &item.GUID, &item.Link, &item.ContentHash, &item.Title, &item.Status, &publishedAt, &importedAt, &metadataJSON, &createdAt, &updatedAt); err != nil {
+	var metadataJSON, rawPayloadJSON, createdAt, updatedAt string
+	if err := row.Scan(&item.ID, &item.SubscriptionID, &item.PullRunID, &item.GUID, &item.Link, &item.ContentHash, &item.Title, &item.Status, &publishedAt, &importedAt, &workspaceArticleID, &metadataJSON, &rawPayloadJSON, &createdAt, &updatedAt); err != nil {
 		return nil, err
 	}
 	if publishedAt.Valid {
@@ -137,12 +143,16 @@ func scanRSSItem(row rssItemScanner) (*domain.RSSItemRecord, error) {
 		}
 		item.ImportedAt = &parsed
 	}
+	if workspaceArticleID.Valid {
+		item.WorkspaceArticleID = workspaceArticleID.String
+	}
 	if err := json.Unmarshal([]byte(metadataJSON), &item.Metadata); err != nil {
 		return nil, fmt.Errorf("decode rss item metadata: %w", err)
 	}
 	if item.Metadata == nil {
 		item.Metadata = map[string]any{}
 	}
+	item.RawPayloadJSON = []byte(rawPayloadJSON)
 	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
 	if err != nil {
 		return nil, fmt.Errorf("decode rss item created_at: %w", err)
