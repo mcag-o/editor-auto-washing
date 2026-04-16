@@ -70,7 +70,7 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 	for _, parsedItem := range parsedItems {
 		itemLabel := firstNonEmpty(strings.TrimSpace(parsedItem.GUID), strings.TrimSpace(parsedItem.Link), strings.TrimSpace(parsedItem.Title), "unknown-item")
 		earlyContentHash := hashRSSItem(parsedItem)
-		earlyDuplicate := s.findRetryableFailedDuplicate(ctx, domain.RSSDuplicateKey{
+		earlyDuplicate, earlyDuplicateErr := s.findRetryableFailedDuplicate(ctx, domain.RSSDuplicateKey{
 			SubscriptionID: sub.ID,
 			GUID:           strings.TrimSpace(parsedItem.GUID),
 			Link:           strings.TrimSpace(parsedItem.Link),
@@ -78,8 +78,12 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		})
 		normalized, err := NormalizeRSSItem(sub.ID, sub.TargetType, sub.SourceProfile, sub.RewriteProfileVersion, parsedItem)
 		if err != nil {
-			itemErrors = append(itemErrors, fmt.Sprintf("%s: %v", itemLabel, err))
-			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, earlyContentHash, fmt.Errorf("normalize rss item: %w", err), earlyDuplicate); recordErr != nil {
+			effectiveErr := fmt.Errorf("normalize rss item: %w", err)
+			if earlyDuplicateErr != nil {
+				effectiveErr = fmt.Errorf("failed-row lookup: %w; %w", earlyDuplicateErr, effectiveErr)
+			}
+			itemErrors = append(itemErrors, fmt.Sprintf("%s: %v", itemLabel, effectiveErr))
+			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, earlyContentHash, effectiveErr, earlyDuplicate); recordErr != nil {
 				return result, s.failRun(ctx, run, result, recordErr)
 			}
 			result.FailedItems++
@@ -89,8 +93,12 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 
 		rawPayloadJSON, err := json.Marshal(parsedItem)
 		if err != nil {
-			itemErrors = append(itemErrors, fmt.Sprintf("%s: marshal rss item payload: %v", itemLabel, err))
-			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, earlyContentHash, fmt.Errorf("marshal rss item payload: %w", err), earlyDuplicate); recordErr != nil {
+			effectiveErr := fmt.Errorf("marshal rss item payload: %w", err)
+			if earlyDuplicateErr != nil {
+				effectiveErr = fmt.Errorf("failed-row lookup: %w; %w", earlyDuplicateErr, effectiveErr)
+			}
+			itemErrors = append(itemErrors, fmt.Sprintf("%s: %v", itemLabel, effectiveErr))
+			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, earlyContentHash, effectiveErr, earlyDuplicate); recordErr != nil {
 				return result, s.failRun(ctx, run, result, recordErr)
 			}
 			result.FailedItems++
@@ -241,15 +249,18 @@ func (s *RSSPullService) recordFailedRSSItem(ctx context.Context, run *domain.RS
 	return s.items.Create(ctx, item)
 }
 
-func (s *RSSPullService) findRetryableFailedDuplicate(ctx context.Context, key domain.RSSDuplicateKey) *domain.RSSItemRecord {
+func (s *RSSPullService) findRetryableFailedDuplicate(ctx context.Context, key domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
 	duplicate, err := s.items.FindDuplicate(ctx, key)
-	if err != nil || duplicate == nil {
-		return nil
+	if err != nil {
+		return nil, err
+	}
+	if duplicate == nil {
+		return nil, nil
 	}
 	if duplicate.Status != domain.RSSItemStatusFailed {
-		return nil
+		return nil, nil
 	}
-	return duplicate
+	return duplicate, nil
 }
 
 type rssEnvelope struct {

@@ -61,6 +61,7 @@ type stubRSSItemRepo struct {
 	duplicates       map[string]*domain.RSSItemRecord
 	duplicateChecks  int
 	lastDuplicateKey domain.RSSDuplicateKey
+	findDuplicateErr error
 	createErr        error
 	updateErrAtCall  int
 	updateCalls      int
@@ -93,6 +94,9 @@ func (r *stubRSSItemRepo) Update(_ context.Context, item *domain.RSSItemRecord) 
 }
 
 func (r *stubRSSItemRepo) FindDuplicate(_ context.Context, key domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
+	if r.findDuplicateErr != nil {
+		return nil, r.findDuplicateErr
+	}
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -408,4 +412,24 @@ func TestRSSPullServiceDoesNotOverwriteImportedRowForEarlyNormalizationFailure(t
 	require.Len(t, itemRepo.updated, 0)
 	require.NotEqual(t, existing.ID, itemRepo.created[0].ID)
 	require.Equal(t, domain.RSSItemStatusFailed, itemRepo.created[0].Status)
+}
+
+func TestRSSPullServiceReportsEarlyFailedRowLookupErrorExplicitly(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title></title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
+	itemRepo := &stubRSSItemRepo{findDuplicateErr: errors.New("duplicate lookup failed")}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed-row lookup")
+	require.ErrorContains(t, err, "duplicate lookup failed")
+	require.Equal(t, 1, result.FailedItems)
+	require.Len(t, itemRepo.created, 1)
+	require.Len(t, itemRepo.updated, 0)
+	require.Equal(t, domain.RSSItemStatusFailed, itemRepo.created[0].Status)
+	require.Contains(t, result.Run.ErrorSummary, "failed-row lookup")
 }
