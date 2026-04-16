@@ -23,11 +23,23 @@ type IntakeArticle struct {
 }
 
 func (a IntakeArticle) Validate() error {
+	if strings.TrimSpace(a.SourceType) == "" {
+		return NewValidationErr("source type is required", nil)
+	}
 	if strings.TrimSpace(a.Title) == "" {
 		return NewValidationErr("title is required", nil)
 	}
 	if strings.TrimSpace(a.Body) == "" {
 		return NewValidationErr("body is required", nil)
+	}
+	if strings.TrimSpace(a.OriginalURL) == "" {
+		return NewValidationErr("original url is required", nil)
+	}
+	if strings.TrimSpace(a.TargetType) == "" {
+		return NewValidationErr("target type is required", nil)
+	}
+	if strings.TrimSpace(a.SourceProfile) == "" {
+		return NewValidationErr("source profile is required", nil)
 	}
 	return nil
 }

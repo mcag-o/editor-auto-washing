@@ -2,6 +2,7 @@ package domain
 
 import (
 	"content-hub/pkg/id"
+	"strings"
 	"time"
 )
 
@@ -47,14 +48,21 @@ type RSSItemRecord struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
+type RSSDuplicateKey struct {
+	SubscriptionID string `json:"subscription_id"`
+	GUID           string `json:"guid"`
+	Link           string `json:"link"`
+	ContentHash    string `json:"content_hash"`
+}
+
 func NewRSSSubscription(name, feedURL, targetType, sourceProfile string) *RSSSubscription {
 	now := time.Now().UTC()
 	return &RSSSubscription{
 		ID:                    id.New(),
-		Name:                  name,
-		FeedURL:               feedURL,
-		TargetType:            targetType,
-		SourceProfile:         sourceProfile,
+		Name:                  strings.TrimSpace(name),
+		FeedURL:               strings.TrimSpace(feedURL),
+		TargetType:            strings.TrimSpace(targetType),
+		SourceProfile:         strings.TrimSpace(sourceProfile),
 		RewriteProfileVersion: "",
 		Enabled:               true,
 		PollIntervalSec:       3600,
@@ -62,6 +70,22 @@ func NewRSSSubscription(name, feedURL, targetType, sourceProfile string) *RSSSub
 		CreatedAt:             now,
 		UpdatedAt:             now,
 	}
+}
+
+func (s RSSSubscription) Validate() error {
+	if strings.TrimSpace(s.Name) == "" {
+		return NewValidationErr("name is required", nil)
+	}
+	if strings.TrimSpace(s.FeedURL) == "" {
+		return NewValidationErr("feed url is required", nil)
+	}
+	if strings.TrimSpace(s.TargetType) == "" {
+		return NewValidationErr("target type is required", nil)
+	}
+	if strings.TrimSpace(s.SourceProfile) == "" {
+		return NewValidationErr("source profile is required", nil)
+	}
+	return nil
 }
 
 func NewRSSPullRun(subscriptionID string) *RSSPullRun {
