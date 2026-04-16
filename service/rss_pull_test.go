@@ -424,6 +424,8 @@ func TestRSSPullServiceMarksDivergenceAndRetriesItOnRerun(t *testing.T) {
 	require.Equal(t, domain.RSSItemStatusImported, itemRepo.updated[2].Status)
 	require.Equal(t, diverged.ID, itemRepo.updated[1].ID)
 	require.Equal(t, diverged.ID, itemRepo.updated[2].ID)
+	require.Equal(t, "workspace-1", itemRepo.updated[1].WorkspaceArticleID)
+	require.Equal(t, "workspace-1", itemRepo.updated[2].WorkspaceArticleID)
 }
 
 func TestRSSPullServicePreservesEarlyLookupErrorWhenLaterFailureOccurs(t *testing.T) {
@@ -443,6 +445,44 @@ func TestRSSPullServicePreservesEarlyLookupErrorWhenLaterFailureOccurs(t *testin
 	require.Contains(t, result.Run.ErrorSummary, "rewrite failed")
 	require.Len(t, itemRepo.updated, 1)
 	require.Contains(t, itemRepo.updated[0].Metadata["error"], "failed-row lookup")
+}
+
+func TestRSSPullServicePersistsEarlyLookupWarningOnSuccessfulRetryableImport(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
+	existing := domain.NewRSSItemRecord("sub-1", "run-1", "guid-1", "https://example.com/a", "hash-1", "Existing")
+	existing.Status = domain.RSSItemStatusFailed
+	existing.WorkspaceArticleID = "workspace-old"
+	itemRepo := &stubRSSItemRepo{duplicates: map[string]*domain.RSSItemRecord{"guid-1": existing}, findDuplicateErrCalls: map[int]error{1: errors.New("duplicate lookup warning")}}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-old"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+	sub.ID = "sub-1"
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.ImportedItems)
+	require.Len(t, itemRepo.updated, 2)
+	require.Equal(t, "workspace-old", itemRepo.updated[0].WorkspaceArticleID)
+	require.Equal(t, "workspace-old", itemRepo.updated[1].WorkspaceArticleID)
+	require.Contains(t, itemRepo.updated[1].Metadata["warnings"], "failed-row lookup: duplicate lookup warning")
+}
+
+func TestRSSPullServicePersistsEarlyLookupWarningOnDuplicateSkip(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-2</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
+	itemRepo := &stubRSSItemRepo{duplicates: map[string]*domain.RSSItemRecord{"https://example.com/a": {ID: "existing-1", Status: domain.RSSItemStatusImported}}, findDuplicateErrCalls: map[int]error{1: errors.New("duplicate lookup warning")}}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.SkippedItems)
+	require.Len(t, itemRepo.created, 1)
+	require.Contains(t, itemRepo.created[0].Metadata["warnings"], "failed-row lookup: duplicate lookup warning")
 }
 
 func TestRSSPullServiceReusesFailedRowForRepeatedEarlyNormalizationFailure(t *testing.T) {

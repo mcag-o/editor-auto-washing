@@ -131,9 +131,11 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		if duplicate != nil && isRetryableRSSItemStatus(duplicate.Status) {
 			item.ID = duplicate.ID
 			item.CreatedAt = duplicate.CreatedAt
+			item.WorkspaceArticleID = duplicate.WorkspaceArticleID
 		}
 		item.PublishedAt = parsedItem.PublishedAt
 		item.RawPayloadJSON = rawPayloadJSON
+		appendRSSItemWarning(item, earlyLookupWarning)
 
 		if duplicate != nil && !isRetryableRSSItemStatus(duplicate.Status) {
 			item.Status = domain.RSSItemStatusSkippedDuplicate
@@ -253,6 +255,7 @@ func (s *RSSPullService) recordFailedRSSItem(ctx context.Context, run *domain.RS
 	if duplicate != nil && isRetryableRSSItemStatus(duplicate.Status) {
 		item.ID = duplicate.ID
 		item.CreatedAt = duplicate.CreatedAt
+		item.WorkspaceArticleID = duplicate.WorkspaceArticleID
 	}
 	item.Status = domain.RSSItemStatusFailed
 	item.PublishedAt = parsedItem.PublishedAt
@@ -287,6 +290,15 @@ func (s *RSSPullService) runRSSIntake(ctx context.Context, article domain.Intake
 		return s.intake.IntakeIntoWorkspace(ctx, duplicate.WorkspaceArticleID, article)
 	}
 	return s.intake.Intake(ctx, article)
+}
+
+func appendRSSItemWarning(item *domain.RSSItemRecord, warning string) {
+	warning = strings.TrimSpace(warning)
+	if warning == "" {
+		return
+	}
+	warnings, _ := item.Metadata["warnings"].([]string)
+	item.Metadata["warnings"] = append(warnings, warning)
 }
 
 type rssEnvelope struct {
