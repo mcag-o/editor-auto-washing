@@ -68,6 +68,8 @@ type stubRSSItemRepo struct {
 	findDuplicateErrCalls map[int]error
 	findRetryableErr      error
 	findRetryableErrCalls map[int]error
+	createErrCalls        map[int]error
+	createCalls           int
 	createErr             error
 	updateErrCalls        map[int]error
 	updateCalls           int
@@ -75,6 +77,10 @@ type stubRSSItemRepo struct {
 }
 
 func (r *stubRSSItemRepo) Create(_ context.Context, item *domain.RSSItemRecord) error {
+	r.createCalls++
+	if err, ok := r.createErrCalls[r.createCalls]; ok {
+		return err
+	}
 	if r.createErr != nil {
 		return r.createErr
 	}
@@ -423,6 +429,58 @@ func TestRSSPullServiceFailsRunWhenImportedStateUpdateFailsAfterIntake(t *testin
 	require.Equal(t, 1, result.FailedItems)
 	require.Len(t, intake.articles, 1)
 	require.Equal(t, float64(2), runs.updated[len(runs.updated)-1].Metadata["fetched_items"])
+}
+
+func TestRSSPullServiceCreateBeforeIntakeFailureHardFailsRun(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>First</title><link>https://example.com/a</link><description>Body</description></item><item><guid>guid-2</guid><title>Second</title><link>https://example.com/b</link><description>Body</description></item></channel></rss>`)}
+	itemRepo := &stubRSSItemRepo{createErrCalls: map[int]error{1: errors.New("create rss item failed")}}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "create rss item record")
+	require.NotNil(t, result)
+	require.Equal(t, domain.RSSPullRunStatusFailed, result.Run.Status)
+	require.Equal(t, 2, result.FetchedItems)
+	require.Equal(t, 0, result.ImportedItems)
+	require.Equal(t, 0, result.SkippedItems)
+	require.Equal(t, 0, result.FailedItems)
+	require.Empty(t, intake.articles)
+	require.Len(t, itemRepo.created, 0)
+	require.Contains(t, result.Run.ErrorSummary, "create rss item record")
+	require.Equal(t, float64(0), result.Run.Metadata["failed_items"])
+}
+
+func TestRSSPullServiceRetryableUpdateBeforeIntakeFailureHardFailsRun(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>First</title><link>https://example.com/a</link><description>Body</description></item><item><guid>guid-2</guid><title>Second</title><link>https://example.com/b</link><description>Body</description></item></channel></rss>`)}
+	retryable := domain.NewRSSItemRecord("sub-1", "run-retry", "guid-1", "https://example.com/a", hashRSSItem(RSSFeedItem{GUID: "guid-1", Title: "First", Link: "https://example.com/a", Description: "Body"}), "Retry")
+	retryable.Status = domain.RSSItemStatusFailed
+	retryable.WorkspaceArticleID = "workspace-1"
+	itemRepo := &stubRSSItemRepo{retryableDuplicates: map[string]*domain.RSSItemRecord{"guid-1": retryable}, updateErrCalls: map[int]error{1: errors.New("reset retryable row failed")}}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+	sub.ID = "sub-1"
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "reset failed rss item record")
+	require.NotNil(t, result)
+	require.Equal(t, domain.RSSPullRunStatusFailed, result.Run.Status)
+	require.Equal(t, 2, result.FetchedItems)
+	require.Equal(t, 0, result.ImportedItems)
+	require.Equal(t, 0, result.SkippedItems)
+	require.Equal(t, 0, result.FailedItems)
+	require.Empty(t, intake.articles)
+	require.Len(t, itemRepo.updated, 0)
+	require.Contains(t, result.Run.ErrorSummary, "reset failed rss item record")
+	require.Equal(t, float64(0), result.Run.Metadata["failed_items"])
 }
 
 func TestRSSPullServiceMarksDivergenceAndRetriesItOnRerun(t *testing.T) {

@@ -163,15 +163,11 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 
 		if duplicate != nil && isRetryableRSSItemStatus(duplicate.Status) {
 			if err := s.items.Update(ctx, item); err != nil {
-				itemErrors = append(itemErrors, fmt.Sprintf("%s: reset failed rss item record: %v", itemLabel, err))
-				result.FailedItems++
-				continue
+				return result, s.failRun(ctx, run, result, fmt.Errorf("reset failed rss item record: %w", err))
 			}
 		} else {
 			if err := s.items.Create(ctx, item); err != nil {
-				itemErrors = append(itemErrors, fmt.Sprintf("%s: create rss item record: %v", itemLabel, err))
-				result.FailedItems++
-				continue
+				return result, s.failRun(ctx, run, result, fmt.Errorf("create rss item record: %w", err))
 			}
 		}
 
