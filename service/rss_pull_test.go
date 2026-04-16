@@ -56,16 +56,17 @@ func (r *stubRSSPullRunRepo) List(context.Context, int) ([]domain.RSSPullRun, er
 }
 
 type stubRSSItemRepo struct {
-	created          []*domain.RSSItemRecord
-	updated          []*domain.RSSItemRecord
-	duplicates       map[string]*domain.RSSItemRecord
-	duplicateChecks  int
-	lastDuplicateKey domain.RSSDuplicateKey
-	findDuplicateErr error
-	createErr        error
-	updateErrCalls   map[int]error
-	updateCalls      int
-	err              error
+	created               []*domain.RSSItemRecord
+	updated               []*domain.RSSItemRecord
+	duplicates            map[string]*domain.RSSItemRecord
+	duplicateChecks       int
+	lastDuplicateKey      domain.RSSDuplicateKey
+	findDuplicateErr      error
+	findDuplicateErrCalls map[int]error
+	createErr             error
+	updateErrCalls        map[int]error
+	updateCalls           int
+	err                   error
 }
 
 func (r *stubRSSItemRepo) Create(_ context.Context, item *domain.RSSItemRecord) error {
@@ -94,14 +95,17 @@ func (r *stubRSSItemRepo) Update(_ context.Context, item *domain.RSSItemRecord) 
 }
 
 func (r *stubRSSItemRepo) FindDuplicate(_ context.Context, key domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
+	r.duplicateChecks++
+	r.lastDuplicateKey = key
+	if err, ok := r.findDuplicateErrCalls[r.duplicateChecks]; ok {
+		return nil, err
+	}
 	if r.findDuplicateErr != nil {
 		return nil, r.findDuplicateErr
 	}
 	if r.err != nil {
 		return nil, r.err
 	}
-	r.duplicateChecks++
-	r.lastDuplicateKey = key
 	if r.duplicates == nil {
 		return nil, nil
 	}
@@ -133,6 +137,7 @@ type stubRSSArticleIntake struct {
 	callCount   int
 	articles    []domain.IntakeArticle
 	workspaceID string
+	reusedIDs   []string
 	returnOnErr bool
 	errAtCall   int
 	err         error
@@ -149,6 +154,20 @@ func (i *stubRSSArticleIntake) Intake(_ context.Context, article domain.IntakeAr
 		return nil, i.err
 	}
 	return &domain.ArticleWorkspaceRecord{ID: i.workspaceID}, nil
+}
+
+func (i *stubRSSArticleIntake) IntakeIntoWorkspace(_ context.Context, workspaceArticleID string, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error) {
+	i.called = true
+	i.callCount++
+	i.articles = append(i.articles, article)
+	i.reusedIDs = append(i.reusedIDs, workspaceArticleID)
+	if i.err != nil && (i.errAtCall == 0 || i.errAtCall == i.callCount) {
+		if i.returnOnErr {
+			return &domain.ArticleWorkspaceRecord{ID: workspaceArticleID}, i.err
+		}
+		return nil, i.err
+	}
+	return &domain.ArticleWorkspaceRecord{ID: workspaceArticleID}, nil
 }
 
 func TestRSSPullServiceImportsNewItemsAndSkipsDuplicates(t *testing.T) {
@@ -268,7 +287,8 @@ func TestRSSPullServiceRetriesPreviouslyFailedMatchingItem(t *testing.T) {
 	require.Equal(t, domain.RSSItemStatusPending, itemRepo.updated[0].Status)
 	require.Equal(t, "existing-failed", itemRepo.updated[1].ID)
 	require.Equal(t, domain.RSSItemStatusImported, itemRepo.updated[1].Status)
-	require.Equal(t, "workspace-2", itemRepo.updated[1].WorkspaceArticleID)
+	require.Equal(t, "workspace-old", itemRepo.updated[1].WorkspaceArticleID)
+	require.Equal(t, []string{"workspace-old"}, intake.reusedIDs)
 	require.Nil(t, itemRepo.updated[0].Metadata["duplicate_item_id"])
 }
 
@@ -395,6 +415,7 @@ func TestRSSPullServiceMarksDivergenceAndRetriesItOnRerun(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, intake.called)
+	require.Equal(t, []string{"workspace-1"}, intake.reusedIDs)
 	require.Equal(t, 1, result.ImportedItems)
 	require.Equal(t, 0, result.SkippedItems)
 	require.Equal(t, domain.RSSPullRunStatusSucceeded, result.Run.Status)
@@ -403,6 +424,25 @@ func TestRSSPullServiceMarksDivergenceAndRetriesItOnRerun(t *testing.T) {
 	require.Equal(t, domain.RSSItemStatusImported, itemRepo.updated[2].Status)
 	require.Equal(t, diverged.ID, itemRepo.updated[1].ID)
 	require.Equal(t, diverged.ID, itemRepo.updated[2].ID)
+}
+
+func TestRSSPullServicePreservesEarlyLookupErrorWhenLaterFailureOccurs(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item></channel></rss>`)}
+	itemRepo := &stubRSSItemRepo{findDuplicateErrCalls: map[int]error{1: errors.New("duplicate lookup failed")}}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1", returnOnErr: true, err: errors.New("rewrite failed")}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "duplicate lookup failed")
+	require.ErrorContains(t, err, "rewrite failed")
+	require.Contains(t, result.Run.ErrorSummary, "failed-row lookup")
+	require.Contains(t, result.Run.ErrorSummary, "rewrite failed")
+	require.Len(t, itemRepo.updated, 1)
+	require.Contains(t, itemRepo.updated[0].Metadata["error"], "failed-row lookup")
 }
 
 func TestRSSPullServiceReusesFailedRowForRepeatedEarlyNormalizationFailure(t *testing.T) {

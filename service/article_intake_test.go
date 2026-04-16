@@ -126,3 +126,29 @@ func TestArticleIntakeServiceReturnsCreatedWorkspaceWhenRewriteFails(t *testing.
 	require.Equal(t, workspaceRepo.created[0].ID, workspace.ID)
 	require.True(t, rewrite.called)
 }
+
+func TestArticleIntakeServiceReusesExistingWorkspaceID(t *testing.T) {
+	workspaceRepo := &stubArticleIntakeWorkspaceRepo{}
+	rewrite := &stubArticleIntakeRewriteRunner{}
+	svc := NewArticleIntakeService(workspaceRepo, rewrite)
+	article := domain.IntakeArticle{
+		ExternalID:            "guid-1",
+		SourceType:            "rss",
+		SubscriptionID:        "sub-1",
+		Title:                 "Title",
+		Body:                  "Body",
+		Summary:               "Summary",
+		OriginalURL:           "https://example.com/a",
+		TargetType:            "wechat-longform",
+		SourceProfile:         "sspai",
+		RewriteProfileVersion: "latest",
+	}
+
+	workspace, err := svc.IntakeIntoWorkspace(t.Context(), "workspace-existing", article)
+
+	require.NoError(t, err)
+	require.Empty(t, workspaceRepo.created)
+	require.Equal(t, "workspace-existing", workspace.ID)
+	require.True(t, rewrite.called)
+	require.Equal(t, "workspace-existing", rewrite.lastReq.WorkspaceArticleID)
+}

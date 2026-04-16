@@ -27,6 +27,14 @@ func NewArticleIntakeService(workspaces workspaceArticleWriter, rewrite rewriteR
 }
 
 func (s *ArticleIntakeService) Intake(ctx context.Context, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error) {
+	return s.intake(ctx, "", article)
+}
+
+func (s *ArticleIntakeService) IntakeIntoWorkspace(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error) {
+	return s.intake(ctx, strings.TrimSpace(workspaceArticleID), article)
+}
+
+func (s *ArticleIntakeService) intake(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error) {
 	if err := article.Validate(); err != nil {
 		return nil, err
 	}
@@ -34,19 +42,22 @@ func (s *ArticleIntakeService) Intake(ctx context.Context, article domain.Intake
 		return nil, domain.NewInternalErr("article intake service is not configured", nil)
 	}
 
-	workspaceID := id.New()
-	workspace := domain.NewArticleWorkspaceRecord(workspaceID, article.Title, article.Summary, domain.ArticleWorkspaceSource{
-		SourceType: article.SourceType,
-		URL:        article.OriginalURL,
-	}, buildIntakeWorkspaceMetadata(article))
-	workspace.LifecycleHistory = []domain.ArticleWorkspaceLifecycleEntry{{
-		Status:    domain.ArticleWorkspaceStatusImported,
-		Notes:     "created from rss intake",
-		CreatedAt: workspace.CreatedAt,
-	}}
+	workspace := &domain.ArticleWorkspaceRecord{ID: workspaceArticleID}
+	if workspaceArticleID == "" {
+		workspaceID := id.New()
+		workspace = domain.NewArticleWorkspaceRecord(workspaceID, article.Title, article.Summary, domain.ArticleWorkspaceSource{
+			SourceType: article.SourceType,
+			URL:        article.OriginalURL,
+		}, buildIntakeWorkspaceMetadata(article))
+		workspace.LifecycleHistory = []domain.ArticleWorkspaceLifecycleEntry{{
+			Status:    domain.ArticleWorkspaceStatusImported,
+			Notes:     "created from rss intake",
+			CreatedAt: workspace.CreatedAt,
+		}}
 
-	if err := s.workspaces.Create(ctx, workspace); err != nil {
-		return nil, fmt.Errorf("create workspace article: %w", err)
+		if err := s.workspaces.Create(ctx, workspace); err != nil {
+			return nil, fmt.Errorf("create workspace article: %w", err)
+		}
 	}
 
 	if _, err := s.rewrite.Run(ctx, RewriteRunRequest{

@@ -20,6 +20,7 @@ type RSSFeedFetcher interface {
 
 type rssArticleIntaker interface {
 	Intake(ctx context.Context, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error)
+	IntakeIntoWorkspace(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error)
 }
 
 type RSSPullResult struct {
@@ -90,6 +91,10 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 			continue
 		}
 		normalized.PublishedAt = parsedItem.PublishedAt
+		earlyLookupWarning := ""
+		if earlyDuplicateErr != nil {
+			earlyLookupWarning = fmt.Sprintf("failed-row lookup: %v", earlyDuplicateErr)
+		}
 
 		rawPayloadJSON, err := json.Marshal(parsedItem)
 		if err != nil {
@@ -154,17 +159,21 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 			}
 		}
 
-		workspace, err := s.intake.Intake(ctx, normalized)
+		workspace, err := s.runRSSIntake(ctx, normalized, duplicate)
 		if err != nil {
-			itemErrors = append(itemErrors, fmt.Sprintf("%s: intake rss item: %v", itemLabel, err))
+			effectiveErr := fmt.Errorf("intake rss item: %w", err)
+			if earlyLookupWarning != "" {
+				effectiveErr = fmt.Errorf("%s; %w", earlyLookupWarning, effectiveErr)
+			}
+			itemErrors = append(itemErrors, fmt.Sprintf("%s: %v", itemLabel, effectiveErr))
 			item.Status = domain.RSSItemStatusFailed
 			item.UpdatedAt = time.Now().UTC()
 			if workspace != nil {
 				item.WorkspaceArticleID = strings.TrimSpace(workspace.ID)
 			}
-			item.Metadata["error"] = err.Error()
+			item.Metadata["error"] = effectiveErr.Error()
 			if updateErr := s.items.Update(ctx, item); updateErr != nil {
-				return result, s.failRun(ctx, run, result, fmt.Errorf("intake rss item: %w: mark item failed: %v", err, updateErr))
+				return result, s.failRun(ctx, run, result, fmt.Errorf("intake rss item: %w: mark item failed: %v", effectiveErr, updateErr))
 			}
 			result.FailedItems++
 			continue
@@ -271,6 +280,13 @@ func (s *RSSPullService) findRetryableFailedDuplicate(ctx context.Context, key d
 
 func isRetryableRSSItemStatus(status string) bool {
 	return status == domain.RSSItemStatusFailed || status == domain.RSSItemStatusImportDiverged
+}
+
+func (s *RSSPullService) runRSSIntake(ctx context.Context, article domain.IntakeArticle, duplicate *domain.RSSItemRecord) (*domain.ArticleWorkspaceRecord, error) {
+	if duplicate != nil && isRetryableRSSItemStatus(duplicate.Status) && strings.TrimSpace(duplicate.WorkspaceArticleID) != "" {
+		return s.intake.IntakeIntoWorkspace(ctx, duplicate.WorkspaceArticleID, article)
+	}
+	return s.intake.Intake(ctx, article)
 }
 
 type rssEnvelope struct {
