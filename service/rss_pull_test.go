@@ -116,16 +116,19 @@ func (r *stubRSSItemRepo) List(context.Context, int) ([]domain.RSSItemRecord, er
 
 type stubRSSArticleIntake struct {
 	called      bool
+	callCount   int
 	articles    []domain.IntakeArticle
 	workspaceID string
 	returnOnErr bool
+	errAtCall   int
 	err         error
 }
 
 func (i *stubRSSArticleIntake) Intake(_ context.Context, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error) {
 	i.called = true
+	i.callCount++
 	i.articles = append(i.articles, article)
-	if i.err != nil {
+	if i.err != nil && (i.errAtCall == 0 || i.errAtCall == i.callCount) {
 		if i.returnOnErr {
 			return &domain.ArticleWorkspaceRecord{ID: i.workspaceID}, i.err
 		}
@@ -273,4 +276,56 @@ func TestRSSPullServiceIgnoresInvalidRSSDate(t *testing.T) {
 	require.Nil(t, itemRepo.created[0].PublishedAt)
 	require.Len(t, itemRepo.updated, 1)
 	require.Nil(t, itemRepo.updated[0].PublishedAt)
+}
+
+func TestRSSPullServiceContinuesAfterItemFailureAndSucceedsWhenLaterItemImports(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title></title><link>https://example.com/a</link><description>Body</description></item><item><guid>guid-2</guid><title>Second</title><link>https://example.com/b</link><description>Body</description></item></channel></rss>`)}
+	itemRepo := &stubRSSItemRepo{}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-2"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, result.FetchedItems)
+	require.Equal(t, 1, result.ImportedItems)
+	require.Equal(t, 0, result.SkippedItems)
+	require.Equal(t, 1, result.FailedItems)
+	require.Equal(t, domain.RSSPullRunStatusSucceeded, result.Run.Status)
+	require.Len(t, intake.articles, 1)
+	require.Equal(t, "guid-2", intake.articles[0].ExternalID)
+	require.Len(t, itemRepo.created, 2)
+	require.Equal(t, domain.RSSItemStatusFailed, itemRepo.created[0].Status)
+	require.Equal(t, domain.RSSItemStatusPending, itemRepo.created[1].Status)
+	require.Len(t, itemRepo.updated, 1)
+	require.Equal(t, domain.RSSItemStatusImported, itemRepo.updated[0].Status)
+	require.Equal(t, float64(1), result.Run.Metadata["failed_items"])
+	require.Contains(t, result.Run.ErrorSummary, "normalize rss item")
+}
+
+func TestRSSPullServiceFailsRunWhenAllItemsFail(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>First</title><link>https://example.com/a</link><description>Body</description></item><item><guid>guid-2</guid><title>Second</title><link>https://example.com/b</link><description>Body</description></item></channel></rss>`)}
+	itemRepo := &stubRSSItemRepo{}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1", returnOnErr: true, err: errors.New("rewrite failed")}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "rewrite failed")
+	require.NotNil(t, result)
+	require.Equal(t, 2, result.FetchedItems)
+	require.Equal(t, 0, result.ImportedItems)
+	require.Equal(t, 0, result.SkippedItems)
+	require.Equal(t, 2, result.FailedItems)
+	require.Equal(t, domain.RSSPullRunStatusFailed, result.Run.Status)
+	require.Len(t, itemRepo.created, 2)
+	require.Len(t, itemRepo.updated, 2)
+	require.Equal(t, float64(2), result.Run.Metadata["failed_items"])
+	require.Contains(t, result.Run.ErrorSummary, "guid-1")
+	require.Contains(t, result.Run.ErrorSummary, "guid-2")
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ type RSSPullResult struct {
 	FetchedItems  int
 	ImportedItems int
 	SkippedItems  int
+	FailedItems   int
 }
 
 type RSSPullService struct {
@@ -64,16 +66,28 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 	}
 	result.FetchedItems = len(parsedItems)
 
+	var itemErrors []string
 	for _, parsedItem := range parsedItems {
+		itemLabel := firstNonEmpty(strings.TrimSpace(parsedItem.GUID), strings.TrimSpace(parsedItem.Link), strings.TrimSpace(parsedItem.Title), "unknown-item")
 		normalized, err := NormalizeRSSItem(sub.ID, sub.TargetType, sub.SourceProfile, sub.RewriteProfileVersion, parsedItem)
 		if err != nil {
-			return result, s.failRun(ctx, run, result, err)
+			itemErrors = append(itemErrors, fmt.Sprintf("%s: %v", itemLabel, err))
+			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, hashRSSItem(parsedItem), fmt.Errorf("normalize rss item: %w", err), nil); recordErr != nil {
+				return result, s.failRun(ctx, run, result, recordErr)
+			}
+			result.FailedItems++
+			continue
 		}
 		normalized.PublishedAt = parsedItem.PublishedAt
 
 		rawPayloadJSON, err := json.Marshal(parsedItem)
 		if err != nil {
-			return result, s.failRun(ctx, run, result, fmt.Errorf("marshal rss item payload: %w", err))
+			itemErrors = append(itemErrors, fmt.Sprintf("%s: marshal rss item payload: %v", itemLabel, err))
+			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, hashRSSItem(parsedItem), fmt.Errorf("marshal rss item payload: %w", err), nil); recordErr != nil {
+				return result, s.failRun(ctx, run, result, recordErr)
+			}
+			result.FailedItems++
+			continue
 		}
 
 		contentHash := hashRSSItem(parsedItem)
@@ -85,7 +99,12 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		}
 		duplicate, err := s.items.FindDuplicate(ctx, duplicateKey)
 		if err != nil {
-			return result, s.failRun(ctx, run, result, fmt.Errorf("find duplicate rss item: %w", err))
+			itemErrors = append(itemErrors, fmt.Sprintf("%s: find duplicate rss item: %v", itemLabel, err))
+			if recordErr := s.recordFailedRSSItem(ctx, run, parsedItem, contentHash, fmt.Errorf("find duplicate rss item: %w", err), nil); recordErr != nil {
+				return result, s.failRun(ctx, run, result, recordErr)
+			}
+			result.FailedItems++
+			continue
 		}
 
 		item := domain.NewRSSItemRecord(sub.ID, run.ID, parsedItem.GUID, parsedItem.Link, contentHash, parsedItem.Title)
@@ -108,16 +127,21 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 
 		if duplicate != nil && duplicate.Status == domain.RSSItemStatusFailed {
 			if err := s.items.Update(ctx, item); err != nil {
-				return result, s.failRun(ctx, run, result, fmt.Errorf("reset failed rss item record: %w", err))
+				itemErrors = append(itemErrors, fmt.Sprintf("%s: reset failed rss item record: %v", itemLabel, err))
+				result.FailedItems++
+				continue
 			}
 		} else {
 			if err := s.items.Create(ctx, item); err != nil {
-				return result, s.failRun(ctx, run, result, fmt.Errorf("create rss item record: %w", err))
+				itemErrors = append(itemErrors, fmt.Sprintf("%s: create rss item record: %v", itemLabel, err))
+				result.FailedItems++
+				continue
 			}
 		}
 
 		workspace, err := s.intake.Intake(ctx, normalized)
 		if err != nil {
+			itemErrors = append(itemErrors, fmt.Sprintf("%s: intake rss item: %v", itemLabel, err))
 			item.Status = domain.RSSItemStatusFailed
 			item.UpdatedAt = time.Now().UTC()
 			if workspace != nil {
@@ -127,7 +151,8 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 			if updateErr := s.items.Update(ctx, item); updateErr != nil {
 				return result, s.failRun(ctx, run, result, fmt.Errorf("intake rss item: %w: mark item failed: %v", err, updateErr))
 			}
-			return result, s.failRun(ctx, run, result, fmt.Errorf("intake rss item: %w", err))
+			result.FailedItems++
+			continue
 		}
 
 		importedAt := time.Now().UTC()
@@ -138,9 +163,18 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		}
 		item.UpdatedAt = importedAt
 		if err := s.items.Update(ctx, item); err != nil {
-			return result, s.failRun(ctx, run, result, fmt.Errorf("mark rss item imported: %w", err))
+			itemErrors = append(itemErrors, fmt.Sprintf("%s: mark rss item imported: %v", itemLabel, err))
+			result.FailedItems++
+			continue
 		}
 		result.ImportedItems++
+	}
+
+	if len(itemErrors) > 0 {
+		result.Run.ErrorSummary = strings.Join(itemErrors, "; ")
+	}
+	if result.ImportedItems == 0 && result.FailedItems > 0 {
+		return result, s.failRun(ctx, run, result, errors.New(result.Run.ErrorSummary))
 	}
 
 	return result, s.completeRun(ctx, run, result)
@@ -157,7 +191,6 @@ func (s *RSSPullService) completeRun(ctx context.Context, run *domain.RSSPullRun
 	completedAt := time.Now().UTC()
 	run.Status = domain.RSSPullRunStatusSucceeded
 	run.CompletedAt = &completedAt
-	run.ErrorSummary = ""
 	run.Metadata = buildRSSPullRunMetadata(result)
 	if err := s.runs.Update(ctx, run); err != nil {
 		return fmt.Errorf("update rss pull run: %w", err)
@@ -182,7 +215,25 @@ func buildRSSPullRunMetadata(result *RSSPullResult) map[string]any {
 		"fetched_items":  float64(result.FetchedItems),
 		"imported_items": float64(result.ImportedItems),
 		"skipped_items":  float64(result.SkippedItems),
+		"failed_items":   float64(result.FailedItems),
 	}
+}
+
+func (s *RSSPullService) recordFailedRSSItem(ctx context.Context, run *domain.RSSPullRun, parsedItem RSSFeedItem, contentHash string, itemErr error, duplicate *domain.RSSItemRecord) error {
+	title := firstNonEmpty(parsedItem.Title, parsedItem.GUID, parsedItem.Link, "untitled")
+	item := domain.NewRSSItemRecord(run.SubscriptionID, run.ID, parsedItem.GUID, parsedItem.Link, contentHash, title)
+	if duplicate != nil && duplicate.Status == domain.RSSItemStatusFailed {
+		item.ID = duplicate.ID
+		item.CreatedAt = duplicate.CreatedAt
+	}
+	item.Status = domain.RSSItemStatusFailed
+	item.PublishedAt = parsedItem.PublishedAt
+	item.Metadata["error"] = itemErr.Error()
+	item.UpdatedAt = time.Now().UTC()
+	if duplicate != nil && duplicate.Status == domain.RSSItemStatusFailed {
+		return s.items.Update(ctx, item)
+	}
+	return s.items.Create(ctx, item)
 }
 
 type rssEnvelope struct {
