@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const rssDuplicateSelect = `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items WHERE subscription_id = ? AND %s = ? ORDER BY CASE status WHEN 'imported' THEN 0 WHEN 'failed' THEN 1 ELSE 2 END, created_at DESC, id DESC LIMIT 1`
+const rssDuplicateSelect = `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items WHERE subscription_id = ? AND (%s) ORDER BY CASE status WHEN 'imported' THEN 0 WHEN 'skipped_duplicate' THEN 1 WHEN 'failed' THEN 2 ELSE 3 END, created_at DESC, id DESC LIMIT 1`
 
 var _ repo.RSSItemRepo = (*rssItemRepo)(nil)
 
@@ -66,26 +66,21 @@ func (r *rssItemRepo) FindDuplicate(ctx context.Context, key domain.RSSDuplicate
 	if err := key.Validate(); err != nil {
 		return nil, err
 	}
+	clauses := make([]string, 0, 3)
+	args := []any{key.SubscriptionID}
 	if guid := strings.TrimSpace(key.GUID); guid != "" {
-		item, err := r.findDuplicateByColumn(ctx, key.SubscriptionID, "guid", guid)
-		if err != nil || item != nil {
-			return item, err
-		}
+		clauses = append(clauses, "guid = ?")
+		args = append(args, guid)
 	}
 	if link := strings.TrimSpace(key.Link); link != "" {
-		item, err := r.findDuplicateByColumn(ctx, key.SubscriptionID, "link", link)
-		if err != nil || item != nil {
-			return item, err
-		}
+		clauses = append(clauses, "link = ?")
+		args = append(args, link)
 	}
 	if contentHash := strings.TrimSpace(key.ContentHash); contentHash != "" {
-		return r.findDuplicateByColumn(ctx, key.SubscriptionID, "content_hash", contentHash)
+		clauses = append(clauses, "content_hash = ?")
+		args = append(args, contentHash)
 	}
-	return nil, nil
-}
-
-func (r *rssItemRepo) findDuplicateByColumn(ctx context.Context, subscriptionID, column, value string) (*domain.RSSItemRecord, error) {
-	row := r.db.QueryRowContext(ctx, fmt.Sprintf(rssDuplicateSelect, column), subscriptionID, value)
+	row := r.db.QueryRowContext(ctx, fmt.Sprintf(rssDuplicateSelect, strings.Join(clauses, " OR ")), args...)
 	item, err := scanRSSItem(row)
 	if err != nil {
 		if err == sql.ErrNoRows {

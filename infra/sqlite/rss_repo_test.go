@@ -121,6 +121,56 @@ func TestRSSItemRepoFindDuplicatePrefersImportedRowBySequenceOrder(t *testing.T)
 	require.Equal(t, imported.ID, dup.ID)
 }
 
+func TestRSSItemRepoFindDuplicatePrefersImportedLinkMatchOverFailedGUIDMatch(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+	require.NoError(t, provider.RSSSubscriptionRepo().Create(t.Context(), sub))
+	run := domain.NewRSSPullRun(sub.ID)
+	require.NoError(t, provider.RSSPullRunRepo().Create(t.Context(), run))
+
+	failed := domain.NewRSSItemRecord(sub.ID, run.ID, "guid-1", "https://example.com/failed", "hash-failed", "Failed")
+	failed.Status = domain.RSSItemStatusFailed
+	require.NoError(t, provider.RSSItemRepo().Create(t.Context(), failed))
+
+	imported := domain.NewRSSItemRecord(sub.ID, run.ID, "guid-2", "https://example.com/shared", "hash-imported", "Imported")
+	imported.Status = domain.RSSItemStatusImported
+	require.NoError(t, provider.RSSItemRepo().Create(t.Context(), imported))
+
+	dup, err := provider.RSSItemRepo().FindDuplicate(t.Context(), domain.RSSDuplicateKey{
+		SubscriptionID: sub.ID,
+		GUID:           "guid-1",
+		Link:           "https://example.com/shared",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dup)
+	require.Equal(t, imported.ID, dup.ID)
+}
+
+func TestRSSItemRepoFindDuplicatePrefersImportedContentHashMatchOverFailedGUIDMatch(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+	require.NoError(t, provider.RSSSubscriptionRepo().Create(t.Context(), sub))
+	run := domain.NewRSSPullRun(sub.ID)
+	require.NoError(t, provider.RSSPullRunRepo().Create(t.Context(), run))
+
+	failed := domain.NewRSSItemRecord(sub.ID, run.ID, "guid-1", "https://example.com/failed", "hash-failed", "Failed")
+	failed.Status = domain.RSSItemStatusFailed
+	require.NoError(t, provider.RSSItemRepo().Create(t.Context(), failed))
+
+	imported := domain.NewRSSItemRecord(sub.ID, run.ID, "guid-2", "https://example.com/imported", "hash-shared", "Imported")
+	imported.Status = domain.RSSItemStatusImported
+	require.NoError(t, provider.RSSItemRepo().Create(t.Context(), imported))
+
+	dup, err := provider.RSSItemRepo().FindDuplicate(t.Context(), domain.RSSDuplicateKey{
+		SubscriptionID: sub.ID,
+		GUID:           "guid-1",
+		ContentHash:    "hash-shared",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dup)
+	require.Equal(t, imported.ID, dup.ID)
+}
+
 func TestRSSItemRepoRoundTripsWorkspaceArticleIDAndRawPayload(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
