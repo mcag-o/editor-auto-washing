@@ -198,6 +198,7 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		importedAt := time.Now().UTC()
 		item.Status = domain.RSSItemStatusImported
 		item.ImportedAt = &importedAt
+		delete(item.Metadata, "error")
 		if workspace != nil {
 			item.WorkspaceArticleID = strings.TrimSpace(workspace.ID)
 		}
@@ -207,8 +208,10 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 			item.Metadata["error"] = fmt.Sprintf("mark rss item imported: %v", err)
 			item.UpdatedAt = time.Now().UTC()
 			if markErr := s.items.Update(ctx, item); markErr != nil {
+				result.FailedItems++
 				return result, s.failRun(ctx, run, result, fmt.Errorf("mark rss item imported: %w: mark divergence: %v", err, markErr))
 			}
+			result.FailedItems++
 			return result, s.failRun(ctx, run, result, fmt.Errorf("mark rss item imported: %w", err))
 		}
 		result.ImportedItems++

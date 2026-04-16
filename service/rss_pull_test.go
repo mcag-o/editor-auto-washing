@@ -420,7 +420,7 @@ func TestRSSPullServiceFailsRunWhenImportedStateUpdateFailsAfterIntake(t *testin
 	require.Equal(t, 2, result.FetchedItems)
 	require.Equal(t, 0, result.ImportedItems)
 	require.Equal(t, 0, result.SkippedItems)
-	require.Equal(t, 0, result.FailedItems)
+	require.Equal(t, 1, result.FailedItems)
 	require.Len(t, intake.articles, 1)
 	require.Equal(t, float64(2), runs.updated[len(runs.updated)-1].Metadata["fetched_items"])
 }
@@ -444,6 +444,8 @@ func TestRSSPullServiceMarksDivergenceAndRetriesItOnRerun(t *testing.T) {
 	require.Equal(t, "workspace-1", diverged.WorkspaceArticleID)
 	require.Contains(t, diverged.Metadata["error"], "update failed")
 	require.Equal(t, domain.RSSPullRunStatusFailed, result.Run.Status)
+	require.Equal(t, 1, result.FailedItems)
+	require.Equal(t, float64(1), result.Run.Metadata["failed_items"])
 
 	itemRepo.duplicates = map[string]*domain.RSSItemRecord{"guid-1": diverged}
 	itemRepo.updateErrCalls = nil
@@ -465,6 +467,8 @@ func TestRSSPullServiceMarksDivergenceAndRetriesItOnRerun(t *testing.T) {
 	require.Equal(t, diverged.ID, itemRepo.updated[2].ID)
 	require.Equal(t, "workspace-1", itemRepo.updated[1].WorkspaceArticleID)
 	require.Equal(t, "workspace-1", itemRepo.updated[2].WorkspaceArticleID)
+	_, hasError := itemRepo.updated[2].Metadata["error"]
+	require.False(t, hasError)
 }
 
 func TestRSSPullServicePreservesEarlyLookupErrorWhenLaterFailureOccurs(t *testing.T) {
