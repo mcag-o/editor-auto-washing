@@ -312,8 +312,30 @@ func appendRSSItemWarning(item *domain.RSSItemRecord, warning string) {
 	if warning == "" {
 		return
 	}
-	warnings, _ := item.Metadata["warnings"].([]string)
+	warnings := normalizeRSSItemWarnings(item.Metadata["warnings"])
 	item.Metadata["warnings"] = append(warnings, warning)
+}
+
+func normalizeRSSItemWarnings(value any) []string {
+	switch v := value.(type) {
+	case []string:
+		return append([]string(nil), v...)
+	case []any:
+		warnings := make([]string, 0, len(v))
+		for _, entry := range v {
+			text, ok := entry.(string)
+			if !ok {
+				continue
+			}
+			text = strings.TrimSpace(text)
+			if text != "" {
+				warnings = append(warnings, text)
+			}
+		}
+		return warnings
+	default:
+		return nil
+	}
 }
 
 func copyRSSItemMetadata(src map[string]any) map[string]any {
@@ -325,6 +347,8 @@ func copyRSSItemMetadata(src map[string]any) map[string]any {
 		switch v := value.(type) {
 		case []string:
 			dst[key] = append([]string(nil), v...)
+		case []any:
+			dst[key] = append([]any(nil), v...)
 		default:
 			dst[key] = v
 		}

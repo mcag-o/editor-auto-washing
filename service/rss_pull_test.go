@@ -660,3 +660,14 @@ func TestRSSPullServiceRetryableReusePreservesAndAppendsWarnings(t *testing.T) {
 	require.Contains(t, itemRepo.updated[0].Metadata["warnings"], "failed-row lookup: new warning")
 	require.Contains(t, itemRepo.updated[1].Metadata["warnings"], "failed-row lookup: new warning")
 }
+
+func TestAppendRSSItemWarningNormalizesRoundTripWarnings(t *testing.T) {
+	item := domain.NewRSSItemRecord("sub-1", "run-1", "guid-1", "https://example.com/a", "hash-1", "Title")
+	item.Metadata["warnings"] = []any{"old warning"}
+
+	appendRSSItemWarning(item, "new warning")
+
+	warnings, ok := item.Metadata["warnings"].([]string)
+	require.True(t, ok)
+	require.Equal(t, []string{"old warning", "new warning"}, warnings)
+}
