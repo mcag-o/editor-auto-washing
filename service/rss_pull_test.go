@@ -61,10 +61,16 @@ type stubRSSItemRepo struct {
 	duplicates       map[string]*domain.RSSItemRecord
 	duplicateChecks  int
 	lastDuplicateKey domain.RSSDuplicateKey
+	createErr        error
+	updateErrAtCall  int
+	updateCalls      int
 	err              error
 }
 
 func (r *stubRSSItemRepo) Create(_ context.Context, item *domain.RSSItemRecord) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
 	if r.err != nil {
 		return r.err
 	}
@@ -74,6 +80,10 @@ func (r *stubRSSItemRepo) Create(_ context.Context, item *domain.RSSItemRecord) 
 }
 
 func (r *stubRSSItemRepo) Update(_ context.Context, item *domain.RSSItemRecord) error {
+	r.updateCalls++
+	if r.updateErrAtCall > 0 && r.updateCalls == r.updateErrAtCall {
+		return errors.New("update failed")
+	}
 	if r.err != nil {
 		return r.err
 	}
@@ -328,4 +338,26 @@ func TestRSSPullServiceFailsRunWhenAllItemsFail(t *testing.T) {
 	require.Equal(t, float64(2), result.Run.Metadata["failed_items"])
 	require.Contains(t, result.Run.ErrorSummary, "guid-1")
 	require.Contains(t, result.Run.ErrorSummary, "guid-2")
+}
+
+func TestRSSPullServiceFailsRunWhenImportedStateUpdateFailsAfterIntake(t *testing.T) {
+	feeds := &stubRSSFeedFetcher{body: []byte(`<?xml version="1.0"?><rss><channel><item><guid>guid-1</guid><title>Title</title><link>https://example.com/a</link><description>Body</description></item><item><guid>guid-2</guid><title>Second</title><link>https://example.com/b</link><description>Body</description></item></channel></rss>`)}
+	itemRepo := &stubRSSItemRepo{updateErrAtCall: 1}
+	runs := &stubRSSPullRunRepo{}
+	intake := &stubRSSArticleIntake{workspaceID: "workspace-1"}
+	svc := NewRSSPullService(feeds, runs, itemRepo, intake)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+
+	result, err := svc.RunOnce(t.Context(), *sub)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "mark rss item imported")
+	require.NotNil(t, result)
+	require.Equal(t, domain.RSSPullRunStatusFailed, result.Run.Status)
+	require.Equal(t, 2, result.FetchedItems)
+	require.Equal(t, 0, result.ImportedItems)
+	require.Equal(t, 0, result.SkippedItems)
+	require.Equal(t, 0, result.FailedItems)
+	require.Len(t, intake.articles, 1)
+	require.Equal(t, float64(2), runs.updated[len(runs.updated)-1].Metadata["fetched_items"])
 }

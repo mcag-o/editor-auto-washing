@@ -163,9 +163,7 @@ func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription
 		}
 		item.UpdatedAt = importedAt
 		if err := s.items.Update(ctx, item); err != nil {
-			itemErrors = append(itemErrors, fmt.Sprintf("%s: mark rss item imported: %v", itemLabel, err))
-			result.FailedItems++
-			continue
+			return result, s.failRun(ctx, run, result, fmt.Errorf("mark rss item imported: %w", err))
 		}
 		result.ImportedItems++
 	}

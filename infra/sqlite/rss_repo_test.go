@@ -95,6 +95,32 @@ func TestRSSItemRepoFindDuplicateMatchesByContentHashWhenGUIDAndLinkDiffer(t *te
 	require.Equal(t, item.ID, dup.ID)
 }
 
+func TestRSSItemRepoFindDuplicatePrefersImportedRowBySequenceOrder(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+	require.NoError(t, provider.RSSSubscriptionRepo().Create(t.Context(), sub))
+	run := domain.NewRSSPullRun(sub.ID)
+	require.NoError(t, provider.RSSPullRunRepo().Create(t.Context(), run))
+
+	failed := domain.NewRSSItemRecord(sub.ID, run.ID, "guid-1", "https://example.com/failed", "hash-1", "Failed")
+	failed.Status = domain.RSSItemStatusFailed
+	require.NoError(t, provider.RSSItemRepo().Create(t.Context(), failed))
+
+	imported := domain.NewRSSItemRecord(sub.ID, run.ID, "guid-2", "https://example.com/imported", "hash-2", "Imported")
+	imported.Status = domain.RSSItemStatusImported
+	require.NoError(t, provider.RSSItemRepo().Create(t.Context(), imported))
+
+	dup, err := provider.RSSItemRepo().FindDuplicate(t.Context(), domain.RSSDuplicateKey{
+		SubscriptionID: sub.ID,
+		GUID:           "guid-2",
+		Link:           "https://example.com/failed",
+		ContentHash:    "hash-1",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dup)
+	require.Equal(t, imported.ID, dup.ID)
+}
+
 func TestRSSItemRepoRoundTripsWorkspaceArticleIDAndRawPayload(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
@@ -125,6 +151,37 @@ func TestRSSItemRepoRoundTripsWorkspaceArticleIDAndRawPayload(t *testing.T) {
 	require.Len(t, list, 1)
 	require.Equal(t, item.WorkspaceArticleID, list[0].WorkspaceArticleID)
 	require.JSONEq(t, string(item.RawPayloadJSON), string(list[0].RawPayloadJSON))
+}
+
+func TestRSSItemRepoToleratesMalformedOptionalTimestampsOnRead(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	sub := domain.NewRSSSubscription("Tech", "https://example.com/feed.xml", "wechat-longform", "sspai")
+	require.NoError(t, provider.RSSSubscriptionRepo().Create(t.Context(), sub))
+	run := domain.NewRSSPullRun(sub.ID)
+	require.NoError(t, provider.RSSPullRunRepo().Create(t.Context(), run))
+
+	item := domain.NewRSSItemRecord(sub.ID, run.ID, "guid-1", "https://example.com/a", "hash-1", "A")
+	require.NoError(t, provider.RSSItemRepo().Create(t.Context(), item))
+
+	_, err := provider.db.ExecContext(t.Context(), `UPDATE rss_items SET published_at = ?, imported_at = ? WHERE id = ?`, "bad-published", "bad-imported", item.ID)
+	require.NoError(t, err)
+
+	stored, err := provider.RSSItemRepo().GetByID(t.Context(), item.ID)
+	require.NoError(t, err)
+	require.Nil(t, stored.PublishedAt)
+	require.Nil(t, stored.ImportedAt)
+
+	list, err := provider.RSSItemRepo().List(t.Context(), 10)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Nil(t, list[0].PublishedAt)
+	require.Nil(t, list[0].ImportedAt)
+
+	dup, err := provider.RSSItemRepo().FindDuplicate(t.Context(), domain.RSSDuplicateKey{SubscriptionID: sub.ID, GUID: "guid-1"})
+	require.NoError(t, err)
+	require.NotNil(t, dup)
+	require.Nil(t, dup.PublishedAt)
+	require.Nil(t, dup.ImportedAt)
 }
 
 func TestRSSPullRunRepoCreateAndList(t *testing.T) {

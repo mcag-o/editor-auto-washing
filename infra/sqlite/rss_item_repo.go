@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const rssDuplicateSelect = `SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items WHERE subscription_id = ? AND %s = ? ORDER BY CASE status WHEN 'imported' THEN 0 WHEN 'failed' THEN 1 ELSE 2 END, created_at DESC, id DESC LIMIT 1`
+
 var _ repo.RSSItemRepo = (*rssItemRepo)(nil)
 
 type rssItemRepo struct{ db *sql.DB }
@@ -64,22 +66,26 @@ func (r *rssItemRepo) FindDuplicate(ctx context.Context, key domain.RSSDuplicate
 	if err := key.Validate(); err != nil {
 		return nil, err
 	}
-	clauses := make([]string, 0, 3)
-	args := []any{key.SubscriptionID}
 	if guid := strings.TrimSpace(key.GUID); guid != "" {
-		clauses = append(clauses, "guid = ?")
-		args = append(args, guid)
+		item, err := r.findDuplicateByColumn(ctx, key.SubscriptionID, "guid", guid)
+		if err != nil || item != nil {
+			return item, err
+		}
 	}
 	if link := strings.TrimSpace(key.Link); link != "" {
-		clauses = append(clauses, "link = ?")
-		args = append(args, link)
+		item, err := r.findDuplicateByColumn(ctx, key.SubscriptionID, "link", link)
+		if err != nil || item != nil {
+			return item, err
+		}
 	}
 	if contentHash := strings.TrimSpace(key.ContentHash); contentHash != "" {
-		clauses = append(clauses, "content_hash = ?")
-		args = append(args, contentHash)
+		return r.findDuplicateByColumn(ctx, key.SubscriptionID, "content_hash", contentHash)
 	}
-	query := fmt.Sprintf(`SELECT id, subscription_id, pull_run_id, guid, link, content_hash, title, status, published_at, imported_at, workspace_article_id, metadata_json, raw_payload_json, created_at, updated_at FROM rss_items WHERE subscription_id = ? AND (%s) ORDER BY created_at DESC, id DESC LIMIT 1`, strings.Join(clauses, " OR "))
-	row := r.db.QueryRowContext(ctx, query, args...)
+	return nil, nil
+}
+
+func (r *rssItemRepo) findDuplicateByColumn(ctx context.Context, subscriptionID, column, value string) (*domain.RSSItemRecord, error) {
+	row := r.db.QueryRowContext(ctx, fmt.Sprintf(rssDuplicateSelect, column), subscriptionID, value)
 	item, err := scanRSSItem(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -134,17 +140,15 @@ func scanRSSItem(row rssItemScanner) (*domain.RSSItemRecord, error) {
 	}
 	if publishedAt.Valid {
 		parsed, err := time.Parse(time.RFC3339Nano, publishedAt.String)
-		if err != nil {
-			return nil, fmt.Errorf("decode rss item published_at: %w", err)
+		if err == nil {
+			item.PublishedAt = &parsed
 		}
-		item.PublishedAt = &parsed
 	}
 	if importedAt.Valid {
 		parsed, err := time.Parse(time.RFC3339Nano, importedAt.String)
-		if err != nil {
-			return nil, fmt.Errorf("decode rss item imported_at: %w", err)
+		if err == nil {
+			item.ImportedAt = &parsed
 		}
-		item.ImportedAt = &parsed
 	}
 	if workspaceArticleID.Valid {
 		item.WorkspaceArticleID = workspaceArticleID.String
