@@ -42,6 +42,7 @@ type RSSItemRecord struct {
 	Link           string         `json:"link"`
 	ContentHash    string         `json:"content_hash"`
 	Title          string         `json:"title"`
+	Status         string         `json:"status"`
 	PublishedAt    *time.Time     `json:"published_at"`
 	ImportedAt     *time.Time     `json:"imported_at"`
 	Metadata       map[string]any `json:"metadata"`
@@ -110,6 +111,32 @@ func (k RSSDuplicateKey) Validate() error {
 	return nil
 }
 
+func (r RSSPullRun) Validate() error {
+	if strings.TrimSpace(r.SubscriptionID) == "" {
+		return NewValidationErr("subscription id is required", nil)
+	}
+	if strings.TrimSpace(r.Status) == "" {
+		return NewValidationErr("status is required", nil)
+	}
+	return nil
+}
+
+func (r RSSItemRecord) Validate() error {
+	if strings.TrimSpace(r.SubscriptionID) == "" {
+		return NewValidationErr("subscription id is required", nil)
+	}
+	if strings.TrimSpace(r.Title) == "" {
+		return NewValidationErr("title is required", nil)
+	}
+	if strings.TrimSpace(r.Status) == "" {
+		return NewValidationErr("status is required", nil)
+	}
+	if strings.TrimSpace(r.GUID) == "" && strings.TrimSpace(r.Link) == "" && strings.TrimSpace(r.ContentHash) == "" {
+		return NewValidationErr("at least one of guid, link, or content hash is required", nil)
+	}
+	return nil
+}
+
 func NewRSSPullRun(subscriptionID string) *RSSPullRun {
 	now := time.Now().UTC()
 	return &RSSPullRun{
@@ -131,6 +158,7 @@ func NewRSSItemRecord(subscriptionID, pullRunID, guid, link, contentHash, title 
 		Link:           link,
 		ContentHash:    contentHash,
 		Title:          title,
+		Status:         "pending",
 		Metadata:       map[string]any{},
 		CreatedAt:      now,
 		UpdatedAt:      now,

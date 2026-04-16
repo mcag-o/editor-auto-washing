@@ -7,6 +7,20 @@ import (
 	"content-hub/domain"
 )
 
+type staticLLMProvider struct{}
+
+func (staticLLMProvider) Generate(_ context.Context, _ domain.LLMGenerateRequest) (*domain.LLMGenerateResponse, error) {
+	return &domain.LLMGenerateResponse{}, nil
+}
+
+func (staticLLMProvider) Models(_ context.Context) ([]string, error) {
+	return []string{"mock-1"}, nil
+}
+
+func (staticLLMProvider) Name() string {
+	return "static"
+}
+
 type rssItemRepoCompileStub struct{}
 
 func (rssItemRepoCompileStub) Create(context.Context, *domain.RSSItemRecord) error { return nil }
@@ -29,4 +43,8 @@ func TestRSSItemRepoFindDuplicateUsesStructuredKey(t *testing.T) {
 		Link:           "https://example.com/item",
 		ContentHash:    "hash-1",
 	})
+}
+
+func TestLLMProviderUsesLLMClientContract(t *testing.T) {
+	var _ LLMProvider = staticLLMProvider{}
 }

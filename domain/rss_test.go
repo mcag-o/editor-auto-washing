@@ -113,3 +113,36 @@ func TestRSSDuplicateKeyValidateAcceptsValidKey(t *testing.T) {
 		t.Fatalf("expected duplicate key to validate: %v", err)
 	}
 }
+
+func TestRSSPullRunValidateRejectsMissingFields(t *testing.T) {
+	run := RSSPullRun{}
+	if err := run.Validate(); err == nil {
+		t.Fatal("expected pull run validation to reject missing fields")
+	}
+}
+
+func TestRSSPullRunValidateAcceptsValidRun(t *testing.T) {
+	run := RSSPullRun{SubscriptionID: "sub-1", Status: RSSPullRunStatusPending}
+	if err := run.Validate(); err != nil {
+		t.Fatalf("expected pull run to validate: %v", err)
+	}
+}
+
+func TestRSSItemRecordValidateRejectsMissingFields(t *testing.T) {
+	item := RSSItemRecord{}
+	if err := item.Validate(); err == nil {
+		t.Fatal("expected item record validation to reject missing fields")
+	}
+}
+
+func TestRSSItemRecordValidateAcceptsValidItem(t *testing.T) {
+	item := RSSItemRecord{
+		SubscriptionID: "sub-1",
+		Title:          "Item title",
+		Status:         "pending",
+		GUID:           "guid-1",
+	}
+	if err := item.Validate(); err != nil {
+		t.Fatalf("expected item record to validate: %v", err)
+	}
+}
