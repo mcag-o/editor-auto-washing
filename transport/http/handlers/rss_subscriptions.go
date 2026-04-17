@@ -29,7 +29,7 @@ type rssSubscriptionRequest struct {
 	FeedURL               string         `json:"feed_url" binding:"required"`
 	TargetType            string         `json:"target_type" binding:"required"`
 	SourceProfile         string         `json:"source_profile" binding:"required"`
-	RewriteProfileVersion string         `json:"rewrite_profile_version"`
+	RewriteProfileVersion *string        `json:"rewrite_profile_version"`
 	Enabled               *bool          `json:"enabled"`
 	PollIntervalSec       *int           `json:"poll_interval_sec"`
 	Metadata              map[string]any `json:"metadata"`
@@ -48,7 +48,9 @@ func (h *RSSSubscriptionsHandler) Create(c *gin.Context) {
 	}
 
 	sub := domain.NewRSSSubscription(req.Name, req.FeedURL, req.TargetType, req.SourceProfile)
-	sub.RewriteProfileVersion = req.RewriteProfileVersion
+	if req.RewriteProfileVersion != nil {
+		sub.RewriteProfileVersion = *req.RewriteProfileVersion
+	}
 	if req.Enabled != nil {
 		sub.Enabled = *req.Enabled
 	}
@@ -125,7 +127,9 @@ func (h *RSSSubscriptionsHandler) Update(c *gin.Context) {
 	sub.FeedURL = req.FeedURL
 	sub.TargetType = req.TargetType
 	sub.SourceProfile = req.SourceProfile
-	sub.RewriteProfileVersion = req.RewriteProfileVersion
+	if req.RewriteProfileVersion != nil {
+		sub.RewriteProfileVersion = *req.RewriteProfileVersion
+	}
 	if req.Enabled != nil {
 		sub.Enabled = *req.Enabled
 	}
