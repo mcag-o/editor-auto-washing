@@ -392,6 +392,18 @@ func TestCLIRSSSubscriptionsListInvokesRuntimeService(t *testing.T) {
 	assert.Empty(t, stderr.String())
 }
 
+func TestCLIRSSSubscriptionsListRejectsUnsupportedTrailingArgs(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	exitCode := run([]string{"rss", "subscriptions", "list", "--bogus", "value", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 2, exitCode)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "unknown rss list flag: --bogus")
+}
+
 func TestCLIRSSSubscriptionAddInvokesRuntimeService(t *testing.T) {
 	root := t.TempDir()
 	stdout := &bytes.Buffer{}
@@ -460,6 +472,35 @@ func TestCLIRSSSubscriptionUpdateInvokesRuntimeService(t *testing.T) {
 	assert.Empty(t, stderr.String())
 }
 
+func TestCLIRSSSubscriptionUpdateParsesIDAfterRootFlag(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	originalFactory := runtimeRSSServiceFactory
+	requestedID := ""
+	updatedID := ""
+	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
+		return &cliRSSServiceStub{
+			getSubscriptionFn: func(_ context.Context, id string) (*domain.RSSSubscription, error) {
+				requestedID = id
+				return &domain.RSSSubscription{ID: id, Name: "Old Feed", FeedURL: "https://example.com/old.xml", TargetType: "wechat-short", SourceProfile: "old-source", Enabled: true, PollIntervalSec: 3600}, nil
+			},
+			updateSubscriptionFn: func(_ context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
+				updatedID = sub.ID
+				return sub, nil
+			},
+		}, func() error { return nil }, nil
+	}
+	defer func() { runtimeRSSServiceFactory = originalFactory }()
+
+	exitCode := run([]string{"rss", "subscriptions", "update", "--root", "/tmp", "sub-1", "--name", "Updated Feed", "--feed-url", "https://example.com/new.xml", "--target", "wechat-longform", "--source", "sspai"}, stdout, stderr)
+
+	assert.Equal(t, 0, exitCode)
+	assert.Equal(t, "sub-1", requestedID)
+	assert.Equal(t, "sub-1", updatedID)
+	assert.Empty(t, stderr.String())
+}
+
 func TestCLIRSSSubscriptionRemoveInvokesRuntimeService(t *testing.T) {
 	root := t.TempDir()
 	stdout := &bytes.Buffer{}
@@ -481,6 +522,18 @@ func TestCLIRSSSubscriptionRemoveInvokesRuntimeService(t *testing.T) {
 	assert.Equal(t, "sub-1", removedID)
 	assert.Contains(t, stdout.String(), "deleted: true")
 	assert.Empty(t, stderr.String())
+}
+
+func TestCLIRSSSubscriptionRemoveRejectsUnsupportedTrailingArgs(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	exitCode := run([]string{"rss", "subscriptions", "remove", "sub-1", "--bogus", "value", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 2, exitCode)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "unknown rss remove flag: --bogus")
 }
 
 func TestNewCollectorSourceDefaultsDetailFetchDisabled(t *testing.T) {
@@ -559,6 +612,39 @@ func TestCLIRSSRunInvokesPullService(t *testing.T) {
 	assert.Empty(t, stderr.String())
 }
 
+func TestCLIRSSRunParsesSubscriptionIDAfterRootFlag(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	originalFactory := runtimeRSSServiceFactory
+	runID := ""
+	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
+		return &cliRSSServiceStub{runByIDFn: func(_ context.Context, subscriptionID string) (*service.RSSPullResult, error) {
+			runID = subscriptionID
+			return &service.RSSPullResult{Run: &domain.RSSPullRun{ID: "run-1", SubscriptionID: subscriptionID, Status: domain.RSSPullRunStatusSucceeded}}, nil
+		}}, func() error { return nil }, nil
+	}
+	defer func() { runtimeRSSServiceFactory = originalFactory }()
+
+	exitCode := run([]string{"rss", "run", "--root", "/tmp", "sub-1"}, stdout, stderr)
+
+	assert.Equal(t, 0, exitCode)
+	assert.Equal(t, "sub-1", runID)
+	assert.Empty(t, stderr.String())
+}
+
+func TestCLIRSSRunRejectsUnsupportedTrailingArgs(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	exitCode := run([]string{"rss", "run", "sub-1", "--bogus", "value", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 2, exitCode)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "unknown rss run flag: --bogus")
+}
+
 func TestCLIRSSRunAllInvokesScheduler(t *testing.T) {
 	root := t.TempDir()
 	stdout := &bytes.Buffer{}
@@ -580,6 +666,18 @@ func TestCLIRSSRunAllInvokesScheduler(t *testing.T) {
 	assert.True(t, called)
 	assert.Contains(t, stdout.String(), "sub-1")
 	assert.Empty(t, stderr.String())
+}
+
+func TestCLIRSSRunAllRejectsUnsupportedTrailingArgs(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	exitCode := run([]string{"rss", "run-all", "--bogus", "value", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 2, exitCode)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "unknown rss run-all flag: --bogus")
 }
 
 func TestCLIRSSRunsListInvokesRuntimeServiceWithLimit(t *testing.T) {

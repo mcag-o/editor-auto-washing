@@ -238,23 +238,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: cli workspace <...> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> | rss <subscriptions|run|run-all|runs|items> [--root PATH]")
 		return 2
 	}
-	if len(args) < 2 {
-		fmt.Fprintf(stderr, "missing %s subcommand\n", args[0])
+	root, filteredArgs, err := extractGlobalRoot(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	if len(filteredArgs) == 0 {
+		fmt.Fprintln(stderr, "usage: cli workspace <...> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> | rss <subscriptions|run|run-all|runs|items> [--root PATH]")
+		return 2
+	}
+	if len(filteredArgs) < 2 {
+		fmt.Fprintf(stderr, "missing %s subcommand\n", filteredArgs[0])
 		return 2
 	}
 
-	root := "."
-	for idx := 2; idx < len(args); idx++ {
-		if args[idx] == "--root" && idx+1 < len(args) {
-			root = args[idx+1]
-			idx++
-		}
-	}
-
 	workspaceSvc := service.NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator())
-	switch args[0] {
+	switch filteredArgs[0] {
 	case "workspace":
-		switch args[1] {
+		switch filteredArgs[1] {
 		case "init":
 			resolved, err := workspaceSvc.Init(root)
 			if err != nil {
@@ -294,11 +295,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 			}
 			return 1
 		default:
-			fmt.Fprintf(stderr, "unknown workspace subcommand: %s\n", args[1])
+			fmt.Fprintf(stderr, "unknown workspace subcommand: %s\n", filteredArgs[1])
 			return 2
 		}
 	case "formatting":
-		if len(args) < 3 {
+		if len(filteredArgs) < 3 {
 			fmt.Fprintf(stderr, "missing formatting target\n")
 			return 2
 		}
@@ -310,23 +311,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 		defer cleanup()
 		platform := "wechat"
 		templateName := ""
-		for idx := 3; idx < len(args); idx++ {
-			switch args[idx] {
+		for idx := 3; idx < len(filteredArgs); idx++ {
+			switch filteredArgs[idx] {
 			case "--platform":
-				if idx+1 < len(args) {
-					platform = args[idx+1]
+				if idx+1 < len(filteredArgs) {
+					platform = filteredArgs[idx+1]
 					idx++
 				}
 			case "--template":
-				if idx+1 < len(args) {
-					templateName = args[idx+1]
+				if idx+1 < len(filteredArgs) {
+					templateName = filteredArgs[idx+1]
 					idx++
 				}
 			}
 		}
-		switch args[1] {
+		switch filteredArgs[1] {
 		case "render":
-			asset, err := pipeline.Render(context.Background(), args[2], platform, templateName)
+			asset, err := pipeline.Render(context.Background(), filteredArgs[2], platform, templateName)
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
 				return 1
@@ -334,7 +335,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stdout, formatResolvedConfig(asset))
 			return 0
 		case "validate":
-			result, err := pipeline.Validate(context.Background(), args[2], platform, templateName)
+			result, err := pipeline.Validate(context.Background(), filteredArgs[2], platform, templateName)
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
 				return 1
@@ -346,7 +347,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stdout, formatResolvedConfig(result))
 			return 0
 		default:
-			fmt.Fprintf(stderr, "unknown formatting subcommand: %s\n", args[1])
+			fmt.Fprintf(stderr, "unknown formatting subcommand: %s\n", filteredArgs[1])
 			return 2
 		}
 	case "review":
@@ -356,10 +357,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		defer cleanup()
-		reviewer, notes := parseReviewerNotesFlags(args[3:])
-		switch args[1] {
+		reviewer, notes := parseReviewerNotesFlags(filteredArgs[3:])
+		switch filteredArgs[1] {
 		case "approve":
-			review, err := svc.ApproveReview(context.Background(), args[2], reviewer, notes)
+			review, err := svc.ApproveReview(context.Background(), filteredArgs[2], reviewer, notes)
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
 				return 1
@@ -367,7 +368,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stdout, formatResolvedConfig(review))
 			return 0
 		case "reject":
-			review, err := svc.RejectReview(context.Background(), args[2], reviewer, notes)
+			review, err := svc.RejectReview(context.Background(), filteredArgs[2], reviewer, notes)
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
 				return 1
@@ -375,7 +376,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stdout, formatResolvedConfig(review))
 			return 0
 		default:
-			fmt.Fprintf(stderr, "unknown review subcommand: %s\n", args[1])
+			fmt.Fprintf(stderr, "unknown review subcommand: %s\n", filteredArgs[1])
 			return 2
 		}
 	case "publish":
@@ -385,9 +386,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		defer cleanup()
-		switch args[1] {
+		switch filteredArgs[1] {
 		case "run":
-			records, err := svc.PublishReview(context.Background(), args[2])
+			records, err := svc.PublishReview(context.Background(), filteredArgs[2])
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
 				return 1
@@ -395,7 +396,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stdout, formatResolvedConfig(records))
 			return 0
 		case "history":
-			records, err := svc.History(context.Background(), args[2])
+			records, err := svc.History(context.Background(), filteredArgs[2])
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
 				return 1
@@ -403,17 +404,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stdout, formatResolvedConfig(records))
 			return 0
 		default:
-			fmt.Fprintf(stderr, "unknown publish subcommand: %s\n", args[1])
+			fmt.Fprintf(stderr, "unknown publish subcommand: %s\n", filteredArgs[1])
 			return 2
 		}
 	case "rewrite":
-		if len(args) < 3 {
+		if len(filteredArgs) < 3 {
 			fmt.Fprintln(stderr, "missing rewrite target")
 			return 2
 		}
-		switch args[1] {
+		switch filteredArgs[1] {
 		case "run":
-			req, err := parseRewriteRunRequest(args[2:])
+			req, err := parseRewriteRunRequest(filteredArgs[2:])
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
 				return 2
@@ -432,7 +433,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stdout, formatResolvedConfig(result))
 			return 0
 		default:
-			fmt.Fprintf(stderr, "unknown rewrite subcommand: %s\n", args[1])
+			fmt.Fprintf(stderr, "unknown rewrite subcommand: %s\n", filteredArgs[1])
 			return 2
 		}
 	case "automation":
@@ -442,7 +443,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		defer cleanup()
-		switch args[1] {
+		switch filteredArgs[1] {
 		case "run-once":
 			result, err := svc.RunOnce(context.Background())
 			if err != nil {
@@ -492,7 +493,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stdout, formatResolvedConfig(result))
 			return 0
 		default:
-			fmt.Fprintf(stderr, "unknown automation subcommand: %s\n", args[1])
+			fmt.Fprintf(stderr, "unknown automation subcommand: %s\n", filteredArgs[1])
 			return 2
 		}
 	case "rss":
@@ -502,14 +503,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		defer cleanup()
-		switch args[1] {
+		switch filteredArgs[1] {
 		case "subscriptions":
-			if len(args) < 3 {
+			if len(filteredArgs) < 3 {
 				fmt.Fprintln(stderr, "missing rss subscriptions subcommand")
 				return 2
 			}
-			switch args[2] {
+			switch filteredArgs[2] {
 			case "list":
+				if err := parseNoArgs(filteredArgs[3:], "rss list"); err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 2
+				}
 				items, err := svc.ListSubscriptions(context.Background())
 				if err != nil {
 					fmt.Fprintln(stderr, err.Error())
@@ -531,16 +536,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprint(stdout, formatResolvedConfig(created))
 				return 0
 			case "update":
-				if len(args) < 4 {
-					fmt.Fprintln(stderr, "missing rss subscription id")
+				subscriptionID, flagArgs, err := parsePositionalIDAndFlags(filteredArgs[3:], "rss subscription id", "rss update")
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
 					return 2
 				}
-				existing, err := svc.GetSubscription(context.Background(), args[3])
+				existing, err := svc.GetSubscription(context.Background(), subscriptionID)
 				if err != nil {
 					fmt.Fprintln(stderr, err.Error())
 					return 1
 				}
-				updated, err := parseRSSSubscriptionUpdateArgs(existing, args[4:])
+				updated, err := parseRSSSubscriptionUpdateArgs(existing, flagArgs)
 				if err != nil {
 					fmt.Fprintln(stderr, err.Error())
 					return 2
@@ -553,26 +559,36 @@ func run(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprint(stdout, formatResolvedConfig(result))
 				return 0
 			case "remove":
-				if len(args) < 4 {
-					fmt.Fprintln(stderr, "missing rss subscription id")
+				subscriptionID, extraArgs, err := parsePositionalIDAndFlags(filteredArgs[3:], "rss subscription id", "rss remove")
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
 					return 2
 				}
-				if err := svc.DeleteSubscription(context.Background(), args[3]); err != nil {
+				if err := parseNoArgs(extraArgs, "rss remove"); err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 2
+				}
+				if err := svc.DeleteSubscription(context.Background(), subscriptionID); err != nil {
 					fmt.Fprintln(stderr, err.Error())
 					return 1
 				}
 				fmt.Fprint(stdout, formatResolvedConfig(map[string]bool{"deleted": true}))
 				return 0
 			default:
-				fmt.Fprintf(stderr, "unknown rss subscriptions subcommand: %s\n", args[2])
+				fmt.Fprintf(stderr, "unknown rss subscriptions subcommand: %s\n", filteredArgs[2])
 				return 2
 			}
 		case "run":
-			if len(args) < 3 {
-				fmt.Fprintln(stderr, "missing rss subscription id")
+			subscriptionID, extraArgs, err := parsePositionalIDAndFlags(filteredArgs[2:], "rss subscription id", "rss run")
+			if err != nil {
+				fmt.Fprintln(stderr, err.Error())
 				return 2
 			}
-			result, err := svc.RunByID(context.Background(), args[2])
+			if err := parseNoArgs(extraArgs, "rss run"); err != nil {
+				fmt.Fprintln(stderr, err.Error())
+				return 2
+			}
+			result, err := svc.RunByID(context.Background(), subscriptionID)
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
 				return 1
@@ -580,6 +596,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stdout, formatResolvedConfig(result))
 			return 0
 		case "run-all":
+			if err := parseNoArgs(filteredArgs[2:], "rss run-all"); err != nil {
+				fmt.Fprintln(stderr, err.Error())
+				return 2
+			}
 			items, err := svc.RunAll(context.Background())
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
@@ -588,11 +608,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stdout, formatResolvedConfig(items))
 			return 0
 		case "runs":
-			if len(args) < 3 || args[2] != "list" {
-				fmt.Fprintf(stderr, "unknown rss runs subcommand: %s\n", safeArg(args, 2))
+			if len(filteredArgs) < 3 || filteredArgs[2] != "list" {
+				fmt.Fprintf(stderr, "unknown rss runs subcommand: %s\n", safeArg(filteredArgs, 2))
 				return 2
 			}
-			limit, err := parseRSSListLimit(args[3:])
+			limit, err := parseRSSListLimit(filteredArgs[3:])
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
 				return 2
@@ -605,11 +625,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stdout, formatResolvedConfig(items))
 			return 0
 		case "items":
-			if len(args) < 3 || args[2] != "list" {
-				fmt.Fprintf(stderr, "unknown rss items subcommand: %s\n", safeArg(args, 2))
+			if len(filteredArgs) < 3 || filteredArgs[2] != "list" {
+				fmt.Fprintf(stderr, "unknown rss items subcommand: %s\n", safeArg(filteredArgs, 2))
 				return 2
 			}
-			limit, err := parseRSSListLimit(args[3:])
+			limit, err := parseRSSListLimit(filteredArgs[3:])
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
 				return 2
@@ -622,11 +642,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stdout, formatResolvedConfig(items))
 			return 0
 		default:
-			fmt.Fprintf(stderr, "unknown rss subcommand: %s\n", args[1])
+			fmt.Fprintf(stderr, "unknown rss subcommand: %s\n", filteredArgs[1])
 			return 2
 		}
 	default:
-		fmt.Fprintf(stderr, "unknown command: %s\n", args[0])
+		fmt.Fprintf(stderr, "unknown command: %s\n", filteredArgs[0])
 		return 2
 	}
 }
@@ -705,6 +725,53 @@ func parseRewriteRunRequest(args []string) (service.RewriteRunRequest, error) {
 		return service.RewriteRunRequest{}, fmt.Errorf("missing --source")
 	}
 	return req, nil
+}
+
+func extractGlobalRoot(args []string) (string, []string, error) {
+	root := "."
+	filtered := make([]string, 0, len(args))
+	for idx := 0; idx < len(args); idx++ {
+		if args[idx] == "--root" {
+			value, next, err := requireFlagValue(args, idx, "--root")
+			if err != nil {
+				return "", nil, err
+			}
+			root = value
+			idx = next
+			continue
+		}
+		filtered = append(filtered, args[idx])
+	}
+	return root, filtered, nil
+}
+
+func parseNoArgs(args []string, scope string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	return fmt.Errorf("unknown %s flag: %s", scope, args[0])
+}
+
+func parsePositionalIDAndFlags(args []string, missingMessage, scope string) (string, []string, error) {
+	if len(args) == 0 {
+		return "", nil, fmt.Errorf("missing %s", missingMessage)
+	}
+	positionals := make([]string, 0, 1)
+	flags := make([]string, 0, len(args))
+	for idx := 0; idx < len(args); idx++ {
+		if strings.HasPrefix(args[idx], "--") {
+			flags = append(flags, args[idx:]...)
+			break
+		}
+		positionals = append(positionals, strings.TrimSpace(args[idx]))
+	}
+	if len(positionals) == 0 || positionals[0] == "" {
+		return "", nil, fmt.Errorf("missing %s", missingMessage)
+	}
+	if len(positionals) > 1 {
+		return "", nil, fmt.Errorf("unknown %s flag: %s", scope, positionals[1])
+	}
+	return positionals[0], flags, nil
 }
 
 func parseRSSSubscriptionArgs(args []string) (*domain.RSSSubscription, error) {
