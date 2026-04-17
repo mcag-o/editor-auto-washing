@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"time"
 )
 
 type serverRunner interface {
@@ -82,7 +81,7 @@ func run() error {
 	workspaceSvc := service.NewWorkspaceArticleService(runtimeRepos.WorkspaceRepo)
 	reviewSvc := service.NewReviewService(runtimeRepos.ReviewRepo, runtimeRepos.WorkspaceRepo)
 	publishSvc := service.NewPublishGateService(runtimeRepos.ReviewRepo, runtimeRepos.AssetRepo, runtimeRepos.DraftRepo, runtimeRepos.PublishRepo, runtimeRepos.WorkspaceRepo, map[string]service.PublisherProvider{"wechat": runtimePublishProvider{}})
-	collectorRuntime, err := service.BuildCollectorRuntime(context.Background(), runtimeRepos, 30*time.Minute)
+	rssRuntime, err := service.BuildRSSRuntime(runtimeRepos)
 	if err != nil {
 		return err
 	}
@@ -109,23 +108,21 @@ func run() error {
 	}()
 
 	serverProvider := &httpserver.Provider{
-		ContentSvc:         contentSvc,
-		TemplateSvc:        templateSvc,
-		DraftSvc:           draftSvc,
-		FormattingSvc:      formattingSvc,
-		IngestionSvc:       ingestionSvc,
-		AutomationSvc:      automationSvc,
-		WorkspaceSvc:       workspaceSvc,
-		JobSvc:             jobSvc,
-		ReviewSvc:          reviewSvc,
-		PublishSvc:         publishSvc,
-		CollectorSourceSvc: collectorRuntime.RegistryService,
-		CollectorRunSvc:    collectorRuntime.RunService,
-		CollectorScheduler: collectorRuntime.SchedulerService,
-		RewriteRuntime:     rewriteRuntime,
-		WorkflowEngine:     workflowEngine,
-		ConfigLoader:       loader,
-		WorkspaceRoot:      workspaceRoot,
+		ContentSvc:     contentSvc,
+		TemplateSvc:    templateSvc,
+		DraftSvc:       draftSvc,
+		FormattingSvc:  formattingSvc,
+		IngestionSvc:   ingestionSvc,
+		AutomationSvc:  automationSvc,
+		WorkspaceSvc:   workspaceSvc,
+		JobSvc:         jobSvc,
+		ReviewSvc:      reviewSvc,
+		PublishSvc:     publishSvc,
+		RSSRuntime:     rssRuntime,
+		RewriteRuntime: rewriteRuntime,
+		WorkflowEngine: workflowEngine,
+		ConfigLoader:   loader,
+		WorkspaceRoot:  workspaceRoot,
 	}
 
 	server := newHTTPServer(cfg, serverProvider)

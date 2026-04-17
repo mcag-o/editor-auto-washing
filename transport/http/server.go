@@ -25,41 +25,21 @@ type Server struct {
 }
 
 type Provider struct {
-	ContentSvc         *service.ContentService
-	TemplateSvc        *service.TemplateService
-	DraftSvc           *service.DraftService
-	FormattingSvc      *service.FormattingPipelineService
-	IngestionSvc       *service.IngestionPipelineService
-	AutomationSvc      *service.AutomationService
-	WorkspaceSvc       *service.WorkspaceArticleService
-	JobSvc             *service.JobService
-	ReviewSvc          *service.ReviewService
-	PublishSvc         *service.PublishGateService
-	CollectorSourceSvc collectorserviceLikeSource
-	CollectorRunSvc    collectorserviceLikeRun
-	CollectorScheduler collectorserviceLikeScheduler
-	RewriteRuntime     *service.RewriteRuntime
-	WorkflowEngine     *service.WorkflowEngine
-	ConfigLoader       *config.Loader
-	WorkspaceRoot      string
-}
-
-type collectorserviceLikeSource interface {
-	ListSources(ctx context.Context) ([]domain.CollectorSource, error)
-	Health(ctx context.Context) ([]domain.CollectorSourceHealthStatus, error)
-}
-
-type collectorserviceLikeRun interface {
-	ListRuns(ctx context.Context, limit int) ([]domain.CollectorRun, error)
-	GetRun(ctx context.Context, runID string) (*domain.CollectorRunDetail, error)
-}
-
-type collectorserviceLikeScheduler interface {
-	RunOnce(ctx context.Context) (*domain.CollectorRunSummary, error)
-	StartDaemon(ctx context.Context) (*domain.CollectorSchedulerControlResult, error)
-	Status(ctx context.Context) (*domain.CollectorSchedulerStatus, error)
-	Health(ctx context.Context) (*domain.CollectorSchedulerHealthReport, error)
-	Stop(ctx context.Context) (*domain.CollectorSchedulerControlResult, error)
+	ContentSvc     *service.ContentService
+	TemplateSvc    *service.TemplateService
+	DraftSvc       *service.DraftService
+	FormattingSvc  *service.FormattingPipelineService
+	IngestionSvc   *service.IngestionPipelineService
+	AutomationSvc  *service.AutomationService
+	WorkspaceSvc   *service.WorkspaceArticleService
+	JobSvc         *service.JobService
+	ReviewSvc      *service.ReviewService
+	PublishSvc     *service.PublishGateService
+	RSSRuntime     *service.RSSRuntime
+	RewriteRuntime *service.RewriteRuntime
+	WorkflowEngine *service.WorkflowEngine
+	ConfigLoader   *config.Loader
+	WorkspaceRoot  string
 }
 
 func NewServer(cfg config.Config, provider *Provider) *Server {
@@ -89,15 +69,11 @@ func (s *Server) registerRoutes() {
 	templateHandler := handlers.NewTemplateHandler(s.provider.TemplateSvc)
 	draftHandler := handlers.NewDraftHandler(s.provider.DraftSvc)
 	formattingHandler := handlers.NewFormattingHandler(s.provider.FormattingSvc)
-	ingestionHandler := handlers.NewIngestionHandler(s.provider.IngestionSvc)
 	automationHandler := handlers.NewAutomationHandler(s.provider.AutomationSvc, s.provider.WorkspaceRoot)
 	workspaceHandler := handlers.NewWorkspaceHandler(s.provider.WorkspaceSvc)
 	jobHandler := handlers.NewJobHandler(s.provider.JobSvc)
 	reviewHandler := handlers.NewReviewHandler(s.provider.ReviewSvc)
 	publishHandler := handlers.NewPublishHandler(s.provider.PublishSvc)
-	collectorSourcesHandler := handlers.NewCollectorSourcesHandler(s.provider.CollectorSourceSvc)
-	collectorRunsHandler := handlers.NewCollectorRunsHandler(s.provider.CollectorRunSvc)
-	collectorSchedulerHandler := handlers.NewCollectorSchedulerHandler(s.provider.CollectorScheduler)
 	var rewriteRunner interface {
 		Run(context.Context, service.RewriteRunRequest) (*domain.RewritePipelineRun, error)
 	}
@@ -138,14 +114,6 @@ func (s *Server) registerRoutes() {
 
 	s.engine.GET("/assets/:id", formattingHandler.GetAsset)
 
-	ingestion := s.engine.Group("/ingestion")
-	{
-		ingestion.POST("/import", ingestionHandler.Import)
-		ingestion.POST("/retry-failed", ingestionHandler.RetryFailed)
-		ingestion.GET("", ingestionHandler.List)
-		ingestion.GET("/:id", ingestionHandler.Status)
-	}
-
 	automation := s.engine.Group("/automation")
 	{
 		automation.POST("/run-once", automationHandler.RunOnce)
@@ -154,19 +122,6 @@ func (s *Server) registerRoutes() {
 		automation.GET("/status", automationHandler.Status)
 		automation.GET("/health", automationHandler.Health)
 		automation.POST("/stop", automationHandler.Stop)
-	}
-
-	collector := s.engine.Group("/collector")
-	{
-		collector.GET("/sources", collectorSourcesHandler.List)
-		collector.GET("/sources/health", collectorSourcesHandler.Health)
-		collector.GET("/runs", collectorRunsHandler.List)
-		collector.GET("/runs/:id", collectorRunsHandler.Get)
-		collector.POST("/scheduler/run-once", collectorSchedulerHandler.RunOnce)
-		collector.POST("/scheduler/daemon", collectorSchedulerHandler.Daemon)
-		collector.GET("/scheduler/status", collectorSchedulerHandler.Status)
-		collector.GET("/scheduler/health", collectorSchedulerHandler.Health)
-		collector.POST("/scheduler/stop", collectorSchedulerHandler.Stop)
 	}
 
 	workspace := s.engine.Group("/workspace")

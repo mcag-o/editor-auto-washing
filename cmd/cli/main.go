@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	collectorruntime "content-hub/collector/runtime"
 	collectorscheduler "content-hub/collector/scheduler"
 	collectorservice "content-hub/collector/service"
 	"content-hub/domain"
+	"content-hub/infra/config"
 	workspaceinfra "content-hub/infra/workspace"
 	"content-hub/service"
 	"context"
@@ -238,12 +240,21 @@ var runtimeCollectorServiceFactory = func(root string) (collectorCLIService, fun
 	if err != nil {
 		return nil, nil, err
 	}
-	collectorRuntime, err := service.BuildCollectorRuntime(context.Background(), repos, 30*time.Minute)
+	runtimeCfg := config.DefaultConfig()
+	registry, err := collectorservice.NewRegistryFromCollectorConfig(runtimeCfg.Collector)
 	if err != nil {
 		_ = cleanup()
 		return nil, nil, err
 	}
-	return &runtimeCollectorCLIService{registry: collectorRuntime.RegistryService, runs: collectorRuntime.RunService, scheduler: collectorRuntime.SchedulerService, daemonStopTimeout: 5 * time.Second}, cleanup, nil
+	secrets := collectorruntime.NewEnvSecretResolver()
+	registrySvc := collectorservice.NewSourceRegistryServiceWithRuntime(repos.CollectorSourceRepo, registry, runtimeCfg, secrets)
+	if err := registrySvc.Sync(context.Background()); err != nil {
+		_ = cleanup()
+		return nil, nil, err
+	}
+	runSvc := collectorservice.NewRunServiceWithRuntime(repos.CollectorSourceRepo, repos.CollectorRunRepo, repos.CollectorEntryRepo, registry, runtimeCfg, secrets)
+	schedulerSvc := collectorscheduler.NewService(repos.CollectorSchedulerRepo, runSvc, 30*time.Minute)
+	return &runtimeCollectorCLIService{registry: registrySvc, runs: runSvc, scheduler: schedulerSvc, daemonStopTimeout: 5 * time.Second}, cleanup, nil
 }
 
 var collectorDaemonContextFactory = func() (context.Context, context.CancelFunc) {
