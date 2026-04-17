@@ -28,6 +28,9 @@ func TestBuildRSSRuntimeReturnsReadyServices(t *testing.T) {
 	if runtime.ArticleIntakeService == nil || runtime.Scheduler == nil {
 		t.Fatal("expected RSS runtime assembly to expose intake and scheduler")
 	}
+	if runtime.PullRunReader == nil || runtime.ItemReader == nil {
+		t.Fatal("expected RSS runtime assembly to expose run and item readers")
+	}
 	if runtime.Scheduler.subscriptions != runtime.SubscriptionService {
 		t.Fatal("expected scheduler to use runtime subscription service")
 	}
@@ -36,5 +39,11 @@ func TestBuildRSSRuntimeReturnsReadyServices(t *testing.T) {
 	}
 	if runtime.PullService.intake != runtime.ArticleIntakeService {
 		t.Fatal("expected pull service to use runtime article intake service")
+	}
+	if runtime.PullRunReader != repos.RSSPullRunRepo {
+		t.Fatal("expected runtime pull run reader to come from runtime repos")
+	}
+	if runtime.ItemReader != repos.RSSItemRepo {
+		t.Fatal("expected runtime item reader to come from runtime repos")
 	}
 }

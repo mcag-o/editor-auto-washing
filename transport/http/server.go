@@ -96,10 +96,8 @@ func (s *Server) registerRoutes() {
 	if s.provider != nil && s.provider.RSSRuntime != nil {
 		rssSubscriptionSvc = s.provider.RSSRuntime.SubscriptionService
 		rssScheduler = s.provider.RSSRuntime.Scheduler
-		if s.provider.RSSRuntime.PullService != nil {
-			rssRunsReader = s.provider.RSSRuntime.PullService.RunsRepo()
-			rssItems = s.provider.RSSRuntime.PullService.ItemsRepo()
-		}
+		rssRunsReader = s.provider.RSSRuntime.PullRunReader
+		rssItems = s.provider.RSSRuntime.ItemReader
 	}
 	rssSubscriptionsHandler := handlers.NewRSSSubscriptionsHandler(rssSubscriptionSvc)
 	rssRunsHandler := handlers.NewRSSRunsHandler(rssRunsServiceAdapter{scheduler: rssScheduler, runs: rssRunsReader})

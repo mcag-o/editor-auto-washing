@@ -2,6 +2,7 @@ package service
 
 import (
 	"content-hub/domain"
+	"content-hub/pkg/repo"
 	"context"
 	"fmt"
 	"io"
@@ -14,6 +15,8 @@ type RSSRuntime struct {
 	PullService          *RSSPullService
 	ArticleIntakeService *ArticleIntakeService
 	Scheduler            *RSSScheduler
+	PullRunReader        repo.RSSPullRunRepo
+	ItemReader           repo.RSSItemRepo
 }
 
 func BuildRSSRuntime(repos *RuntimeRepos) (*RSSRuntime, error) {
@@ -32,6 +35,8 @@ func BuildRSSRuntime(repos *RuntimeRepos) (*RSSRuntime, error) {
 		PullService:          pullService,
 		ArticleIntakeService: articleIntakeService,
 		Scheduler:            scheduler,
+		PullRunReader:        repos.RSSPullRunRepo,
+		ItemReader:           repos.RSSItemRepo,
 	}, nil
 }
 
