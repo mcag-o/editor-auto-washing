@@ -42,6 +42,14 @@ func NewRSSPullService(feeds RSSFeedFetcher, runs repo.RSSPullRunRepo, items rep
 	return &RSSPullService{feeds: feeds, runs: runs, items: items, intake: intake}
 }
 
+func (s *RSSPullService) RunsRepo() repo.RSSPullRunRepo {
+	return s.runs
+}
+
+func (s *RSSPullService) ItemsRepo() repo.RSSItemRepo {
+	return s.items
+}
+
 func (s *RSSPullService) RunOnce(ctx context.Context, sub domain.RSSSubscription) (*RSSPullResult, error) {
 	if err := s.validate(); err != nil {
 		return nil, err
