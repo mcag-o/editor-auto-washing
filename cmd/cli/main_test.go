@@ -2,9 +2,6 @@ package main
 
 import (
 	"bytes"
-	"content-hub/collector/plugin"
-	"content-hub/collector/scheduler"
-	collectorsvc "content-hub/collector/service"
 	"content-hub/domain"
 	"content-hub/infra/memory"
 	workspaceinfra "content-hub/infra/workspace"
@@ -12,7 +9,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -374,108 +370,117 @@ func TestAutomationCommandsRunOnceDaemonStatusHealthRetryFailedAndStop(t *testin
 	assert.Empty(t, stderr.String())
 }
 
-func TestCollectorCommandsListHealthRunsAndSchedulerOperations(t *testing.T) {
+func TestCLIRSSSubscriptionsListInvokesRuntimeService(t *testing.T) {
 	root := t.TempDir()
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	originalFactory := runtimeCollectorServiceFactory
-	runtimeCollectorServiceFactory = func(root string) (collectorCLIService, func() error, error) {
-		return &cliCollectorServiceStub{}, func() error { return nil }, nil
+	originalFactory := runtimeRSSServiceFactory
+	called := false
+	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
+		return &cliRSSServiceStub{listSubscriptionsFn: func(_ context.Context) ([]domain.RSSSubscription, error) {
+			called = true
+			return []domain.RSSSubscription{{ID: "sub-1", Name: "Daily Feed", FeedURL: "https://example.com/feed.xml", TargetType: "wechat-longform", SourceProfile: "sspai", Enabled: true}}, nil
+		}}, func() error { return nil }, nil
 	}
-	defer func() { runtimeCollectorServiceFactory = originalFactory }()
+	defer func() { runtimeRSSServiceFactory = originalFactory }()
 
-	exitCode := run([]string{"collector", "sources", "list", "--root", root}, stdout, stderr)
+	exitCode := run([]string{"rss", "subscriptions", "list", "--root", root}, stdout, stderr)
 	assert.Equal(t, 0, exitCode)
-	assert.Contains(t, stdout.String(), "baidu")
-	assert.Empty(t, stderr.String())
-
-	stdout.Reset()
-	stderr.Reset()
-	exitCode = run([]string{"collector", "sources", "health", "--root", root}, stdout, stderr)
-	assert.Equal(t, 0, exitCode)
-	assert.Contains(t, stdout.String(), "api reachable")
-
-	stdout.Reset()
-	stderr.Reset()
-	exitCode = run([]string{"collector", "runs", "list", "--root", root}, stdout, stderr)
-	assert.Equal(t, 0, exitCode)
-	assert.Contains(t, stdout.String(), "run-1")
-
-	stdout.Reset()
-	stderr.Reset()
-	exitCode = run([]string{"collector", "scheduler", "run-once", "--root", root}, stdout, stderr)
-	assert.Equal(t, 0, exitCode)
-	assert.Contains(t, stdout.String(), "scheduler_run_once")
-
-	stdout.Reset()
-	stderr.Reset()
-	exitCode = run([]string{"collector", "scheduler", "status", "--root", root}, stdout, stderr)
-	assert.Equal(t, 0, exitCode)
-	assert.Contains(t, stdout.String(), "idle")
-
-	stdout.Reset()
-	stderr.Reset()
-	exitCode = run([]string{"collector", "scheduler", "health", "--root", root}, stdout, stderr)
-	assert.Equal(t, 0, exitCode)
-	assert.Contains(t, stdout.String(), "healthy")
-
-	stdout.Reset()
-	stderr.Reset()
-	exitCode = run([]string{"collector", "scheduler", "stop", "--root", root}, stdout, stderr)
-	assert.Equal(t, 0, exitCode)
-	assert.Contains(t, stdout.String(), "operator request")
+	assert.True(t, called)
+	assert.Contains(t, stdout.String(), "sub-1")
 	assert.Empty(t, stderr.String())
 }
 
-func TestCollectorSchedulerDaemonCommandUsesCancelableContextAndExitsCleanly(t *testing.T) {
+func TestCLIRSSSubscriptionAddInvokesRuntimeService(t *testing.T) {
 	root := t.TempDir()
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	originalFactory := runtimeCollectorServiceFactory
-	originalContextFactory := collectorDaemonContextFactory
-	ctx, cancel := context.WithCancel(context.Background())
-	started := make(chan struct{})
-	finished := make(chan int, 1)
-
-	runtimeCollectorServiceFactory = func(root string) (collectorCLIService, func() error, error) {
-		return &cliBlockingCollectorServiceStub{started: started}, func() error { return nil }, nil
+	originalFactory := runtimeRSSServiceFactory
+	var received *domain.RSSSubscription
+	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
+		return &cliRSSServiceStub{createSubscriptionFn: func(_ context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
+			received = sub
+			return sub, nil
+		}}, func() error { return nil }, nil
 	}
-	collectorDaemonContextFactory = func() (context.Context, context.CancelFunc) {
-		return ctx, cancel
+	defer func() { runtimeRSSServiceFactory = originalFactory }()
+
+	exitCode := run([]string{"rss", "subscriptions", "add", "--name", "Daily Feed", "--feed-url", "https://example.com/feed.xml", "--target", "wechat-longform", "--source", "sspai", "--version", "v2", "--poll-interval", "900", "--enabled", "false", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 0, exitCode)
+	if assert.NotNil(t, received) {
+		assert.Equal(t, "Daily Feed", received.Name)
+		assert.Equal(t, "https://example.com/feed.xml", received.FeedURL)
+		assert.Equal(t, "wechat-longform", received.TargetType)
+		assert.Equal(t, "sspai", received.SourceProfile)
+		assert.Equal(t, "v2", received.RewriteProfileVersion)
+		assert.Equal(t, 900, received.PollIntervalSec)
+		assert.False(t, received.Enabled)
 	}
-	defer func() {
-		runtimeCollectorServiceFactory = originalFactory
-		collectorDaemonContextFactory = originalContextFactory
-	}()
+	assert.Contains(t, stdout.String(), "Daily Feed")
+	assert.Empty(t, stderr.String())
+}
 
-	go func() {
-		finished <- run([]string{"collector", "scheduler", "daemon", "--root", root}, stdout, stderr)
-	}()
+func TestCLIRSSSubscriptionUpdateInvokesRuntimeService(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		t.Fatal("collector scheduler daemon command did not start")
+	originalFactory := runtimeRSSServiceFactory
+	var received *domain.RSSSubscription
+	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
+		return &cliRSSServiceStub{
+			getSubscriptionFn: func(_ context.Context, id string) (*domain.RSSSubscription, error) {
+				return &domain.RSSSubscription{ID: id, Name: "Old Feed", FeedURL: "https://example.com/old.xml", TargetType: "wechat-short", SourceProfile: "old-source", Enabled: true, PollIntervalSec: 3600}, nil
+			},
+			updateSubscriptionFn: func(_ context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
+				received = sub
+				return sub, nil
+			},
+		}, func() error { return nil }, nil
 	}
+	defer func() { runtimeRSSServiceFactory = originalFactory }()
 
-	select {
-	case code := <-finished:
-		t.Fatalf("collector scheduler daemon exited early with code %d", code)
-	case <-time.After(50 * time.Millisecond):
+	exitCode := run([]string{"rss", "subscriptions", "update", "sub-1", "--name", "Updated Feed", "--feed-url", "https://example.com/new.xml", "--target", "wechat-longform", "--source", "sspai", "--version", "v3", "--poll-interval", "1200", "--enabled", "true", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 0, exitCode)
+	if assert.NotNil(t, received) {
+		assert.Equal(t, "sub-1", received.ID)
+		assert.Equal(t, "Updated Feed", received.Name)
+		assert.Equal(t, "https://example.com/new.xml", received.FeedURL)
+		assert.Equal(t, "wechat-longform", received.TargetType)
+		assert.Equal(t, "sspai", received.SourceProfile)
+		assert.Equal(t, "v3", received.RewriteProfileVersion)
+		assert.Equal(t, 1200, received.PollIntervalSec)
+		assert.True(t, received.Enabled)
 	}
+	assert.Contains(t, stdout.String(), "Updated Feed")
+	assert.Empty(t, stderr.String())
+}
 
-	cancel()
+func TestCLIRSSSubscriptionRemoveInvokesRuntimeService(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 
-	select {
-	case code := <-finished:
-		assert.Equal(t, 0, code)
-		assert.Contains(t, stdout.String(), "operator request")
-		assert.Empty(t, stderr.String())
-	case <-time.After(2 * time.Second):
-		t.Fatal("collector scheduler daemon command did not exit after cancellation")
+	originalFactory := runtimeRSSServiceFactory
+	removedID := ""
+	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
+		return &cliRSSServiceStub{deleteSubscriptionFn: func(_ context.Context, id string) error {
+			removedID = id
+			return nil
+		}}, func() error { return nil }, nil
 	}
+	defer func() { runtimeRSSServiceFactory = originalFactory }()
+
+	exitCode := run([]string{"rss", "subscriptions", "remove", "sub-1", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 0, exitCode)
+	assert.Equal(t, "sub-1", removedID)
+	assert.Contains(t, stdout.String(), "deleted: true")
+	assert.Empty(t, stderr.String())
 }
 
 func TestNewCollectorSourceDefaultsDetailFetchDisabled(t *testing.T) {
@@ -531,65 +536,118 @@ func TestRuntimeAutomationCLIServiceRunDaemonBlocksUntilContextStops(t *testing.
 	}
 }
 
-func TestRuntimeCollectorCLIServiceRunDaemonBlocksUntilContextStops(t *testing.T) {
-	provider := memory.NewProvider()
-	registry := plugin.NewRegistry()
-	require.NoError(t, registry.Register(&cliSchedulerSourcePlugin{
-		sourceID:    "cli-scheduler",
-		displayName: "CLI Scheduler",
-		hotlist:     []plugin.HotEntry{{SourceID: "cli-scheduler", ExternalID: "entry-1", Title: "Entry", CanonicalURL: "https://example.com/entry"}},
-	}))
-	registrySvc := collectorsvc.NewSourceRegistryService(provider.CollectorSourceRepo(), registry)
-	require.NoError(t, registrySvc.Sync(t.Context()))
-	runSvc := collectorsvc.NewRunService(provider.CollectorSourceRepo(), provider.CollectorRunRepo(), provider.CollectorEntryRepo(), registry)
-	schedulerSvc := scheduler.NewService(provider.CollectorSchedulerRepo(), runSvc, 10*time.Millisecond)
-	cliSvc := &runtimeCollectorCLIService{registry: registrySvc, runs: runSvc, scheduler: schedulerSvc}
+func TestCLIRSSRunInvokesPullService(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	resultCh := make(chan *domain.CollectorSchedulerControlResult, 1)
-	errCh := make(chan error, 1)
-	go func() {
-		result, err := cliSvc.RunDaemon(ctx)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		resultCh <- result
-	}()
-
-	select {
-	case err := <-errCh:
-		t.Fatalf("unexpected daemon error: %v", err)
-	case <-resultCh:
-		t.Fatal("RunDaemon returned before context cancellation")
-	case <-time.After(50 * time.Millisecond):
+	originalFactory := runtimeRSSServiceFactory
+	runID := ""
+	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
+		return &cliRSSServiceStub{runByIDFn: func(_ context.Context, subscriptionID string) (*service.RSSPullResult, error) {
+			runID = subscriptionID
+			return &service.RSSPullResult{Run: &domain.RSSPullRun{ID: "run-1", SubscriptionID: subscriptionID, Status: domain.RSSPullRunStatusSucceeded}}, nil
+		}}, func() error { return nil }, nil
 	}
+	defer func() { runtimeRSSServiceFactory = originalFactory }()
 
-	cancel()
+	exitCode := run([]string{"rss", "run", "sub-1", "--root", root}, stdout, stderr)
 
-	select {
-	case err := <-errCh:
-		t.Fatalf("unexpected daemon error after cancel: %v", err)
-	case result := <-resultCh:
-		assert.True(t, result.Stopped)
-		assert.Equal(t, domain.CollectorSchedulerStopped, result.State)
-		assert.Equal(t, "operator request", result.Reason)
-	case <-time.After(2 * time.Second):
-		t.Fatal("RunDaemon did not stop after context cancellation")
-	}
+	assert.Equal(t, 0, exitCode)
+	assert.Equal(t, "sub-1", runID)
+	assert.Contains(t, stdout.String(), "run-1")
+	assert.Empty(t, stderr.String())
 }
 
-func TestRuntimeCollectorCLIServiceRunDaemonHonorsCanceledContext(t *testing.T) {
-	cliSvc := &runtimeCollectorCLIService{scheduler: scheduler.NewService(memory.NewProvider().CollectorSchedulerRepo(), newBlockingCollectorRunService(), 10*time.Millisecond)}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+func TestCLIRSSRunAllInvokesScheduler(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 
-	result, err := cliSvc.RunDaemon(ctx)
+	originalFactory := runtimeRSSServiceFactory
+	called := false
+	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
+		return &cliRSSServiceStub{runAllFn: func(_ context.Context) ([]service.RSSScheduledRunResult, error) {
+			called = true
+			return []service.RSSScheduledRunResult{{SubscriptionID: "sub-1", Result: &service.RSSPullResult{Run: &domain.RSSPullRun{ID: "run-1", SubscriptionID: "sub-1", Status: domain.RSSPullRunStatusSucceeded}}}}, nil
+		}}, func() error { return nil }, nil
+	}
+	defer func() { runtimeRSSServiceFactory = originalFactory }()
 
-	require.NoError(t, err)
-	assert.True(t, result.Stopped)
-	assert.Equal(t, domain.CollectorSchedulerStopped, result.State)
+	exitCode := run([]string{"rss", "run-all", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 0, exitCode)
+	assert.True(t, called)
+	assert.Contains(t, stdout.String(), "sub-1")
+	assert.Empty(t, stderr.String())
+}
+
+func TestCLIRSSRunsListInvokesRuntimeServiceWithLimit(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	originalFactory := runtimeRSSServiceFactory
+	receivedLimit := 0
+	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
+		return &cliRSSServiceStub{listRunsFn: func(_ context.Context, limit int) ([]domain.RSSPullRun, error) {
+			receivedLimit = limit
+			return []domain.RSSPullRun{{ID: "run-1", SubscriptionID: "sub-1", Status: domain.RSSPullRunStatusSucceeded}}, nil
+		}}, func() error { return nil }, nil
+	}
+	defer func() { runtimeRSSServiceFactory = originalFactory }()
+
+	exitCode := run([]string{"rss", "runs", "list", "--limit", "5", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 0, exitCode)
+	assert.Equal(t, 5, receivedLimit)
+	assert.Contains(t, stdout.String(), "run-1")
+	assert.Empty(t, stderr.String())
+}
+
+func TestCLIRSSItemsListInvokesRuntimeServiceWithLimit(t *testing.T) {
+	root := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	originalFactory := runtimeRSSServiceFactory
+	receivedLimit := 0
+	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
+		return &cliRSSServiceStub{listItemsFn: func(_ context.Context, limit int) ([]domain.RSSItemRecord, error) {
+			receivedLimit = limit
+			return []domain.RSSItemRecord{{ID: "item-1", SubscriptionID: "sub-1", PullRunID: "run-1", GUID: "guid-1", Title: "RSS Item", Status: domain.RSSItemStatusImported}}, nil
+		}}, func() error { return nil }, nil
+	}
+	defer func() { runtimeRSSServiceFactory = originalFactory }()
+
+	exitCode := run([]string{"rss", "items", "list", "--limit", "7", "--root", root}, stdout, stderr)
+
+	assert.Equal(t, 0, exitCode)
+	assert.Equal(t, 7, receivedLimit)
+	assert.Contains(t, stdout.String(), "item-1")
+	assert.Empty(t, stderr.String())
+}
+
+func TestCLIRSSCommandReplacesLegacyIntakeAndCollectorSurface(t *testing.T) {
+	root := t.TempDir()
+
+	t.Run("ingestion removed", func(t *testing.T) {
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+		exitCode := run([]string{"ingestion", "import", "--root", root}, stdout, stderr)
+		assert.Equal(t, 2, exitCode)
+		assert.Empty(t, stdout.String())
+		assert.Contains(t, stderr.String(), "unknown command: ingestion")
+	})
+
+	t.Run("collector removed", func(t *testing.T) {
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+		exitCode := run([]string{"collector", "sources", "list", "--root", root}, stdout, stderr)
+		assert.Equal(t, 2, exitCode)
+		assert.Empty(t, stdout.String())
+		assert.Contains(t, stderr.String(), "unknown command: collector")
+	})
 }
 
 type cliFormatterServiceStub struct {
@@ -631,37 +689,16 @@ type stubWorkspaceReader struct {
 	err       error
 }
 
-type cliCollectorServiceStub struct{}
-
-type cliBlockingCollectorServiceStub struct {
-	started chan struct{}
-}
-
-type cliSchedulerSourcePlugin struct {
-	sourceID    string
-	displayName string
-	hotlist     []plugin.HotEntry
-}
-
-type blockingCollectorRunService struct {
-	started chan struct{}
-	release chan struct{}
-	once    sync.Once
-}
-
-func newBlockingCollectorRunService() *blockingCollectorRunService {
-	return &blockingCollectorRunService{started: make(chan struct{}), release: make(chan struct{})}
-}
-
-func (s *blockingCollectorRunService) RunHotlist(ctx context.Context, trigger string) (*domain.CollectorRunSummary, error) {
-	s.once.Do(func() { close(s.started) })
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-s.release:
-		now := time.Now().UTC()
-		return &domain.CollectorRunSummary{RunID: "blocking-cli-run", Trigger: trigger, Status: domain.CollectorRunSucceeded, StartedAt: now, CompletedAt: now}, nil
-	}
+type cliRSSServiceStub struct {
+	createSubscriptionFn func(context.Context, *domain.RSSSubscription) (*domain.RSSSubscription, error)
+	getSubscriptionFn    func(context.Context, string) (*domain.RSSSubscription, error)
+	listSubscriptionsFn  func(context.Context) ([]domain.RSSSubscription, error)
+	updateSubscriptionFn func(context.Context, *domain.RSSSubscription) (*domain.RSSSubscription, error)
+	deleteSubscriptionFn func(context.Context, string) error
+	runByIDFn            func(context.Context, string) (*service.RSSPullResult, error)
+	runAllFn             func(context.Context) ([]service.RSSScheduledRunResult, error)
+	listRunsFn           func(context.Context, int) ([]domain.RSSPullRun, error)
+	listItemsFn          func(context.Context, int) ([]domain.RSSItemRecord, error)
 }
 
 func (s *cliReviewPublishServiceStub) ApproveReview(_ context.Context, id, reviewer, notes string) (*domain.ReviewTask, error) {
@@ -732,103 +769,38 @@ func (s stubWorkspaceReader) GetByID(_ context.Context, id string) (*domain.Arti
 	return s.workspace, nil
 }
 
-func (s *cliCollectorServiceStub) ListSources(_ context.Context) ([]domain.CollectorSource, error) {
-	return []domain.CollectorSource{{ID: "baidu", DisplayName: "Baidu Hotlist", Enabled: true}}, nil
+func (s *cliRSSServiceStub) CreateSubscription(ctx context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
+	return s.createSubscriptionFn(ctx, sub)
 }
 
-func (s *cliCollectorServiceStub) HealthSources(_ context.Context) ([]domain.CollectorSourceHealthStatus, error) {
-	return []domain.CollectorSourceHealthStatus{{SourceID: "baidu", DisplayName: "Baidu Hotlist", Enabled: true, Health: domain.CollectorHealthInfo{OK: true, Message: "api reachable", CheckedAt: time.Now().UTC()}}}, nil
+func (s *cliRSSServiceStub) GetSubscription(ctx context.Context, id string) (*domain.RSSSubscription, error) {
+	return s.getSubscriptionFn(ctx, id)
 }
 
-func (s *cliCollectorServiceStub) ListRuns(_ context.Context, limit int) ([]domain.CollectorRun, error) {
-	_ = limit
-	now := time.Now().UTC()
-	return []domain.CollectorRun{{ID: "run-1", Trigger: "manual", Status: domain.CollectorRunSucceeded, CreatedAt: now, UpdatedAt: now}}, nil
+func (s *cliRSSServiceStub) ListSubscriptions(ctx context.Context) ([]domain.RSSSubscription, error) {
+	return s.listSubscriptionsFn(ctx)
 }
 
-func (s *cliCollectorServiceStub) RunOnce(_ context.Context) (*domain.CollectorRunSummary, error) {
-	now := time.Now().UTC()
-	return &domain.CollectorRunSummary{RunID: "run-2", Trigger: "scheduler_run_once", Status: domain.CollectorRunSucceeded, SourceCount: 1, SuccessfulSources: 1, EntryCount: 1, StartedAt: now, CompletedAt: now}, nil
+func (s *cliRSSServiceStub) UpdateSubscription(ctx context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
+	return s.updateSubscriptionFn(ctx, sub)
 }
 
-func (s *cliCollectorServiceStub) RunDaemon(_ context.Context) (*domain.CollectorSchedulerControlResult, error) {
-	return &domain.CollectorSchedulerControlResult{Started: true, Stopped: true, State: domain.CollectorSchedulerStopped, Reason: "operator request", UpdatedAt: time.Now().UTC()}, nil
+func (s *cliRSSServiceStub) DeleteSubscription(ctx context.Context, id string) error {
+	return s.deleteSubscriptionFn(ctx, id)
 }
 
-func (s *cliCollectorServiceStub) SchedulerStatus(_ context.Context) (*domain.CollectorSchedulerStatus, error) {
-	return &domain.CollectorSchedulerStatus{Name: domain.DefaultCollectorSchedulerName, State: domain.CollectorSchedulerIdle, UpdatedAt: time.Now().UTC()}, nil
+func (s *cliRSSServiceStub) RunByID(ctx context.Context, id string) (*service.RSSPullResult, error) {
+	return s.runByIDFn(ctx, id)
 }
 
-func (s *cliCollectorServiceStub) SchedulerHealth(_ context.Context) (*domain.CollectorSchedulerHealthReport, error) {
-	return &domain.CollectorSchedulerHealthReport{Status: "healthy", Checks: map[string]string{"state": domain.CollectorSchedulerIdle}, UpdatedAt: time.Now().UTC()}, nil
+func (s *cliRSSServiceStub) RunAll(ctx context.Context) ([]service.RSSScheduledRunResult, error) {
+	return s.runAllFn(ctx)
 }
 
-func (s *cliCollectorServiceStub) StopDaemon(_ context.Context) (*domain.CollectorSchedulerControlResult, error) {
-	return &domain.CollectorSchedulerControlResult{Stopped: true, State: domain.CollectorSchedulerStopped, Reason: "operator request", UpdatedAt: time.Now().UTC()}, nil
+func (s *cliRSSServiceStub) ListRuns(ctx context.Context, limit int) ([]domain.RSSPullRun, error) {
+	return s.listRunsFn(ctx, limit)
 }
 
-func (s *cliBlockingCollectorServiceStub) ListSources(_ context.Context) ([]domain.CollectorSource, error) {
-	return nil, nil
-}
-
-func (s *cliBlockingCollectorServiceStub) HealthSources(_ context.Context) ([]domain.CollectorSourceHealthStatus, error) {
-	return nil, nil
-}
-
-func (s *cliBlockingCollectorServiceStub) ListRuns(_ context.Context, limit int) ([]domain.CollectorRun, error) {
-	_ = limit
-	return nil, nil
-}
-
-func (s *cliBlockingCollectorServiceStub) RunOnce(_ context.Context) (*domain.CollectorRunSummary, error) {
-	return nil, nil
-}
-
-func (s *cliBlockingCollectorServiceStub) RunDaemon(ctx context.Context) (*domain.CollectorSchedulerControlResult, error) {
-	close(s.started)
-	<-ctx.Done()
-	return &domain.CollectorSchedulerControlResult{Stopped: true, State: domain.CollectorSchedulerStopped, Reason: "operator request", UpdatedAt: time.Now().UTC()}, nil
-}
-
-func (s *cliBlockingCollectorServiceStub) SchedulerStatus(_ context.Context) (*domain.CollectorSchedulerStatus, error) {
-	return nil, nil
-}
-
-func (s *cliBlockingCollectorServiceStub) SchedulerHealth(_ context.Context) (*domain.CollectorSchedulerHealthReport, error) {
-	return nil, nil
-}
-
-func (s *cliBlockingCollectorServiceStub) StopDaemon(_ context.Context) (*domain.CollectorSchedulerControlResult, error) {
-	return nil, nil
-}
-
-func (p *cliSchedulerSourcePlugin) SourceID() string { return p.sourceID }
-
-func (p *cliSchedulerSourcePlugin) DisplayName() string { return p.displayName }
-
-func (p *cliSchedulerSourcePlugin) Aliases() []string { return nil }
-
-func (p *cliSchedulerSourcePlugin) FetchHotlist(_ context.Context, _ plugin.FetchHotlistRequest) ([]plugin.HotEntry, error) {
-	return append([]plugin.HotEntry(nil), p.hotlist...), nil
-}
-
-func (p *cliSchedulerSourcePlugin) FetchArticle(_ context.Context, _ plugin.FetchArticleRequest) (*plugin.RawArticle, error) {
-	return nil, plugin.ErrArticleFetchNotSupported(p.sourceID)
-}
-
-func (p *cliSchedulerSourcePlugin) NormalizeHotEntry(raw any) (plugin.HotEntry, error) {
-	entry, _ := raw.(plugin.HotEntry)
-	return entry, nil
-}
-
-func (p *cliSchedulerSourcePlugin) NormalizeArticle(any) (*plugin.NormalizedArticle, error) {
-	return nil, plugin.ErrArticleFetchNotSupported(p.sourceID)
-}
-
-func (p *cliSchedulerSourcePlugin) HealthCheck(_ context.Context) (plugin.SourceHealth, error) {
-	return plugin.SourceHealth{SourceID: p.sourceID, OK: true, CheckedAt: time.Now().UTC()}, nil
-}
-
-func (p *cliSchedulerSourcePlugin) Capabilities() plugin.SourceCapabilities {
-	return plugin.SourceCapabilities{SupportsHotlist: true, SupportsArticle: false, AuthModes: []string{domain.CollectorAuthModeNone}}
+func (s *cliRSSServiceStub) ListItems(ctx context.Context, limit int) ([]domain.RSSItemRecord, error) {
+	return s.listItemsFn(ctx, limit)
 }

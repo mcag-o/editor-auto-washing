@@ -2,32 +2,19 @@ package main
 
 import (
 	"bytes"
-	collectorruntime "content-hub/collector/runtime"
-	collectorscheduler "content-hub/collector/scheduler"
-	collectorservice "content-hub/collector/service"
 	"content-hub/domain"
-	"content-hub/infra/config"
 	workspaceinfra "content-hub/infra/workspace"
+	"content-hub/pkg/repo"
 	"content-hub/service"
 	"context"
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
+	"strconv"
 	"strings"
-	"syscall"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
-
-var runtimeIngestionServiceFactory = func(root string) (*service.IngestionPipelineService, func() error, error) {
-	repos, cleanup, err := service.BuildRuntimeRepos(root)
-	if err != nil {
-		return nil, nil, err
-	}
-	return service.NewIngestionPipelineService(repos.IngestionRepo, repos.WorkspaceRepo, repos.BundleImportTxStarter, workspaceinfra.NewLoader()), cleanup, nil
-}
 
 type formattingCLIService interface {
 	Render(ctx context.Context, draftID, platform, templateName string) (*domain.RenderedAssetRecord, error)
@@ -63,15 +50,16 @@ type automationCLIService interface {
 	Stop(ctx context.Context) (*domain.AutomationStopResult, error)
 }
 
-type collectorCLIService interface {
-	ListSources(ctx context.Context) ([]domain.CollectorSource, error)
-	HealthSources(ctx context.Context) ([]domain.CollectorSourceHealthStatus, error)
-	ListRuns(ctx context.Context, limit int) ([]domain.CollectorRun, error)
-	RunOnce(ctx context.Context) (*domain.CollectorRunSummary, error)
-	RunDaemon(ctx context.Context) (*domain.CollectorSchedulerControlResult, error)
-	SchedulerStatus(ctx context.Context) (*domain.CollectorSchedulerStatus, error)
-	SchedulerHealth(ctx context.Context) (*domain.CollectorSchedulerHealthReport, error)
-	StopDaemon(ctx context.Context) (*domain.CollectorSchedulerControlResult, error)
+type rssCLIService interface {
+	CreateSubscription(ctx context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error)
+	GetSubscription(ctx context.Context, id string) (*domain.RSSSubscription, error)
+	ListSubscriptions(ctx context.Context) ([]domain.RSSSubscription, error)
+	UpdateSubscription(ctx context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error)
+	DeleteSubscription(ctx context.Context, id string) error
+	RunByID(ctx context.Context, subscriptionID string) (*service.RSSPullResult, error)
+	RunAll(ctx context.Context) ([]service.RSSScheduledRunResult, error)
+	ListRuns(ctx context.Context, limit int) ([]domain.RSSPullRun, error)
+	ListItems(ctx context.Context, limit int) ([]domain.RSSItemRecord, error)
 }
 
 type runtimeReviewPublishService struct {
@@ -185,81 +173,60 @@ var runtimeAutomationServiceFactory = func(root string) (automationCLIService, f
 	return &runtimeAutomationCLIService{root: root, svc: automationSvc}, cleanup, nil
 }
 
-type runtimeCollectorCLIService struct {
-	registry          *collectorservice.SourceRegistryService
-	runs              *collectorservice.RunService
-	scheduler         *collectorscheduler.Service
-	daemonStopTimeout time.Duration
+type runtimeRSSCLIService struct {
+	subscriptions *service.RSSSubscriptionService
+	scheduler     *service.RSSScheduler
+	runs          repo.RSSPullRunRepo
+	items         repo.RSSItemRepo
 }
 
-func (s *runtimeCollectorCLIService) ListSources(ctx context.Context) ([]domain.CollectorSource, error) {
-	return s.registry.ListSources(ctx)
+func (s *runtimeRSSCLIService) CreateSubscription(ctx context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
+	return s.subscriptions.Create(ctx, sub)
 }
 
-func (s *runtimeCollectorCLIService) HealthSources(ctx context.Context) ([]domain.CollectorSourceHealthStatus, error) {
-	return s.registry.Health(ctx)
+func (s *runtimeRSSCLIService) GetSubscription(ctx context.Context, id string) (*domain.RSSSubscription, error) {
+	return s.subscriptions.Get(ctx, id)
 }
 
-func (s *runtimeCollectorCLIService) ListRuns(ctx context.Context, limit int) ([]domain.CollectorRun, error) {
-	return s.runs.ListRuns(ctx, limit)
+func (s *runtimeRSSCLIService) ListSubscriptions(ctx context.Context) ([]domain.RSSSubscription, error) {
+	return s.subscriptions.List(ctx)
 }
 
-func (s *runtimeCollectorCLIService) RunOnce(ctx context.Context) (*domain.CollectorRunSummary, error) {
-	return s.scheduler.RunOnce(ctx)
+func (s *runtimeRSSCLIService) UpdateSubscription(ctx context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
+	return s.subscriptions.Update(ctx, sub)
 }
 
-func (s *runtimeCollectorCLIService) RunDaemon(ctx context.Context) (*domain.CollectorSchedulerControlResult, error) {
-	_, err := s.scheduler.StartDaemon(ctx)
-	if err != nil {
-		return nil, err
-	}
-	<-ctx.Done()
-	stopTimeout := s.daemonStopTimeout
-	if stopTimeout <= 0 {
-		stopTimeout = 5 * time.Second
-	}
-	stopCtx, cancel := context.WithTimeout(context.Background(), stopTimeout)
-	defer cancel()
-	return s.scheduler.Stop(stopCtx)
+func (s *runtimeRSSCLIService) DeleteSubscription(ctx context.Context, id string) error {
+	return s.subscriptions.Delete(ctx, id)
 }
 
-func (s *runtimeCollectorCLIService) SchedulerStatus(ctx context.Context) (*domain.CollectorSchedulerStatus, error) {
-	return s.scheduler.Status(ctx)
+func (s *runtimeRSSCLIService) RunByID(ctx context.Context, subscriptionID string) (*service.RSSPullResult, error) {
+	return s.scheduler.RunByID(ctx, subscriptionID)
 }
 
-func (s *runtimeCollectorCLIService) SchedulerHealth(ctx context.Context) (*domain.CollectorSchedulerHealthReport, error) {
-	return s.scheduler.Health(ctx)
+func (s *runtimeRSSCLIService) RunAll(ctx context.Context) ([]service.RSSScheduledRunResult, error) {
+	return s.scheduler.RunAll(ctx)
 }
 
-func (s *runtimeCollectorCLIService) StopDaemon(ctx context.Context) (*domain.CollectorSchedulerControlResult, error) {
-	return s.scheduler.Stop(ctx)
+func (s *runtimeRSSCLIService) ListRuns(ctx context.Context, limit int) ([]domain.RSSPullRun, error) {
+	return s.runs.List(ctx, limit)
 }
 
-var runtimeCollectorServiceFactory = func(root string) (collectorCLIService, func() error, error) {
+func (s *runtimeRSSCLIService) ListItems(ctx context.Context, limit int) ([]domain.RSSItemRecord, error) {
+	return s.items.List(ctx, limit)
+}
+
+var runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
 	repos, cleanup, err := service.BuildRuntimeRepos(root)
 	if err != nil {
 		return nil, nil, err
 	}
-	runtimeCfg := config.DefaultConfig()
-	registry, err := collectorservice.NewRegistryFromCollectorConfig(runtimeCfg.Collector)
+	rssRuntime, err := service.BuildRSSRuntime(repos)
 	if err != nil {
 		_ = cleanup()
 		return nil, nil, err
 	}
-	secrets := collectorruntime.NewEnvSecretResolver()
-	registrySvc := collectorservice.NewSourceRegistryServiceWithRuntime(repos.CollectorSourceRepo, registry, runtimeCfg, secrets)
-	if err := registrySvc.Sync(context.Background()); err != nil {
-		_ = cleanup()
-		return nil, nil, err
-	}
-	runSvc := collectorservice.NewRunServiceWithRuntime(repos.CollectorSourceRepo, repos.CollectorRunRepo, repos.CollectorEntryRepo, registry, runtimeCfg, secrets)
-	schedulerSvc := collectorscheduler.NewService(repos.CollectorSchedulerRepo, runSvc, 30*time.Minute)
-	return &runtimeCollectorCLIService{registry: registrySvc, runs: runSvc, scheduler: schedulerSvc, daemonStopTimeout: 5 * time.Second}, cleanup, nil
-}
-
-var collectorDaemonContextFactory = func() (context.Context, context.CancelFunc) {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	return ctx, cancel
+	return &runtimeRSSCLIService{subscriptions: rssRuntime.SubscriptionService, scheduler: rssRuntime.Scheduler, runs: rssRuntime.PullRunReader, items: rssRuntime.ItemReader}, cleanup, nil
 }
 
 func main() {
@@ -268,7 +235,7 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: cli workspace <...> | ingestion <import|retry-failed> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> | collector <sources|runs|scheduler> [--root PATH]")
+		fmt.Fprintln(stderr, "usage: cli workspace <...> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> | rss <subscriptions|run|run-all|runs|items> [--root PATH]")
 		return 2
 	}
 	if len(args) < 2 {
@@ -330,29 +297,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "unknown workspace subcommand: %s\n", args[1])
 			return 2
 		}
-	case "ingestion":
-		pipeline, cleanup, err := runtimeIngestionServiceFactory(root)
-		if err != nil {
-			fmt.Fprintln(stderr, err.Error())
-			return 1
-		}
-		defer cleanup()
-		var output any
-		switch args[1] {
-		case "import":
-			output, err = pipeline.ImportIncoming(context.Background(), root)
-		case "retry-failed":
-			output, err = pipeline.RetryFailed(context.Background(), root)
-		default:
-			fmt.Fprintf(stderr, "unknown ingestion subcommand: %s\n", args[1])
-			return 2
-		}
-		if err != nil {
-			fmt.Fprintln(stderr, err.Error())
-			return 1
-		}
-		fmt.Fprint(stdout, formatResolvedConfig(output))
-		return 0
 	case "formatting":
 		if len(args) < 3 {
 			fmt.Fprintf(stderr, "missing formatting target\n")
@@ -551,106 +495,134 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "unknown automation subcommand: %s\n", args[1])
 			return 2
 		}
-	case "collector":
-		svc, cleanup, err := runtimeCollectorServiceFactory(root)
+	case "rss":
+		svc, cleanup, err := runtimeRSSServiceFactory(root)
 		if err != nil {
 			fmt.Fprintln(stderr, err.Error())
 			return 1
 		}
 		defer cleanup()
 		switch args[1] {
-		case "sources":
+		case "subscriptions":
 			if len(args) < 3 {
-				fmt.Fprintln(stderr, "missing collector sources subcommand")
+				fmt.Fprintln(stderr, "missing rss subscriptions subcommand")
 				return 2
 			}
 			switch args[2] {
 			case "list":
-				items, err := svc.ListSources(context.Background())
+				items, err := svc.ListSubscriptions(context.Background())
 				if err != nil {
 					fmt.Fprintln(stderr, err.Error())
 					return 1
 				}
 				fmt.Fprint(stdout, formatResolvedConfig(items))
 				return 0
-			case "health":
-				items, err := svc.HealthSources(context.Background())
+			case "add":
+				sub, err := parseRSSSubscriptionArgs(args[3:])
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 2
+				}
+				created, err := svc.CreateSubscription(context.Background(), sub)
 				if err != nil {
 					fmt.Fprintln(stderr, err.Error())
 					return 1
 				}
-				fmt.Fprint(stdout, formatResolvedConfig(items))
+				fmt.Fprint(stdout, formatResolvedConfig(created))
+				return 0
+			case "update":
+				if len(args) < 4 {
+					fmt.Fprintln(stderr, "missing rss subscription id")
+					return 2
+				}
+				existing, err := svc.GetSubscription(context.Background(), args[3])
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 1
+				}
+				updated, err := parseRSSSubscriptionUpdateArgs(existing, args[4:])
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 2
+				}
+				result, err := svc.UpdateSubscription(context.Background(), updated)
+				if err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 1
+				}
+				fmt.Fprint(stdout, formatResolvedConfig(result))
+				return 0
+			case "remove":
+				if len(args) < 4 {
+					fmt.Fprintln(stderr, "missing rss subscription id")
+					return 2
+				}
+				if err := svc.DeleteSubscription(context.Background(), args[3]); err != nil {
+					fmt.Fprintln(stderr, err.Error())
+					return 1
+				}
+				fmt.Fprint(stdout, formatResolvedConfig(map[string]bool{"deleted": true}))
 				return 0
 			default:
-				fmt.Fprintf(stderr, "unknown collector sources subcommand: %s\n", args[2])
+				fmt.Fprintf(stderr, "unknown rss subscriptions subcommand: %s\n", args[2])
 				return 2
 			}
-		case "runs":
-			if len(args) < 3 || args[2] != "list" {
-				fmt.Fprintf(stderr, "unknown collector runs subcommand: %s\n", safeArg(args, 2))
+		case "run":
+			if len(args) < 3 {
+				fmt.Fprintln(stderr, "missing rss subscription id")
 				return 2
 			}
-			items, err := svc.ListRuns(context.Background(), 20)
+			result, err := svc.RunByID(context.Background(), args[2])
+			if err != nil {
+				fmt.Fprintln(stderr, err.Error())
+				return 1
+			}
+			fmt.Fprint(stdout, formatResolvedConfig(result))
+			return 0
+		case "run-all":
+			items, err := svc.RunAll(context.Background())
 			if err != nil {
 				fmt.Fprintln(stderr, err.Error())
 				return 1
 			}
 			fmt.Fprint(stdout, formatResolvedConfig(items))
 			return 0
-		case "scheduler":
-			if len(args) < 3 {
-				fmt.Fprintln(stderr, "missing collector scheduler subcommand")
+		case "runs":
+			if len(args) < 3 || args[2] != "list" {
+				fmt.Fprintf(stderr, "unknown rss runs subcommand: %s\n", safeArg(args, 2))
 				return 2
 			}
-			switch args[2] {
-			case "run-once":
-				result, err := svc.RunOnce(context.Background())
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 1
-				}
-				fmt.Fprint(stdout, formatResolvedConfig(result))
-				return 0
-			case "daemon":
-				daemonCtx, cancel := collectorDaemonContextFactory()
-				defer cancel()
-				result, err := svc.RunDaemon(daemonCtx)
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 1
-				}
-				fmt.Fprint(stdout, formatResolvedConfig(result))
-				return 0
-			case "status":
-				result, err := svc.SchedulerStatus(context.Background())
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 1
-				}
-				fmt.Fprint(stdout, formatResolvedConfig(result))
-				return 0
-			case "health":
-				result, err := svc.SchedulerHealth(context.Background())
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 1
-				}
-				fmt.Fprint(stdout, formatResolvedConfig(result))
-				return 0
-			case "stop":
-				result, err := svc.StopDaemon(context.Background())
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 1
-				}
-				fmt.Fprint(stdout, formatResolvedConfig(result))
-				return 0
-			default:
-				fmt.Fprintf(stderr, "unknown collector scheduler subcommand: %s\n", args[2])
+			limit, err := parseRSSListLimit(args[3:])
+			if err != nil {
+				fmt.Fprintln(stderr, err.Error())
 				return 2
 			}
+			items, err := svc.ListRuns(context.Background(), limit)
+			if err != nil {
+				fmt.Fprintln(stderr, err.Error())
+				return 1
+			}
+			fmt.Fprint(stdout, formatResolvedConfig(items))
+			return 0
+		case "items":
+			if len(args) < 3 || args[2] != "list" {
+				fmt.Fprintf(stderr, "unknown rss items subcommand: %s\n", safeArg(args, 2))
+				return 2
+			}
+			limit, err := parseRSSListLimit(args[3:])
+			if err != nil {
+				fmt.Fprintln(stderr, err.Error())
+				return 2
+			}
+			items, err := svc.ListItems(context.Background(), limit)
+			if err != nil {
+				fmt.Fprintln(stderr, err.Error())
+				return 1
+			}
+			fmt.Fprint(stdout, formatResolvedConfig(items))
+			return 0
 		default:
-			fmt.Fprintf(stderr, "unknown collector subcommand: %s\n", args[1])
+			fmt.Fprintf(stderr, "unknown rss subcommand: %s\n", args[1])
 			return 2
 		}
 	default:
@@ -733,6 +705,151 @@ func parseRewriteRunRequest(args []string) (service.RewriteRunRequest, error) {
 		return service.RewriteRunRequest{}, fmt.Errorf("missing --source")
 	}
 	return req, nil
+}
+
+func parseRSSSubscriptionArgs(args []string) (*domain.RSSSubscription, error) {
+	sub := domain.NewRSSSubscription("", "", "", "")
+	if err := applyRSSSubscriptionFlags(sub, args); err != nil {
+		return nil, err
+	}
+	if err := sub.Validate(); err != nil {
+		return nil, err
+	}
+	return sub, nil
+}
+
+func parseRSSSubscriptionUpdateArgs(existing *domain.RSSSubscription, args []string) (*domain.RSSSubscription, error) {
+	if existing == nil {
+		return nil, fmt.Errorf("rss subscription is required")
+	}
+	copySub := *existing
+	copySub.Metadata = cloneMap(existing.Metadata)
+	if err := applyRSSSubscriptionFlags(&copySub, args); err != nil {
+		return nil, err
+	}
+	if err := copySub.Validate(); err != nil {
+		return nil, err
+	}
+	return &copySub, nil
+}
+
+func applyRSSSubscriptionFlags(sub *domain.RSSSubscription, args []string) error {
+	for idx := 0; idx < len(args); idx++ {
+		switch args[idx] {
+		case "--name":
+			value, next, err := requireFlagValue(args, idx, "--name")
+			if err != nil {
+				return err
+			}
+			sub.Name = strings.TrimSpace(value)
+			idx = next
+		case "--feed-url":
+			value, next, err := requireFlagValue(args, idx, "--feed-url")
+			if err != nil {
+				return err
+			}
+			sub.FeedURL = strings.TrimSpace(value)
+			idx = next
+		case "--target":
+			value, next, err := requireFlagValue(args, idx, "--target")
+			if err != nil {
+				return err
+			}
+			sub.TargetType = strings.TrimSpace(value)
+			idx = next
+		case "--source":
+			value, next, err := requireFlagValue(args, idx, "--source")
+			if err != nil {
+				return err
+			}
+			sub.SourceProfile = strings.TrimSpace(value)
+			idx = next
+		case "--version":
+			value, next, err := requireFlagValue(args, idx, "--version")
+			if err != nil {
+				return err
+			}
+			sub.RewriteProfileVersion = strings.TrimSpace(value)
+			idx = next
+		case "--poll-interval":
+			value, next, err := requireFlagValue(args, idx, "--poll-interval")
+			if err != nil {
+				return err
+			}
+			parsed, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return fmt.Errorf("invalid value for --poll-interval")
+			}
+			sub.PollIntervalSec = parsed
+			idx = next
+		case "--enabled":
+			value, next, err := requireFlagValue(args, idx, "--enabled")
+			if err != nil {
+				return err
+			}
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return fmt.Errorf("invalid value for --enabled")
+			}
+			sub.Enabled = parsed
+			idx = next
+		case "--root":
+			_, next, err := requireFlagValue(args, idx, "--root")
+			if err != nil {
+				return err
+			}
+			idx = next
+		default:
+			return fmt.Errorf("unknown rss subscription flag: %s", args[idx])
+		}
+	}
+	return nil
+}
+
+func parseRSSListLimit(args []string) (int, error) {
+	limit := 20
+	for idx := 0; idx < len(args); idx++ {
+		switch args[idx] {
+		case "--limit":
+			value, next, err := requireFlagValue(args, idx, "--limit")
+			if err != nil {
+				return 0, err
+			}
+			parsed, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil || parsed <= 0 {
+				return 0, fmt.Errorf("invalid value for --limit")
+			}
+			limit = parsed
+			idx = next
+		case "--root":
+			_, next, err := requireFlagValue(args, idx, "--root")
+			if err != nil {
+				return 0, err
+			}
+			idx = next
+		default:
+			return 0, fmt.Errorf("unknown rss list flag: %s", args[idx])
+		}
+	}
+	return limit, nil
+}
+
+func requireFlagValue(args []string, idx int, flag string) (string, int, error) {
+	if idx+1 >= len(args) || strings.HasPrefix(args[idx+1], "--") {
+		return "", idx, fmt.Errorf("missing value for %s", flag)
+	}
+	return args[idx+1], idx + 1, nil
+}
+
+func cloneMap(src map[string]any) map[string]any {
+	if src == nil {
+		return map[string]any{}
+	}
+	clone := make(map[string]any, len(src))
+	for k, v := range src {
+		clone[k] = v
+	}
+	return clone
 }
 
 func safeArg(args []string, idx int) string {
