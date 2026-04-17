@@ -1,6 +1,6 @@
 # content-hub
 
-> 当前默认主实现（Go 版，仓库根目录），已覆盖工作区配置、Go 内置采集器、结构化排版、审核发布、作业与自动化主链路。
+> 当前默认主实现（Go 版，仓库根目录），已覆盖工作区配置、RSS 订阅拉取、结构化排版、审核发布、作业与自动化主链路。
 
 ---
 
@@ -11,14 +11,14 @@
 当前已经完成的主链路替代范围：
 
 - workspace 驱动配置
-- collector source registry / hotlist run / scheduler control
+- RSS subscription / pull run / item intake
 - article workspace 生命周期
 - 结构化 draft / render / validate / asset persistence
 - review / publish gate / publish history
 - workflow / jobs / automation
 - HTTP API / CLI / 基础 TUI
 
-这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；但 collector 的对外运维面仍以 source registry、run listing、scheduler control 为主，detail fetch 与 bridge 目前主要还是内部服务能力。
+这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；当前对外支持的 intake 路径是 RSS subscription / pull run / item workflow，旧的 collector/ingestion surface 不再作为 active runtime 当前能力。
 
 不包含的承诺：
 
@@ -43,59 +43,25 @@
 - `infra/workspace/loader.go`
 - `infra/workspace/validator.go`
 
-### 2. Ingestion 与文章工作区
+### 2. RSS Intake 与文章工作区
 
-- 导入历史 bundle 文件，并承接 Go collector bridge 创建的 workspace article
-- 处理 `incoming / processed / failed`
-- 持久化 ingestion record
-- 持久化 article workspace record 与状态流转
-- 支持 retry-failed
+- RSS subscription 是当前 active runtime 唯一对外支持的 intake 入口
+- 支持 subscription CRUD、单订阅 pull、批量 pull、pull run 查询、item 查询
+- RSS item intake 会直接创建 workspace article，并进入后续 rewrite / draft / review / publish 主链路
+- article workspace record 与状态流转仍由当前 Go runtime 持久化
 
 相关代码：
 
-- `service/ingestion_pipeline.go`
-- `infra/filesystem/bundle_router.go`
-- `infra/sqlite/ingestion_repo.go`
+- `service/rss_runtime.go`
+- `service/rss_subscription_service.go`
+- `service/rss_scheduler.go`
+- `service/article_intake.go`
+- `infra/sqlite/rss_subscription_repo.go`
+- `infra/sqlite/rss_pull_run_repo.go`
+- `infra/sqlite/rss_item_repo.go`
 - `infra/sqlite/article_workspace_repo.go`
 
-### 2.5. Go Collector 主链路
-
-- 内置 source registry，同步当前 Go 插件到 SQLite source repo
-- 支持 hotlist mainline：source -> run -> source run -> collector entries
-- 内部已实现 detail fetch mainline：entry -> collector article -> fetch attempts
-- 内部已实现 bridge mainline：collector article -> workspace article，且重复 push 幂等
-- 当前对外提供 collector scheduler `run-once / daemon / status / health / stop`
-
-当前默认注册 source：
-
-- `baidu`
-- `bilibili`
-- `github`
-- `stackoverflow`
-- `v2ex`
-- `weibo`
-
-其中当前能力边界是：
-
-- `baidu`、`github`、`v2ex` 已具备 hotlist + detail fetch
-- `bilibili`、`stackoverflow`、`weibo` 当前为 hotlist-only
-- 其余 `Archive/DataCollection/` 历史 source 尚未迁入 Go runtime
-
-需要区分三层语义：
-
-- 已实现的内部服务：`run_service`、`article_fetch_service`、`bridge_service`
-- 当前暴露的运维接口：source list/health、run list/detail、scheduler control
-- 仍待 cutover 完成的事项：detail fetch/bridge 的正式运维入口、按 source 的生产验证、未迁移 source 的迁移与回退编排
-
-相关代码：
-
-- `collector/service/registry.go`
-- `collector/service/run_service.go`
-- `collector/service/article_fetch_service.go`
-- `collector/service/bridge_service.go`
-- `collector/scheduler/service.go`
-- `service/collector_runtime.go`
-- `docs/collector-migration-matrix.md`
+说明：`service/ingestion_pipeline.go` 与 `collector/` 下的实现仍可作为迁移或历史兼容参考存在，但它们不是当前 active runtime 的对外支持入口。
 
 ### 2.6. AI Rewrite Pipeline
 
@@ -207,12 +173,17 @@ go run ./cmd/cli workspace resolve-config --root .
 go run ./cmd/cli workspace doctor --root .
 ```
 
-### Ingestion
+### RSS
 
 ```bash
-go run ./cmd/cli ingestion import --root .
-go run ./cmd/cli ingestion retry-failed --root .
+go run ./cmd/cli rss subscriptions add --name tech --feed-url https://example.com/feed.xml --target wechat-longform --source sspai --root .
+go run ./cmd/cli rss subscriptions list --root .
+go run ./cmd/cli rss subscriptions run <subscription-id> --root .
+go run ./cmd/cli rss runs list --root .
+go run ./cmd/cli rss items list --root .
 ```
+
+说明：RSS CLI 是当前 active runtime 的 intake 入口；旧的 `ingestion ...` 与 `collector ...` CLI 命令不再作为支持中的运行时接口。
 
 ### Formatting
 
@@ -227,7 +198,7 @@ go run ./cmd/cli formatting validate <draft-id> --platform wechat --template dai
 go run ./cmd/cli rewrite run <workspace-article-id> --target wechat-longform --source sspai --root .
 ```
 
-说明：rewrite CLI 会读取 workspace article 元数据，并按 `target + source + version` 解析 rewrite profile；当前 CLI 不提供 `--version` 参数，版本选择走运行时默认值。collector 仍只负责把 source article 导入到 workspace，不负责 rewrite 编排。
+说明：rewrite CLI 会读取 workspace article 元数据，并按 `target + source + version` 解析 rewrite profile；当前 CLI 不提供 `--version` 参数，版本选择走运行时默认值。RSS intake 只负责把 source article 导入到 workspace，不负责 rewrite 编排。
 
 ### Review / Publish
 
@@ -250,23 +221,6 @@ go run ./cmd/cli automation stop --root .
 ```
 
 说明：CLI `automation daemon` 是前台阻塞模式；HTTP 的 `daemon` 是进程内异步启动模式。这是有意保持的“真实语义”。
-
-### Collector
-
-```bash
-go run ./cmd/cli collector sources list --root .
-go run ./cmd/cli collector sources health --root .
-go run ./cmd/cli collector runs list --root .
-go run ./cmd/cli collector scheduler run-once --root .
-go run ./cmd/cli collector scheduler daemon --root .
-go run ./cmd/cli collector scheduler status --root .
-go run ./cmd/cli collector scheduler health --root .
-go run ./cmd/cli collector scheduler stop --root .
-```
-
-说明：当前 collector CLI 暴露的是 source registry、run listing、scheduler control。detail fetch 与 bridge 虽已在运行时内部实现并有集成测试覆盖，但还不是独立的一线运维入口。
-
-补充说明：collector runtime 现在引入了面向 retry、auth 与 source-scoped HTTP 行为的配置层；resolved policy metadata 会在 source sync 时持久化，并用于当前 runtime-aware service path。standalone runtime/LLM 设置已外置到配置中，已实现路径中的 secret ref 也不再硬编码在 active plugin flow 里。
 
 ---
 
@@ -291,12 +245,19 @@ go run ./cmd/cli collector scheduler stop --root .
 - `POST /drafts/:id/validate`
 - `GET /assets/:id`
 
-### Ingestion / Workspace
+### RSS / Workspace
 
-- `POST /ingestion/import`
-- `POST /ingestion/retry-failed`
-- `GET /ingestion`
-- `GET /ingestion/:id`
+- `POST /rss/subscriptions`
+- `GET /rss/subscriptions`
+- `GET /rss/subscriptions/:id`
+- `PUT /rss/subscriptions/:id`
+- `DELETE /rss/subscriptions/:id`
+- `POST /rss/subscriptions/:id/run`
+- `POST /rss/run-all`
+- `GET /rss/runs`
+- `GET /rss/runs/:id`
+- `GET /rss/items`
+- `GET /rss/items/:id`
 - `GET /workspace/articles`
 
 ### Rewrite
@@ -327,19 +288,7 @@ go run ./cmd/cli collector scheduler stop --root .
 - `GET /automation/health`
 - `POST /automation/stop`
 
-### Collector
-
-- `GET /collector/sources`
-- `GET /collector/sources/health`
-- `GET /collector/runs`
-- `GET /collector/runs/:id`
-- `POST /collector/scheduler/run-once`
-- `POST /collector/scheduler/daemon`
-- `GET /collector/scheduler/status`
-- `GET /collector/scheduler/health`
-- `POST /collector/scheduler/stop`
-
-说明：当前 HTTP collector 面向运行状态观测与 scheduler 控制；detail fetch 和 bridge 没有作为独立 HTTP entrypoint 暴露。
+说明：RSS 是当前 active runtime 的 intake HTTP surface；旧的 `/ingestion/*` 与 `/collector/*` 路径不再作为支持中的运行时入口。
 
 ---
 
