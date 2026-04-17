@@ -14,11 +14,33 @@ type RewriteRuntime struct {
 	Orchestrator      *RewriteOrchestrator
 }
 
+type rewriteAssembly struct {
+	promptRegistry    *PromptRegistry
+	profileRegistry   *RewriteProfileRegistry
+	qualityGate       *QualityGateEngine
+	stageExecutor     *RewriteStageExecutor
+	draftMaterializer *DraftMaterializer
+	orchestrator      *RewriteOrchestrator
+}
+
 func BuildRewriteRuntime(repos *RuntimeRepos) (*RewriteRuntime, error) {
 	if repos == nil {
 		return nil, domain.NewInternalErr("rewrite runtime repos are required", nil)
 	}
 
+	assembly := buildRewriteAssembly(repos)
+
+	return &RewriteRuntime{
+		PromptRegistry:    assembly.promptRegistry,
+		ProfileRegistry:   assembly.profileRegistry,
+		QualityGate:       assembly.qualityGate,
+		StageExecutor:     assembly.stageExecutor,
+		DraftMaterializer: assembly.draftMaterializer,
+		Orchestrator:      assembly.orchestrator,
+	}, nil
+}
+
+func buildRewriteAssembly(repos *RuntimeRepos) rewriteAssembly {
 	promptRegistry := NewPromptRegistry(repos.PromptTemplateRepo)
 	profileRegistry := NewRewriteProfileRegistry(repos.RewritePipelineProfileRepo)
 	qualityGate := NewQualityGateEngine()
@@ -26,14 +48,14 @@ func BuildRewriteRuntime(repos *RuntimeRepos) (*RewriteRuntime, error) {
 	draftMaterializer := NewDraftMaterializer(repos.DraftRepo, repos.WorkspaceRepo)
 	orchestrator := NewRewriteOrchestrator(profileRegistry, repos.RewritePipelineRunRepo, repos.RewriteStageRunRepo, repos.WorkspaceRepo, stageExecutor, draftMaterializer)
 
-	return &RewriteRuntime{
-		PromptRegistry:    promptRegistry,
-		ProfileRegistry:   profileRegistry,
-		QualityGate:       qualityGate,
-		StageExecutor:     stageExecutor,
-		DraftMaterializer: draftMaterializer,
-		Orchestrator:      orchestrator,
-	}, nil
+	return rewriteAssembly{
+		promptRegistry:    promptRegistry,
+		profileRegistry:   profileRegistry,
+		qualityGate:       qualityGate,
+		stageExecutor:     stageExecutor,
+		draftMaterializer: draftMaterializer,
+		orchestrator:      orchestrator,
+	}
 }
 
 func rewriteLLMClient(repos *RuntimeRepos) llminfra.Client {
