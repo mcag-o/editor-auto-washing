@@ -50,6 +50,23 @@ func TestRSSSubscriptionsHandler_CreateAndList(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "feed_url")
 }
 
+func TestRSSSubscriptionsHandler_CreateAcceptsExplicitZeroPollInterval(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	svc := &rssSubscriptionsServiceStub{}
+	handler := handlers.NewRSSSubscriptionsHandler(svc)
+	router.POST("/rss/subscriptions", handler.Create)
+
+	req := httptest.NewRequest(http.MethodPost, "/rss/subscriptions", bytes.NewBufferString(`{"name":"Tech Feed","feed_url":"https://example.com/feed.xml","target_type":"wechat-longform","source_profile":"sspai","poll_interval_sec":0}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	require.NotNil(t, svc.lastCreated)
+	assert.Equal(t, 0, svc.lastCreated.PollIntervalSec)
+}
+
 func TestRSSSubscriptionsHandler_GetUpdateDelete(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -84,6 +101,78 @@ func TestRSSSubscriptionsHandler_GetUpdateDelete(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "sub-1", svc.lastDeleteID)
 	assert.Contains(t, w.Body.String(), "deleted")
+}
+
+func TestRSSSubscriptionsHandler_UpdatePreservesPersistedFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	createdAt := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+	lastPulledAt := time.Date(2024, 2, 3, 4, 5, 6, 0, time.UTC)
+	svc := &rssSubscriptionsServiceStub{
+		getResult: &domain.RSSSubscription{
+			ID:                    "sub-1",
+			Name:                  "Existing Feed",
+			FeedURL:               "https://example.com/feed.xml",
+			TargetType:            "wechat-longform",
+			SourceProfile:         "sspai",
+			RewriteProfileVersion: "v1",
+			Enabled:               true,
+			PollIntervalSec:       900,
+			LastPulledAt:          &lastPulledAt,
+			Metadata:              map[string]any{"existing": "value"},
+			CreatedAt:             createdAt,
+			UpdatedAt:             createdAt,
+		},
+	}
+	handler := handlers.NewRSSSubscriptionsHandler(svc)
+	router.PUT("/rss/subscriptions/:id", handler.Update)
+
+	req := httptest.NewRequest(http.MethodPut, "/rss/subscriptions/sub-1", bytes.NewBufferString(`{"name":"Updated Feed","feed_url":"https://example.com/updated.xml","target_type":"wechat-longform","source_profile":"sspai","rewrite_profile_version":"v2","enabled":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "sub-1", svc.lastGetID)
+	require.NotNil(t, svc.lastUpdated)
+	assert.Equal(t, createdAt, svc.lastUpdated.CreatedAt)
+	require.NotNil(t, svc.lastUpdated.LastPulledAt)
+	assert.Equal(t, lastPulledAt, *svc.lastUpdated.LastPulledAt)
+	assert.Equal(t, map[string]any{"existing": "value"}, svc.lastUpdated.Metadata)
+	assert.Equal(t, "sub-1", svc.lastUpdated.ID)
+	assert.Equal(t, "Updated Feed", svc.lastUpdated.Name)
+	assert.Equal(t, "v2", svc.lastUpdated.RewriteProfileVersion)
+	assert.Equal(t, 900, svc.lastUpdated.PollIntervalSec)
+}
+
+func TestRSSSubscriptionsHandler_UpdateAcceptsExplicitZeroPollInterval(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	svc := &rssSubscriptionsServiceStub{
+		getResult: &domain.RSSSubscription{
+			ID:              "sub-1",
+			Name:            "Existing Feed",
+			FeedURL:         "https://example.com/feed.xml",
+			TargetType:      "wechat-longform",
+			SourceProfile:   "sspai",
+			Enabled:         true,
+			PollIntervalSec: 900,
+			Metadata:        map[string]any{"existing": "value"},
+			CreatedAt:       time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC),
+			UpdatedAt:       time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC),
+		},
+	}
+	handler := handlers.NewRSSSubscriptionsHandler(svc)
+	router.PUT("/rss/subscriptions/:id", handler.Update)
+
+	req := httptest.NewRequest(http.MethodPut, "/rss/subscriptions/sub-1", bytes.NewBufferString(`{"name":"Updated Feed","feed_url":"https://example.com/updated.xml","target_type":"wechat-longform","source_profile":"sspai","poll_interval_sec":0}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, svc.lastUpdated)
+	assert.Equal(t, 0, svc.lastUpdated.PollIntervalSec)
 }
 
 func TestRSSSubscriptionsHandler_MapsValidationErrors(t *testing.T) {
@@ -129,6 +218,7 @@ type rssSubscriptionsServiceStub struct {
 	lastCreated  *domain.RSSSubscription
 	lastUpdated  *domain.RSSSubscription
 	createErr    error
+	getResult    *domain.RSSSubscription
 }
 
 func (s *rssSubscriptionsServiceStub) Create(_ context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
@@ -143,6 +233,9 @@ func (s *rssSubscriptionsServiceStub) Create(_ context.Context, sub *domain.RSSS
 
 func (s *rssSubscriptionsServiceStub) Get(_ context.Context, id string) (*domain.RSSSubscription, error) {
 	s.lastGetID = id
+	if s.getResult != nil {
+		return cloneRSSSubscription(s.getResult), nil
+	}
 	now := time.Now().UTC()
 	return &domain.RSSSubscription{ID: id, Name: "Tech Feed", FeedURL: "https://example.com/feed.xml", TargetType: "wechat-longform", SourceProfile: "sspai", Enabled: true, PollIntervalSec: 900, Metadata: map[string]any{}, CreatedAt: now, UpdatedAt: now}, nil
 }

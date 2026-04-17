@@ -31,7 +31,7 @@ type rssSubscriptionRequest struct {
 	SourceProfile         string         `json:"source_profile" binding:"required"`
 	RewriteProfileVersion string         `json:"rewrite_profile_version"`
 	Enabled               *bool          `json:"enabled"`
-	PollIntervalSec       int            `json:"poll_interval_sec"`
+	PollIntervalSec       *int           `json:"poll_interval_sec"`
 	Metadata              map[string]any `json:"metadata"`
 }
 
@@ -52,8 +52,8 @@ func (h *RSSSubscriptionsHandler) Create(c *gin.Context) {
 	if req.Enabled != nil {
 		sub.Enabled = *req.Enabled
 	}
-	if req.PollIntervalSec != 0 {
-		sub.PollIntervalSec = req.PollIntervalSec
+	if req.PollIntervalSec != nil {
+		sub.PollIntervalSec = *req.PollIntervalSec
 	}
 	if req.Metadata != nil {
 		sub.Metadata = req.Metadata
@@ -111,14 +111,26 @@ func (h *RSSSubscriptionsHandler) Update(c *gin.Context) {
 		return
 	}
 
-	sub := domain.NewRSSSubscription(req.Name, req.FeedURL, req.TargetType, req.SourceProfile)
-	sub.ID = c.Param("id")
+	sub, err := h.svc.Get(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		HandleError(c, err)
+		return
+	}
+	if sub == nil {
+		HandleError(c, domain.NewInternalErr("rss subscription service returned nil subscription", nil))
+		return
+	}
+
+	sub.Name = req.Name
+	sub.FeedURL = req.FeedURL
+	sub.TargetType = req.TargetType
+	sub.SourceProfile = req.SourceProfile
 	sub.RewriteProfileVersion = req.RewriteProfileVersion
 	if req.Enabled != nil {
 		sub.Enabled = *req.Enabled
 	}
-	if req.PollIntervalSec != 0 {
-		sub.PollIntervalSec = req.PollIntervalSec
+	if req.PollIntervalSec != nil {
+		sub.PollIntervalSec = *req.PollIntervalSec
 	}
 	if req.Metadata != nil {
 		sub.Metadata = req.Metadata
