@@ -27,7 +27,11 @@ func BuildRSSRuntime(repos *RuntimeRepos) (*RSSRuntime, error) {
 	subscriptionService := NewRSSSubscriptionService(repos.RSSSubscriptionRepo)
 	rewriteAssembly := buildRewriteAssembly(repos)
 	articleIntakeService := NewArticleIntakeService(repos.WorkspaceRepo, rewriteAssembly.orchestrator)
-	pullService := NewRSSPullService(newRSSHTTPFeedFetcher(30*time.Second), repos.RSSPullRunRepo, repos.RSSItemRepo, articleIntakeService)
+	feedFetcher := repos.RSSFeedFetcher
+	if feedFetcher == nil {
+		feedFetcher = newRSSHTTPFeedFetcher(30 * time.Second)
+	}
+	pullService := NewRSSPullService(feedFetcher, repos.RSSPullRunRepo, repos.RSSItemRepo, articleIntakeService)
 	scheduler := NewRSSScheduler(subscriptionService, pullService)
 
 	return &RSSRuntime{

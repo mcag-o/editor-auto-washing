@@ -42,6 +42,7 @@ type RuntimeRepos struct {
 	PromptTemplateRepo         repo.PromptTemplateRepo
 	LLMProfileRepo             repo.LLMProfileRepo
 	LLMClient                  llminfra.Client
+	RSSFeedFetcher             RSSFeedFetcher
 }
 
 func BuildRuntimeRepos(root string) (*RuntimeRepos, func() error, error) {
