@@ -523,7 +523,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprint(stdout, formatResolvedConfig(items))
 				return 0
 			case "add":
-				sub, err := parseRSSSubscriptionArgs(args[3:])
+				sub, err := parseRSSSubscriptionArgs(filteredArgs[3:])
 				if err != nil {
 					fmt.Fprintln(stderr, err.Error())
 					return 2

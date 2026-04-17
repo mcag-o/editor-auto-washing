@@ -435,6 +435,35 @@ func TestCLIRSSSubscriptionAddInvokesRuntimeService(t *testing.T) {
 	assert.Empty(t, stderr.String())
 }
 
+func TestCLIRSSSubscriptionAddParsesFlagsAfterGlobalRootExtraction(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	originalFactory := runtimeRSSServiceFactory
+	var received *domain.RSSSubscription
+	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
+		return &cliRSSServiceStub{createSubscriptionFn: func(_ context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
+			received = sub
+			return sub, nil
+		}}, func() error { return nil }, nil
+	}
+	defer func() { runtimeRSSServiceFactory = originalFactory }()
+
+	exitCode := run([]string{"rss", "subscriptions", "add", "--root", "/tmp", "--name", "Daily Feed", "--feed-url", "https://example.com/feed.xml", "--target", "wechat-longform", "--source", "sspai", "--version", "v2", "--poll-interval", "900", "--enabled", "false"}, stdout, stderr)
+
+	assert.Equal(t, 0, exitCode)
+	if assert.NotNil(t, received) {
+		assert.Equal(t, "Daily Feed", received.Name)
+		assert.Equal(t, "https://example.com/feed.xml", received.FeedURL)
+		assert.Equal(t, "wechat-longform", received.TargetType)
+		assert.Equal(t, "sspai", received.SourceProfile)
+		assert.Equal(t, "v2", received.RewriteProfileVersion)
+		assert.Equal(t, 900, received.PollIntervalSec)
+		assert.False(t, received.Enabled)
+	}
+	assert.Empty(t, stderr.String())
+}
+
 func TestCLIRSSSubscriptionUpdateInvokesRuntimeService(t *testing.T) {
 	root := t.TempDir()
 	stdout := &bytes.Buffer{}
