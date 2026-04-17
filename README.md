@@ -366,9 +366,9 @@ go test ./...
 覆盖范围包括：
 
 - workspace/config
-- collector hotlist/detail/bridge integration
+- RSS subscription/pull/item integration
 - rewrite orchestrator/stage execution/draft materialization
-- ingestion/article workspace
+- article intake/workspace
 - formatting/render/validate/assets
 - review/publish
 - workflow/jobs/automation
@@ -382,8 +382,8 @@ go test ./...
 ## 当前限制与边界
 
 - Go 版已经可以替代 Python 主链路，但不是历史兼容层逐字复刻
-- Go collector 仅覆盖当前已迁移 source；未迁移 source 仍需参考 `docs/collector-migration-matrix.md`
-- collector 内部 detail fetch / bridge 已实现，但正式 cutover 仍需要补足对外操作面与 source-by-source 验证
+- RSS 是当前默认 intake surface；旧的 collector/ingestion HTTP 与 CLI 入口不再受支持
+- 归档项目里的采集/ingestion 文档仍保留历史语义，不代表根目录 Go runtime 的当前对外接口
 - automation daemon 目前是单进程内模型，不是外部 supervisor 模型
 - TUI 范围有意收敛，不覆盖全部 automation 管理面
 - publish provider 当前仍以现有 provider boundary 为主，外部平台能力是否完整取决于具体 provider 实现
@@ -432,4 +432,5 @@ go test ./...
 
 - 已完成对 `Archive/ArticleWashing/`（Python 版）的主链路功能等价替代
 - 可以作为当前默认主实现使用
-- Go collector 已具备内部主链路验证基础，剩余事项集中在对外运维入口补齐、source-by-source 迁移验证与生产切换编排
+- 根目录 Go runtime 当前以 RSS 作为默认 intake 主路径
+- 旧的 collector/ingestion surface 已从 active runtime 对外接口集合中移除

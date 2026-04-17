@@ -5,6 +5,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 ## Repository Shape
 
 - Active project: repo root Go module `content-hub`
+- Active documented intake path: RSS subscription and pull surfaces in the root Go runtime
 - Archived reference projects:
   - `Archive/ArticleWashing/` - legacy Python content-hub implementation
   - `Archive/DataCollection/` - legacy Node.js collector implementation
@@ -22,6 +23,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 
 - Assume repo root is the default working project unless the task explicitly points into `Archive/`.
 - Do not treat archived docs as source of truth for current commands, APIs, or architecture.
+- Treat RSS as the supported active-runtime intake path; do not present legacy collector/ingestion HTTP or CLI surfaces as current supported entrypoints unless the task explicitly targets historical behavior.
 - Preserve Chinese user-facing documentation where it already exists; bilingual docs are normal here.
 - Prefer minimal, local edits over wide migration-era cleanup unless the task explicitly asks for broader normalization.
 - When touching path-sensitive docs or metadata, check whether the target should reference root runtime code or archived legacy code.
@@ -40,6 +42,9 @@ Run from repository root.
 - Run server: `go run ./cmd/server`
 - Run CLI: `go run ./cmd/cli`
 - Run TUI: `go run ./cmd/tui --api http://localhost:8080`
+- RSS/rewrite transport verification: `go test ./transport/http/... -run 'TestRSS|TestRewrite'`
+- RSS/rewrite CLI verification: `go test ./cmd/cli -run 'TestCLIRSS|TestCLIRewrite'`
+- RSS/rewrite integration verification: `go test ./integration -run 'TestRSSPullMainlineCreatesWorkspaceAndDraft|TestRewritePipelineMainlineMaterializesDraft'`
 - Run all tests: `go test ./...`
 - Run all tests with race and coverage: `make test`
 - Run one package: `go test ./collector/service`
