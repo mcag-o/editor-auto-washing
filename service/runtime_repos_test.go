@@ -50,3 +50,23 @@ func TestBuildRuntimeReposExposesRSSRepos(t *testing.T) {
 		t.Fatal("expected RSSItemRepo to be wired")
 	}
 }
+
+func TestBuildRuntimeReposExposesFolderIntakeRepos(t *testing.T) {
+	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
+	if cleanup != nil {
+		defer func() {
+			if closeErr := cleanup(); closeErr != nil {
+				t.Fatalf("cleanup returned error: %v", closeErr)
+			}
+		}()
+	}
+	if err != nil {
+		t.Fatalf("BuildRuntimeRepos returned error: %v", err)
+	}
+	if repos.SourceDocumentRepo == nil {
+		t.Fatal("expected SourceDocumentRepo to be wired")
+	}
+	if repos.ImportRunRepo == nil {
+		t.Fatal("expected ImportRunRepo to be wired")
+	}
+}

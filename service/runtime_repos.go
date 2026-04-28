@@ -39,6 +39,8 @@ type RuntimeRepos struct {
 	RSSSubscriptionRepo        repo.RSSSubscriptionRepo
 	RSSPullRunRepo             repo.RSSPullRunRepo
 	RSSItemRepo                repo.RSSItemRepo
+	SourceDocumentRepo         repo.SourceDocumentRepo
+	ImportRunRepo              repo.ImportRunRepo
 	PromptTemplateRepo         repo.PromptTemplateRepo
 	LLMProfileRepo             repo.LLMProfileRepo
 	LLMClient                  llminfra.Client
@@ -108,6 +110,8 @@ func buildRuntimeReposFromResolved(runtimeCfg config.Config, renderedDir string,
 		RSSSubscriptionRepo:        sqliteProvider.RSSSubscriptionRepo(),
 		RSSPullRunRepo:             sqliteProvider.RSSPullRunRepo(),
 		RSSItemRepo:                sqliteProvider.RSSItemRepo(),
+		SourceDocumentRepo:         sqliteProvider.SourceDocumentRepo(),
+		ImportRunRepo:              sqliteProvider.ImportRunRepo(),
 		PromptTemplateRepo:         sqliteProvider.PromptTemplateRepo(),
 		LLMProfileRepo:             sqliteProvider.LLMProfileRepo(),
 		LLMClient:                  llminfra.NewProvider(runtimeCfg.LLM.BaseURL, runtimeCfg.LLM.APIKey, runtimeCfg.LLM.Model, time.Duration(runtimeCfg.LLM.TimeoutSec)*time.Second),
