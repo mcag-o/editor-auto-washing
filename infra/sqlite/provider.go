@@ -35,6 +35,8 @@ type Provider struct {
 	rewritePipelineProfileRepo  repo.RewritePipelineProfileRepo
 	rewritePipelineRunRepo      repo.RewritePipelineRunRepo
 	rewriteStageRunRepo         repo.RewriteStageRunRepo
+	sourceDocumentRepo          repo.SourceDocumentRepo
+	importRunRepo               repo.ImportRunRepo
 	rssSubscriptionRepo         repo.RSSSubscriptionRepo
 	rssPullRunRepo              repo.RSSPullRunRepo
 	rssItemRepo                 repo.RSSItemRepo
@@ -87,6 +89,8 @@ func NewProvider(dbPath string) (*Provider, error) {
 	p.rewritePipelineProfileRepo = &rewritePipelineProfileRepo{db: db}
 	p.rewritePipelineRunRepo = &rewritePipelineRunRepo{db: db}
 	p.rewriteStageRunRepo = &rewriteStageRunRepo{db: db}
+	p.sourceDocumentRepo = &sourceDocumentRepo{db: db}
+	p.importRunRepo = &importRunRepo{db: db}
 	p.rssSubscriptionRepo = &rssSubscriptionRepo{db: db}
 	p.rssPullRunRepo = &rssPullRunRepo{db: db}
 	p.rssItemRepo = &rssItemRepo{db: db}
@@ -178,6 +182,14 @@ func (p *Provider) RewritePipelineRunRepo() repo.RewritePipelineRunRepo {
 
 func (p *Provider) RewriteStageRunRepo() repo.RewriteStageRunRepo {
 	return p.rewriteStageRunRepo
+}
+
+func (p *Provider) SourceDocumentRepo() repo.SourceDocumentRepo {
+	return p.sourceDocumentRepo
+}
+
+func (p *Provider) ImportRunRepo() repo.ImportRunRepo {
+	return p.importRunRepo
 }
 
 func (p *Provider) RSSSubscriptionRepo() repo.RSSSubscriptionRepo {

@@ -1,0 +1,110 @@
+package sqlite
+
+import (
+	"content-hub/domain"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestProviderExposesFolderIntakeRepos(t *testing.T) {
+	provider := newRuntimeProvider(t)
+
+	require.NotNil(t, provider.SourceDocumentRepo())
+	require.NotNil(t, provider.ImportRunRepo())
+}
+
+func TestSourceDocumentRepoCreateAndFindByHash(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	doc := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-1")
+	doc.Status = domain.SourceDocumentStatusPending
+
+	require.NoError(t, provider.SourceDocumentRepo().Create(t.Context(), doc))
+
+	stored, err := provider.SourceDocumentRepo().FindByHash(t.Context(), "hash-1")
+	require.NoError(t, err)
+	require.Equal(t, doc.ID, stored.ID)
+	require.Equal(t, doc.OriginalFilename, stored.OriginalFilename)
+	require.Equal(t, doc.OriginalPath, stored.OriginalPath)
+	require.Equal(t, doc.FileType, stored.FileType)
+	require.Equal(t, doc.Title, stored.Title)
+	require.Equal(t, doc.Body, stored.Body)
+	require.Equal(t, doc.Status, stored.Status)
+	require.Equal(t, doc.Metadata, stored.Metadata)
+}
+
+func TestSourceDocumentRepoClaimPending(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	pending := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-1")
+	pending.Status = domain.SourceDocumentStatusPending
+	other := domain.NewSourceDocument("other.md", "/inbox/other.md", "md", "Other", "Body", "hash-2")
+	other.Status = domain.SourceDocumentStatusCompleted
+	completedAt := time.Now().UTC().Truncate(time.Second)
+	other.CompletedAt = &completedAt
+
+	require.NoError(t, provider.SourceDocumentRepo().Create(t.Context(), pending))
+	require.NoError(t, provider.SourceDocumentRepo().Create(t.Context(), other))
+
+	claimedAt := time.Now().UTC().Truncate(time.Second)
+	claimed, err := provider.SourceDocumentRepo().ClaimPending(t.Context(), 1, "worker-1", claimedAt)
+	require.NoError(t, err)
+	require.Len(t, claimed, 1)
+	require.Equal(t, pending.ID, claimed[0].ID)
+	require.Equal(t, domain.SourceDocumentStatusClaimed, claimed[0].Status)
+	require.Equal(t, "worker-1", claimed[0].ClaimedBy)
+	require.NotNil(t, claimed[0].ClaimedAt)
+	require.True(t, claimed[0].ClaimedAt.Equal(claimedAt))
+
+	stored, err := provider.SourceDocumentRepo().GetByID(t.Context(), pending.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.SourceDocumentStatusClaimed, stored.Status)
+	require.Equal(t, "worker-1", stored.ClaimedBy)
+	require.NotNil(t, stored.ClaimedAt)
+	require.True(t, stored.ClaimedAt.Equal(claimedAt))
+
+	remaining, err := provider.SourceDocumentRepo().ListByStatus(t.Context(), domain.SourceDocumentStatusPending, 10)
+	require.NoError(t, err)
+	require.Empty(t, remaining)
+	completed, err := provider.SourceDocumentRepo().ListByStatus(t.Context(), domain.SourceDocumentStatusCompleted, 10)
+	require.NoError(t, err)
+	require.Len(t, completed, 1)
+	require.Equal(t, other.ID, completed[0].ID)
+}
+
+func TestImportRunRepoCreateUpdateAndList(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	run := domain.NewImportRun("folder")
+	run.Metadata = map[string]any{"batch": "nightly"}
+
+	require.NoError(t, provider.ImportRunRepo().Create(t.Context(), run))
+
+	stored, err := provider.ImportRunRepo().GetByID(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Equal(t, run.ID, stored.ID)
+	require.Equal(t, run.SourceType, stored.SourceType)
+	require.Equal(t, run.Status, stored.Status)
+	require.Equal(t, "nightly", stored.Metadata["batch"])
+
+	completedAt := run.StartedAt.Add(2 * time.Minute)
+	run.Status = domain.ImportRunStatusCompleted
+	run.ImportedCount = 3
+	run.FailedCount = 1
+	run.CompletedAt = &completedAt
+	run.Metadata["result"] = "ok"
+	require.NoError(t, provider.ImportRunRepo().Update(t.Context(), run))
+
+	updated, err := provider.ImportRunRepo().GetByID(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.ImportRunStatusCompleted, updated.Status)
+	require.Equal(t, 3, updated.ImportedCount)
+	require.Equal(t, 1, updated.FailedCount)
+	require.NotNil(t, updated.CompletedAt)
+	require.True(t, updated.CompletedAt.Equal(completedAt))
+	require.Equal(t, "ok", updated.Metadata["result"])
+
+	runs, err := provider.ImportRunRepo().List(t.Context(), 10)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	require.Equal(t, run.ID, runs[0].ID)
+}
