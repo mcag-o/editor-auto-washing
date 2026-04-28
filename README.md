@@ -182,7 +182,7 @@ go run ./cmd/cli rss runs list --root .
 go run ./cmd/cli rss items list --root .
 ```
 
-说明：RSS CLI 是当前 active runtime 的 intake 入口；旧的 `ingestion ...` 与 `collector ...` CLI 命令不再作为支持中的运行时接口。
+说明：RSS CLI 仍可作为补充入口存在，但不是当前 active runtime 的默认 intake 入口；默认 intake 路径是 folder intake / source document workflow，默认自动处理结果停在 draft + render。旧的 `ingestion ...` 与 `collector ...` CLI 命令不再作为支持中的运行时接口。
 
 ### Formatting
 

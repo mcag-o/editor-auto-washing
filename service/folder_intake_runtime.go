@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const defaultFolderIntakeRenderPlatform = "wechat"
+
 type SourceDocumentParser func(path string) (*ParsedSourceDocument, error)
 
 type FolderIntakeConfig struct {
@@ -95,14 +97,6 @@ func BuildFolderIntakeConfigFromWorkspace(resolved domain.ResolvedWorkspaceSetti
 	if strings.TrimSpace(articleProfile.Template) == "" {
 		return FolderIntakeConfig{}, fmt.Errorf("article profile %s is missing template", articleProfileName)
 	}
-	publishProfileName := strings.TrimSpace(resolved.Workspace.DefaultPublishProfile)
-	publishProfile, ok := resolved.Workspace.PublishProfiles[publishProfileName]
-	if !ok {
-		return FolderIntakeConfig{}, fmt.Errorf("missing publish profile: %s", publishProfileName)
-	}
-	if strings.TrimSpace(publishProfile.Platform) == "" {
-		return FolderIntakeConfig{}, fmt.Errorf("publish profile %s is missing platform", publishProfileName)
-	}
 
 	return FolderIntakeConfig{
 		WatchDir:              resolved.Paths.IncomingDir,
@@ -110,7 +104,7 @@ func BuildFolderIntakeConfigFromWorkspace(resolved domain.ResolvedWorkspaceSetti
 		Concurrency:           resolved.Workspace.Collector.GlobalConcurrency,
 		TargetType:            "wechat-longform",
 		SourceProfile:         "folder-default",
-		RenderPlatform:        strings.TrimSpace(publishProfile.Platform),
+		RenderPlatform:        defaultFolderIntakeRenderPlatform,
 		RewriteProfileVersion: "v1",
 	}, nil
 }

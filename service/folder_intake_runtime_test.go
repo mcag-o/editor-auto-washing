@@ -98,12 +98,8 @@ func TestBuildFolderIntakeConfigFromWorkspaceProvidesDefaultProcessingMetadata(t
 		},
 		Workspace: domain.WorkspaceSettings{
 			DefaultArticleProfile: "wechat-daily",
-			DefaultPublishProfile: "wechat-review",
 			ArticleProfiles: map[string]domain.ArticleProfile{
 				"wechat-daily": {Template: "daily-intelligence"},
-			},
-			PublishProfiles: map[string]domain.PublishProfile{
-				"wechat-review": {Platform: "wechat"},
 			},
 			Collector: domain.CollectorPolicy{GlobalConcurrency: 4},
 		},
@@ -117,6 +113,7 @@ func TestBuildFolderIntakeConfigFromWorkspaceProvidesDefaultProcessingMetadata(t
 	require.Equal(t, 4, cfg.Concurrency)
 	require.Equal(t, "wechat-longform", cfg.TargetType)
 	require.Equal(t, "folder-default", cfg.SourceProfile)
+	require.NotEmpty(t, cfg.RenderPlatform)
 	require.Equal(t, "wechat", cfg.RenderPlatform)
 	require.Equal(t, "v1", cfg.RewriteProfileVersion)
 }
