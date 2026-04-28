@@ -82,8 +82,17 @@ func parseJSONDocument(path string) (*ParsedSourceDocument, error) {
 		return nil, domain.NewValidationErr("decode source document json", err)
 	}
 
+	if strings.TrimSpace(payload.Content) == "" {
+		return nil, domain.NewValidationErr("source document content is required", nil)
+	}
+
+	title := strings.TrimSpace(payload.Title)
+	if title == "" {
+		title = fallbackTitle(path)
+	}
+
 	return &ParsedSourceDocument{
-		Title:   strings.TrimSpace(payload.Title),
+		Title:   title,
 		Body:    payload.Content,
 		Summary: strings.TrimSpace(payload.Summary),
 		Tags:    normalizeTags(payload.Tags),

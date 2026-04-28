@@ -48,6 +48,54 @@ func TestParseJSONExtractsStructuredFields(t *testing.T) {
 	require.Equal(t, []string{"a", "b"}, parsed.Tags)
 }
 
+func TestParseJSONMissingContentFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "article.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"title":"Title"}`), 0o644))
+
+	parsed, err := ParseSourceDocument(path)
+
+	require.Nil(t, parsed)
+	appErr, ok := err.(*domain.AppError)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrValidation, appErr.Code)
+	require.ErrorContains(t, err, "source document content is required")
+}
+
+func TestParseJSONWhitespaceOnlyContentFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "article.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"title":"Title","content":"   \n\t  "}`), 0o644))
+
+	parsed, err := ParseSourceDocument(path)
+
+	require.Nil(t, parsed)
+	appErr, ok := err.(*domain.AppError)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrValidation, appErr.Code)
+	require.ErrorContains(t, err, "source document content is required")
+}
+
+func TestParseJSONMissingTitleFallsBackToFilename(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "article.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"content":"Body"}`), 0o644))
+
+	parsed, err := ParseSourceDocument(path)
+
+	require.NoError(t, err)
+	require.Equal(t, "article", parsed.Title)
+	require.Equal(t, "Body", parsed.Body)
+}
+
+func TestParseJSONWhitespaceOnlyTitleFallsBackToFilename(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "article.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"title":"   \n\t  ","content":"Body"}`), 0o644))
+
+	parsed, err := ParseSourceDocument(path)
+
+	require.NoError(t, err)
+	require.Equal(t, "article", parsed.Title)
+	require.Equal(t, "Body", parsed.Body)
+}
+
 func TestParseDOCXExtractsPlainText(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "report.docx")
 	require.NoError(t, os.WriteFile(path, buildDOCXFixture(t, []string{"Docx Title", "Docx body text"}), 0o644))
