@@ -485,11 +485,12 @@ func NewRuntimeAutomationService(root string) (*AutomationService, func() error,
 		_ = cleanup()
 		return nil, nil, err
 	}
-	folderRuntime, err := BuildFolderIntakeRuntime(repos, FolderIntakeConfig{
-		WatchDir:    resolved.Paths.IncomingDir,
-		ArchiveDir:  resolved.Paths.ProcessedDir,
-		Concurrency: resolved.Workspace.Collector.GlobalConcurrency,
-	})
+	folderCfg, err := BuildFolderIntakeConfigFromWorkspace(resolved)
+	if err != nil {
+		_ = cleanup()
+		return nil, nil, err
+	}
+	folderRuntime, err := BuildFolderIntakeRuntime(repos, folderCfg)
 	if err != nil {
 		_ = cleanup()
 		return nil, nil, err

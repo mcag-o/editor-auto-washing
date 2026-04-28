@@ -3,6 +3,7 @@ package service
 import (
 	"content-hub/domain"
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -82,6 +83,35 @@ func BuildFolderIntakeRuntime(repos *RuntimeRepos, cfg FolderIntakeConfig) (*Fol
 		Scheduler:          scheduler,
 		SourceDocumentRepo: repos.SourceDocumentRepo,
 		ImportRunRepo:      repos.ImportRunRepo,
+	}, nil
+}
+
+func BuildFolderIntakeConfigFromWorkspace(resolved domain.ResolvedWorkspaceSettings) (FolderIntakeConfig, error) {
+	articleProfileName := strings.TrimSpace(resolved.Workspace.DefaultArticleProfile)
+	articleProfile, ok := resolved.Workspace.ArticleProfiles[articleProfileName]
+	if !ok {
+		return FolderIntakeConfig{}, fmt.Errorf("missing article profile: %s", articleProfileName)
+	}
+	if strings.TrimSpace(articleProfile.Template) == "" {
+		return FolderIntakeConfig{}, fmt.Errorf("article profile %s is missing template", articleProfileName)
+	}
+	publishProfileName := strings.TrimSpace(resolved.Workspace.DefaultPublishProfile)
+	publishProfile, ok := resolved.Workspace.PublishProfiles[publishProfileName]
+	if !ok {
+		return FolderIntakeConfig{}, fmt.Errorf("missing publish profile: %s", publishProfileName)
+	}
+	if strings.TrimSpace(publishProfile.Platform) == "" {
+		return FolderIntakeConfig{}, fmt.Errorf("publish profile %s is missing platform", publishProfileName)
+	}
+
+	return FolderIntakeConfig{
+		WatchDir:              resolved.Paths.IncomingDir,
+		ArchiveDir:            resolved.Paths.ProcessedDir,
+		Concurrency:           resolved.Workspace.Collector.GlobalConcurrency,
+		TargetType:            "wechat-longform",
+		SourceProfile:         "folder-default",
+		RenderPlatform:        strings.TrimSpace(publishProfile.Platform),
+		RewriteProfileVersion: "v1",
 	}, nil
 }
 

@@ -1,6 +1,11 @@
 package service
 
-import "testing"
+import (
+	"content-hub/domain"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestBuildFolderIntakeRuntimeFailsWhenConfigMissing(t *testing.T) {
 	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
@@ -83,4 +88,35 @@ func TestBuildFolderIntakeRuntimeReturnsReadyServicesWithExplicitConfig(t *testi
 	if runtime.Worker.rewrite == nil || runtime.Worker.render == nil {
 		t.Fatal("expected worker rewrite and render dependencies to be configured")
 	}
+}
+
+func TestBuildFolderIntakeConfigFromWorkspaceProvidesDefaultProcessingMetadata(t *testing.T) {
+	resolved := domain.ResolvedWorkspaceSettings{
+		Paths: domain.ResolvedWorkspacePaths{
+			IncomingDir:  "/tmp/incoming",
+			ProcessedDir: "/tmp/incoming/processed",
+		},
+		Workspace: domain.WorkspaceSettings{
+			DefaultArticleProfile: "wechat-daily",
+			DefaultPublishProfile: "wechat-review",
+			ArticleProfiles: map[string]domain.ArticleProfile{
+				"wechat-daily": {Template: "daily-intelligence"},
+			},
+			PublishProfiles: map[string]domain.PublishProfile{
+				"wechat-review": {Platform: "wechat"},
+			},
+			Collector: domain.CollectorPolicy{GlobalConcurrency: 4},
+		},
+	}
+
+	cfg, err := BuildFolderIntakeConfigFromWorkspace(resolved)
+
+	require.NoError(t, err)
+	require.Equal(t, "/tmp/incoming", cfg.WatchDir)
+	require.Equal(t, "/tmp/incoming/processed", cfg.ArchiveDir)
+	require.Equal(t, 4, cfg.Concurrency)
+	require.Equal(t, "wechat-longform", cfg.TargetType)
+	require.Equal(t, "folder-default", cfg.SourceProfile)
+	require.Equal(t, "wechat", cfg.RenderPlatform)
+	require.Equal(t, "v1", cfg.RewriteProfileVersion)
 }

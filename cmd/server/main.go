@@ -88,11 +88,11 @@ func run() error {
 		if resolveErr != nil {
 			return fmt.Errorf("resolve workspace config: %w", resolveErr)
 		}
-		folderIntakeRuntime, err = service.BuildFolderIntakeRuntime(runtimeRepos, service.FolderIntakeConfig{
-			WatchDir:    resolvedWorkspace.Paths.IncomingDir,
-			ArchiveDir:  filepath.Join(resolvedWorkspace.Paths.IncomingDir, "processed"),
-			Concurrency: resolvedWorkspace.Workspace.Collector.GlobalConcurrency,
-		})
+		folderCfg, cfgErr := service.BuildFolderIntakeConfigFromWorkspace(resolvedWorkspace)
+		if cfgErr != nil {
+			return cfgErr
+		}
+		folderIntakeRuntime, err = service.BuildFolderIntakeRuntime(runtimeRepos, folderCfg)
 		if err != nil {
 			return err
 		}
