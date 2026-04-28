@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -65,10 +66,22 @@ func (s *SourceDocumentImportService) ImportFile(ctx context.Context, path strin
 	doc.ArchivedPath = archivedPath
 	doc.Status = domain.SourceDocumentStatusPending
 	if err := s.repo.Update(ctx, doc); err != nil {
-		return nil, fmt.Errorf("update source document archive state: %w", err)
+		return nil, s.handleArchiveStateDivergence(ctx, doc, err)
 	}
 
 	return doc, nil
+}
+
+func (s *SourceDocumentImportService) handleArchiveStateDivergence(ctx context.Context, doc *domain.SourceDocument, updateErr error) error {
+	doc.Status = domain.SourceDocumentStatusImportDiverged
+	doc.ErrorSummary = fmt.Sprintf("archive succeeded but pending update failed: %v", updateErr)
+	if err := s.repo.Update(ctx, doc); err != nil {
+		return errors.Join(
+			fmt.Errorf("source document archive state diverged after move to %s: pending update failed: %w", doc.ArchivedPath, updateErr),
+			fmt.Errorf("failed to persist divergence state: %w", err),
+		)
+	}
+	return fmt.Errorf("source document archive state diverged after move to %s: pending update failed: %w", doc.ArchivedPath, updateErr)
 }
 
 func hashParsedSourceDocument(parsed *ParsedSourceDocument) string {
@@ -93,9 +106,21 @@ func archiveSourceDocument(path, archiveDir string) (string, error) {
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		return "", fmt.Errorf("create archive dir: %w", err)
 	}
-	targetPath := filepath.Join(archiveDir, filepath.Base(path))
+	targetPath := filepath.Join(archiveDir, archivedFilename(path))
 	if err := os.Rename(path, targetPath); err != nil {
 		return "", err
 	}
 	return targetPath, nil
+}
+
+func archivedFilename(path string) string {
+	base := filepath.Base(path)
+	ext := filepath.Ext(base)
+	name := strings.TrimSuffix(base, ext)
+	checksum := sha256.Sum256([]byte(path))
+	shortHash := hex.EncodeToString(checksum[:])[:12]
+	if ext == "" {
+		return name + "." + shortHash
+	}
+	return name + "." + shortHash + ext
 }

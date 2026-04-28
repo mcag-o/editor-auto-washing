@@ -9,6 +9,7 @@ import (
 const (
 	SourceDocumentStatusDiscovered = "discovered"
 	SourceDocumentStatusImported   = "imported"
+	SourceDocumentStatusImportDiverged = "import_diverged"
 	SourceDocumentStatusPending    = "pending"
 	SourceDocumentStatusClaimed    = "claimed"
 	SourceDocumentStatusProcessing = "processing"
@@ -24,6 +25,7 @@ const (
 var validSourceDocumentStatuses = map[string]struct{}{
 	SourceDocumentStatusDiscovered: {},
 	SourceDocumentStatusImported:   {},
+	SourceDocumentStatusImportDiverged: {},
 	SourceDocumentStatusPending:    {},
 	SourceDocumentStatusClaimed:    {},
 	SourceDocumentStatusProcessing: {},
@@ -136,6 +138,10 @@ func (d SourceDocument) Validate() error {
 			return NewValidationErr("completed at is required", nil)
 		}
 	case SourceDocumentStatusFailed:
+		if strings.TrimSpace(d.ErrorSummary) == "" {
+			return NewValidationErr("error summary is required", nil)
+		}
+	case SourceDocumentStatusImportDiverged:
 		if strings.TrimSpace(d.ErrorSummary) == "" {
 			return NewValidationErr("error summary is required", nil)
 		}
