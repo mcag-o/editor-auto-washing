@@ -101,21 +101,44 @@ func (d SourceDocument) Validate() error {
 	if strings.TrimSpace(d.FileType) == "" {
 		return NewValidationErr("file type is required", nil)
 	}
-	if strings.TrimSpace(d.Title) == "" {
-		return NewValidationErr("title is required", nil)
-	}
-	if strings.TrimSpace(d.Body) == "" {
-		return NewValidationErr("body is required", nil)
-	}
-	if strings.TrimSpace(d.Hash) == "" {
-		return NewValidationErr("hash is required", nil)
-	}
 	status := strings.TrimSpace(d.Status)
 	if status == "" {
 		return NewValidationErr("status is required", nil)
 	}
 	if _, ok := validSourceDocumentStatuses[status]; !ok {
 		return NewValidationErr("unsupported source document status", nil)
+	}
+	if status != SourceDocumentStatusDiscovered {
+		if strings.TrimSpace(d.Title) == "" {
+			return NewValidationErr("title is required", nil)
+		}
+		if strings.TrimSpace(d.Body) == "" {
+			return NewValidationErr("body is required", nil)
+		}
+		if strings.TrimSpace(d.Hash) == "" {
+			return NewValidationErr("hash is required", nil)
+		}
+	}
+	switch status {
+	case SourceDocumentStatusClaimed:
+		if strings.TrimSpace(d.ClaimedBy) == "" {
+			return NewValidationErr("claimed by is required", nil)
+		}
+		if d.ClaimedAt == nil {
+			return NewValidationErr("claimed at is required", nil)
+		}
+	case SourceDocumentStatusProcessing:
+		if d.ProcessingStartedAt == nil {
+			return NewValidationErr("processing started at is required", nil)
+		}
+	case SourceDocumentStatusCompleted:
+		if d.CompletedAt == nil {
+			return NewValidationErr("completed at is required", nil)
+		}
+	case SourceDocumentStatusFailed:
+		if strings.TrimSpace(d.ErrorSummary) == "" {
+			return NewValidationErr("error summary is required", nil)
+		}
 	}
 	return nil
 }
