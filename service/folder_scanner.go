@@ -51,7 +51,7 @@ func (s *FolderScanner) ScanOnce(ctx context.Context, watchDir, archiveDir strin
 		}
 
 		if d.IsDir() {
-			if cleanArchiveDir != "" && sameOrUnderPath(path, cleanArchiveDir) {
+			if shouldSkipFolderScannerDir(path, cleanArchiveDir) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -129,4 +129,14 @@ func relativeScannerPath(watchDir, path string) string {
 		return filepath.Clean(path)
 	}
 	return rel
+}
+
+func shouldSkipFolderScannerDir(path, archiveDir string) bool {
+	if filepath.Base(path) == "SyncOver" {
+		return true
+	}
+	if archiveDir != "" && sameOrUnderPath(path, archiveDir) {
+		return true
+	}
+	return false
 }

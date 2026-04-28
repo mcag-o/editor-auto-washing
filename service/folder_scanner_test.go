@@ -46,6 +46,28 @@ func TestFolderScannerImportsSupportedFilesAndSkipsSyncOver(t *testing.T) {
 	require.Equal(t, filepath.Join(inbox, "article.md"), importer.importedPaths[0])
 }
 
+func TestFolderScannerSkipsSyncOverByDefaultWhenArchiveDirIsEmpty(t *testing.T) {
+	inbox := t.TempDir()
+	syncOver := filepath.Join(inbox, "SyncOver")
+	require.NoError(t, os.MkdirAll(syncOver, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(inbox, "article.md"), []byte("# Title\n\nBody"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(syncOver, "old.md"), []byte("ignored"), 0o644))
+
+	importer := &stubFolderSourceImporter{}
+	scanner := NewFolderScanner(importer)
+
+	run, err := scanner.ScanOnce(t.Context(), inbox, "")
+
+	require.NoError(t, err)
+	require.Equal(t, domain.ImportRunStatusCompleted, run.Status)
+	require.Equal(t, 1, run.ImportedCount)
+	require.Equal(t, 0, run.FailedCount)
+	require.Equal(t, 1, run.Metadata["scanned_files"])
+	require.Equal(t, 0, run.Metadata["skipped_files"])
+	require.Len(t, importer.importedPaths, 1)
+	require.Equal(t, filepath.Join(inbox, "article.md"), importer.importedPaths[0])
+}
+
 func TestFolderScannerTracksSkippedAndFailedFiles(t *testing.T) {
 	inbox := t.TempDir()
 	syncOver := filepath.Join(inbox, "SyncOver")
