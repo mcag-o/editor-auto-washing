@@ -4,13 +4,11 @@ import (
 	"bytes"
 	"content-hub/domain"
 	workspaceinfra "content-hub/infra/workspace"
-	"content-hub/pkg/repo"
 	"content-hub/service"
 	"context"
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -48,18 +46,6 @@ type automationCLIService interface {
 	Status(ctx context.Context) (*domain.AutomationStatusSnapshot, error)
 	Health(ctx context.Context) (*domain.AutomationHealthReport, error)
 	Stop(ctx context.Context) (*domain.AutomationStopResult, error)
-}
-
-type rssCLIService interface {
-	CreateSubscription(ctx context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error)
-	GetSubscription(ctx context.Context, id string) (*domain.RSSSubscription, error)
-	ListSubscriptions(ctx context.Context) ([]domain.RSSSubscription, error)
-	UpdateSubscription(ctx context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error)
-	DeleteSubscription(ctx context.Context, id string) error
-	RunByID(ctx context.Context, subscriptionID string) (*service.RSSPullResult, error)
-	RunAll(ctx context.Context) ([]service.RSSScheduledRunResult, error)
-	ListRuns(ctx context.Context, limit int) ([]domain.RSSPullRun, error)
-	ListItems(ctx context.Context, limit int) ([]domain.RSSItemRecord, error)
 }
 
 type runtimeReviewPublishService struct {
@@ -173,69 +159,13 @@ var runtimeAutomationServiceFactory = func(root string) (automationCLIService, f
 	return &runtimeAutomationCLIService{root: root, svc: automationSvc}, cleanup, nil
 }
 
-type runtimeRSSCLIService struct {
-	subscriptions *service.RSSSubscriptionService
-	scheduler     *service.RSSScheduler
-	runs          repo.RSSPullRunRepo
-	items         repo.RSSItemRepo
-}
-
-func (s *runtimeRSSCLIService) CreateSubscription(ctx context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
-	return s.subscriptions.Create(ctx, sub)
-}
-
-func (s *runtimeRSSCLIService) GetSubscription(ctx context.Context, id string) (*domain.RSSSubscription, error) {
-	return s.subscriptions.Get(ctx, id)
-}
-
-func (s *runtimeRSSCLIService) ListSubscriptions(ctx context.Context) ([]domain.RSSSubscription, error) {
-	return s.subscriptions.List(ctx)
-}
-
-func (s *runtimeRSSCLIService) UpdateSubscription(ctx context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
-	return s.subscriptions.Update(ctx, sub)
-}
-
-func (s *runtimeRSSCLIService) DeleteSubscription(ctx context.Context, id string) error {
-	return s.subscriptions.Delete(ctx, id)
-}
-
-func (s *runtimeRSSCLIService) RunByID(ctx context.Context, subscriptionID string) (*service.RSSPullResult, error) {
-	return s.scheduler.RunByID(ctx, subscriptionID)
-}
-
-func (s *runtimeRSSCLIService) RunAll(ctx context.Context) ([]service.RSSScheduledRunResult, error) {
-	return s.scheduler.RunAll(ctx)
-}
-
-func (s *runtimeRSSCLIService) ListRuns(ctx context.Context, limit int) ([]domain.RSSPullRun, error) {
-	return s.runs.List(ctx, limit)
-}
-
-func (s *runtimeRSSCLIService) ListItems(ctx context.Context, limit int) ([]domain.RSSItemRecord, error) {
-	return s.items.List(ctx, limit)
-}
-
-var runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
-	repos, cleanup, err := service.BuildRuntimeRepos(root)
-	if err != nil {
-		return nil, nil, err
-	}
-	rssRuntime, err := service.BuildRSSRuntime(repos)
-	if err != nil {
-		_ = cleanup()
-		return nil, nil, err
-	}
-	return &runtimeRSSCLIService{subscriptions: rssRuntime.SubscriptionService, scheduler: rssRuntime.Scheduler, runs: rssRuntime.PullRunReader, items: rssRuntime.ItemReader}, cleanup, nil
-}
-
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: cli workspace <...> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> | rss <subscriptions|run|run-all|runs|items> [--root PATH]")
+		fmt.Fprintln(stderr, "usage: cli workspace <...> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> [--root PATH]")
 		return 2
 	}
 	root, filteredArgs, err := extractGlobalRoot(args)
@@ -244,7 +174,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if len(filteredArgs) == 0 {
-		fmt.Fprintln(stderr, "usage: cli workspace <...> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> | rss <subscriptions|run|run-all|runs|items> [--root PATH]")
+		fmt.Fprintln(stderr, "usage: cli workspace <...> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> [--root PATH]")
 		return 2
 	}
 	if len(filteredArgs) < 2 {
@@ -496,155 +426,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "unknown automation subcommand: %s\n", filteredArgs[1])
 			return 2
 		}
-	case "rss":
-		svc, cleanup, err := runtimeRSSServiceFactory(root)
-		if err != nil {
-			fmt.Fprintln(stderr, err.Error())
-			return 1
-		}
-		defer cleanup()
-		switch filteredArgs[1] {
-		case "subscriptions":
-			if len(filteredArgs) < 3 {
-				fmt.Fprintln(stderr, "missing rss subscriptions subcommand")
-				return 2
-			}
-			switch filteredArgs[2] {
-			case "list":
-				if err := parseNoArgs(filteredArgs[3:], "rss list"); err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 2
-				}
-				items, err := svc.ListSubscriptions(context.Background())
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 1
-				}
-				fmt.Fprint(stdout, formatResolvedConfig(items))
-				return 0
-			case "add":
-				sub, err := parseRSSSubscriptionArgs(filteredArgs[3:])
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 2
-				}
-				created, err := svc.CreateSubscription(context.Background(), sub)
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 1
-				}
-				fmt.Fprint(stdout, formatResolvedConfig(created))
-				return 0
-			case "update":
-				subscriptionID, flagArgs, err := parsePositionalIDAndFlags(filteredArgs[3:], "rss subscription id", "rss update")
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 2
-				}
-				existing, err := svc.GetSubscription(context.Background(), subscriptionID)
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 1
-				}
-				updated, err := parseRSSSubscriptionUpdateArgs(existing, flagArgs)
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 2
-				}
-				result, err := svc.UpdateSubscription(context.Background(), updated)
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 1
-				}
-				fmt.Fprint(stdout, formatResolvedConfig(result))
-				return 0
-			case "remove":
-				subscriptionID, extraArgs, err := parsePositionalIDAndFlags(filteredArgs[3:], "rss subscription id", "rss remove")
-				if err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 2
-				}
-				if err := parseNoArgs(extraArgs, "rss remove"); err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 2
-				}
-				if err := svc.DeleteSubscription(context.Background(), subscriptionID); err != nil {
-					fmt.Fprintln(stderr, err.Error())
-					return 1
-				}
-				fmt.Fprint(stdout, formatResolvedConfig(map[string]bool{"deleted": true}))
-				return 0
-			default:
-				fmt.Fprintf(stderr, "unknown rss subscriptions subcommand: %s\n", filteredArgs[2])
-				return 2
-			}
-		case "run":
-			subscriptionID, extraArgs, err := parsePositionalIDAndFlags(filteredArgs[2:], "rss subscription id", "rss run")
-			if err != nil {
-				fmt.Fprintln(stderr, err.Error())
-				return 2
-			}
-			if err := parseNoArgs(extraArgs, "rss run"); err != nil {
-				fmt.Fprintln(stderr, err.Error())
-				return 2
-			}
-			result, err := svc.RunByID(context.Background(), subscriptionID)
-			if err != nil {
-				fmt.Fprintln(stderr, err.Error())
-				return 1
-			}
-			fmt.Fprint(stdout, formatResolvedConfig(result))
-			return 0
-		case "run-all":
-			if err := parseNoArgs(filteredArgs[2:], "rss run-all"); err != nil {
-				fmt.Fprintln(stderr, err.Error())
-				return 2
-			}
-			items, err := svc.RunAll(context.Background())
-			if err != nil {
-				fmt.Fprintln(stderr, err.Error())
-				return 1
-			}
-			fmt.Fprint(stdout, formatResolvedConfig(items))
-			return 0
-		case "runs":
-			if len(filteredArgs) < 3 || filteredArgs[2] != "list" {
-				fmt.Fprintf(stderr, "unknown rss runs subcommand: %s\n", safeArg(filteredArgs, 2))
-				return 2
-			}
-			limit, err := parseRSSListLimit(filteredArgs[3:])
-			if err != nil {
-				fmt.Fprintln(stderr, err.Error())
-				return 2
-			}
-			items, err := svc.ListRuns(context.Background(), limit)
-			if err != nil {
-				fmt.Fprintln(stderr, err.Error())
-				return 1
-			}
-			fmt.Fprint(stdout, formatResolvedConfig(items))
-			return 0
-		case "items":
-			if len(filteredArgs) < 3 || filteredArgs[2] != "list" {
-				fmt.Fprintf(stderr, "unknown rss items subcommand: %s\n", safeArg(filteredArgs, 2))
-				return 2
-			}
-			limit, err := parseRSSListLimit(filteredArgs[3:])
-			if err != nil {
-				fmt.Fprintln(stderr, err.Error())
-				return 2
-			}
-			items, err := svc.ListItems(context.Background(), limit)
-			if err != nil {
-				fmt.Fprintln(stderr, err.Error())
-				return 1
-			}
-			fmt.Fprint(stdout, formatResolvedConfig(items))
-			return 0
-		default:
-			fmt.Fprintf(stderr, "unknown rss subcommand: %s\n", filteredArgs[1])
-			return 2
-		}
 	default:
 		fmt.Fprintf(stderr, "unknown command: %s\n", filteredArgs[0])
 		return 2
@@ -772,133 +553,6 @@ func parsePositionalIDAndFlags(args []string, missingMessage, scope string) (str
 		return "", nil, fmt.Errorf("unknown %s flag: %s", scope, positionals[1])
 	}
 	return positionals[0], flags, nil
-}
-
-func parseRSSSubscriptionArgs(args []string) (*domain.RSSSubscription, error) {
-	sub := domain.NewRSSSubscription("", "", "", "")
-	if err := applyRSSSubscriptionFlags(sub, args); err != nil {
-		return nil, err
-	}
-	if err := sub.Validate(); err != nil {
-		return nil, err
-	}
-	return sub, nil
-}
-
-func parseRSSSubscriptionUpdateArgs(existing *domain.RSSSubscription, args []string) (*domain.RSSSubscription, error) {
-	if existing == nil {
-		return nil, fmt.Errorf("rss subscription is required")
-	}
-	copySub := *existing
-	copySub.Metadata = cloneMap(existing.Metadata)
-	if err := applyRSSSubscriptionFlags(&copySub, args); err != nil {
-		return nil, err
-	}
-	if err := copySub.Validate(); err != nil {
-		return nil, err
-	}
-	return &copySub, nil
-}
-
-func applyRSSSubscriptionFlags(sub *domain.RSSSubscription, args []string) error {
-	for idx := 0; idx < len(args); idx++ {
-		switch args[idx] {
-		case "--name":
-			value, next, err := requireFlagValue(args, idx, "--name")
-			if err != nil {
-				return err
-			}
-			sub.Name = strings.TrimSpace(value)
-			idx = next
-		case "--feed-url":
-			value, next, err := requireFlagValue(args, idx, "--feed-url")
-			if err != nil {
-				return err
-			}
-			sub.FeedURL = strings.TrimSpace(value)
-			idx = next
-		case "--target":
-			value, next, err := requireFlagValue(args, idx, "--target")
-			if err != nil {
-				return err
-			}
-			sub.TargetType = strings.TrimSpace(value)
-			idx = next
-		case "--source":
-			value, next, err := requireFlagValue(args, idx, "--source")
-			if err != nil {
-				return err
-			}
-			sub.SourceProfile = strings.TrimSpace(value)
-			idx = next
-		case "--version":
-			value, next, err := requireFlagValue(args, idx, "--version")
-			if err != nil {
-				return err
-			}
-			sub.RewriteProfileVersion = strings.TrimSpace(value)
-			idx = next
-		case "--poll-interval":
-			value, next, err := requireFlagValue(args, idx, "--poll-interval")
-			if err != nil {
-				return err
-			}
-			parsed, err := strconv.Atoi(strings.TrimSpace(value))
-			if err != nil {
-				return fmt.Errorf("invalid value for --poll-interval")
-			}
-			sub.PollIntervalSec = parsed
-			idx = next
-		case "--enabled":
-			value, next, err := requireFlagValue(args, idx, "--enabled")
-			if err != nil {
-				return err
-			}
-			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
-			if err != nil {
-				return fmt.Errorf("invalid value for --enabled")
-			}
-			sub.Enabled = parsed
-			idx = next
-		case "--root":
-			_, next, err := requireFlagValue(args, idx, "--root")
-			if err != nil {
-				return err
-			}
-			idx = next
-		default:
-			return fmt.Errorf("unknown rss subscription flag: %s", args[idx])
-		}
-	}
-	return nil
-}
-
-func parseRSSListLimit(args []string) (int, error) {
-	limit := 20
-	for idx := 0; idx < len(args); idx++ {
-		switch args[idx] {
-		case "--limit":
-			value, next, err := requireFlagValue(args, idx, "--limit")
-			if err != nil {
-				return 0, err
-			}
-			parsed, err := strconv.Atoi(strings.TrimSpace(value))
-			if err != nil || parsed <= 0 {
-				return 0, fmt.Errorf("invalid value for --limit")
-			}
-			limit = parsed
-			idx = next
-		case "--root":
-			_, next, err := requireFlagValue(args, idx, "--root")
-			if err != nil {
-				return 0, err
-			}
-			idx = next
-		default:
-			return 0, fmt.Errorf("unknown rss list flag: %s", args[idx])
-		}
-	}
-	return limit, nil
 }
 
 func requireFlagValue(args []string, idx int, flag string) (string, int, error) {

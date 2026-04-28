@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -81,9 +82,20 @@ func run() error {
 	workspaceSvc := service.NewWorkspaceArticleService(runtimeRepos.WorkspaceRepo)
 	reviewSvc := service.NewReviewService(runtimeRepos.ReviewRepo, runtimeRepos.WorkspaceRepo)
 	publishSvc := service.NewPublishGateService(runtimeRepos.ReviewRepo, runtimeRepos.AssetRepo, runtimeRepos.DraftRepo, runtimeRepos.PublishRepo, runtimeRepos.WorkspaceRepo, map[string]service.PublisherProvider{"wechat": runtimePublishProvider{}})
-	rssRuntime, err := service.BuildRSSRuntime(runtimeRepos)
-	if err != nil {
-		return err
+	var folderIntakeRuntime *service.FolderIntakeRuntime
+	if !selectedStandaloneFallback {
+		resolvedWorkspace, resolveErr := workspaceinfra.NewLoader().Resolve(workspaceRoot)
+		if resolveErr != nil {
+			return fmt.Errorf("resolve workspace config: %w", resolveErr)
+		}
+		folderIntakeRuntime, err = service.BuildFolderIntakeRuntime(runtimeRepos, service.FolderIntakeConfig{
+			WatchDir:    resolvedWorkspace.Paths.IncomingDir,
+			ArchiveDir:  filepath.Join(resolvedWorkspace.Paths.IncomingDir, "processed"),
+			Concurrency: resolvedWorkspace.Workspace.Collector.GlobalConcurrency,
+		})
+		if err != nil {
+			return err
+		}
 	}
 	rewriteRuntime, err := service.BuildRewriteRuntime(runtimeRepos)
 	if err != nil {
@@ -108,21 +120,21 @@ func run() error {
 	}()
 
 	serverProvider := &httpserver.Provider{
-		ContentSvc:     contentSvc,
-		TemplateSvc:    templateSvc,
-		DraftSvc:       draftSvc,
-		FormattingSvc:  formattingSvc,
-		IngestionSvc:   ingestionSvc,
-		AutomationSvc:  automationSvc,
-		WorkspaceSvc:   workspaceSvc,
-		JobSvc:         jobSvc,
-		ReviewSvc:      reviewSvc,
-		PublishSvc:     publishSvc,
-		RSSRuntime:     rssRuntime,
-		RewriteRuntime: rewriteRuntime,
-		WorkflowEngine: workflowEngine,
-		ConfigLoader:   loader,
-		WorkspaceRoot:  workspaceRoot,
+		ContentSvc:          contentSvc,
+		TemplateSvc:         templateSvc,
+		DraftSvc:            draftSvc,
+		FormattingSvc:       formattingSvc,
+		IngestionSvc:        ingestionSvc,
+		AutomationSvc:       automationSvc,
+		WorkspaceSvc:        workspaceSvc,
+		JobSvc:              jobSvc,
+		ReviewSvc:           reviewSvc,
+		PublishSvc:          publishSvc,
+		FolderIntakeRuntime: folderIntakeRuntime,
+		RewriteRuntime:      rewriteRuntime,
+		WorkflowEngine:      workflowEngine,
+		ConfigLoader:        loader,
+		WorkspaceRoot:       workspaceRoot,
 	}
 
 	server := newHTTPServer(cfg, serverProvider)

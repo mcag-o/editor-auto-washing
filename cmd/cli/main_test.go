@@ -370,201 +370,6 @@ func TestAutomationCommandsRunOnceDaemonStatusHealthRetryFailedAndStop(t *testin
 	assert.Empty(t, stderr.String())
 }
 
-func TestCLIRSSSubscriptionsListInvokesRuntimeService(t *testing.T) {
-	root := t.TempDir()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	originalFactory := runtimeRSSServiceFactory
-	called := false
-	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
-		return &cliRSSServiceStub{listSubscriptionsFn: func(_ context.Context) ([]domain.RSSSubscription, error) {
-			called = true
-			return []domain.RSSSubscription{{ID: "sub-1", Name: "Daily Feed", FeedURL: "https://example.com/feed.xml", TargetType: "wechat-longform", SourceProfile: "sspai", Enabled: true}}, nil
-		}}, func() error { return nil }, nil
-	}
-	defer func() { runtimeRSSServiceFactory = originalFactory }()
-
-	exitCode := run([]string{"rss", "subscriptions", "list", "--root", root}, stdout, stderr)
-	assert.Equal(t, 0, exitCode)
-	assert.True(t, called)
-	assert.Contains(t, stdout.String(), "sub-1")
-	assert.Empty(t, stderr.String())
-}
-
-func TestCLIRSSSubscriptionsListRejectsUnsupportedTrailingArgs(t *testing.T) {
-	root := t.TempDir()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	exitCode := run([]string{"rss", "subscriptions", "list", "--bogus", "value", "--root", root}, stdout, stderr)
-
-	assert.Equal(t, 2, exitCode)
-	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "unknown rss list flag: --bogus")
-}
-
-func TestCLIRSSSubscriptionAddInvokesRuntimeService(t *testing.T) {
-	root := t.TempDir()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	originalFactory := runtimeRSSServiceFactory
-	var received *domain.RSSSubscription
-	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
-		return &cliRSSServiceStub{createSubscriptionFn: func(_ context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
-			received = sub
-			return sub, nil
-		}}, func() error { return nil }, nil
-	}
-	defer func() { runtimeRSSServiceFactory = originalFactory }()
-
-	exitCode := run([]string{"rss", "subscriptions", "add", "--name", "Daily Feed", "--feed-url", "https://example.com/feed.xml", "--target", "wechat-longform", "--source", "sspai", "--version", "v2", "--poll-interval", "900", "--enabled", "false", "--root", root}, stdout, stderr)
-
-	assert.Equal(t, 0, exitCode)
-	if assert.NotNil(t, received) {
-		assert.Equal(t, "Daily Feed", received.Name)
-		assert.Equal(t, "https://example.com/feed.xml", received.FeedURL)
-		assert.Equal(t, "wechat-longform", received.TargetType)
-		assert.Equal(t, "sspai", received.SourceProfile)
-		assert.Equal(t, "v2", received.RewriteProfileVersion)
-		assert.Equal(t, 900, received.PollIntervalSec)
-		assert.False(t, received.Enabled)
-	}
-	assert.Contains(t, stdout.String(), "Daily Feed")
-	assert.Empty(t, stderr.String())
-}
-
-func TestCLIRSSSubscriptionAddParsesFlagsAfterGlobalRootExtraction(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	originalFactory := runtimeRSSServiceFactory
-	var received *domain.RSSSubscription
-	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
-		return &cliRSSServiceStub{createSubscriptionFn: func(_ context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
-			received = sub
-			return sub, nil
-		}}, func() error { return nil }, nil
-	}
-	defer func() { runtimeRSSServiceFactory = originalFactory }()
-
-	exitCode := run([]string{"rss", "subscriptions", "add", "--root", "/tmp", "--name", "Daily Feed", "--feed-url", "https://example.com/feed.xml", "--target", "wechat-longform", "--source", "sspai", "--version", "v2", "--poll-interval", "900", "--enabled", "false"}, stdout, stderr)
-
-	assert.Equal(t, 0, exitCode)
-	if assert.NotNil(t, received) {
-		assert.Equal(t, "Daily Feed", received.Name)
-		assert.Equal(t, "https://example.com/feed.xml", received.FeedURL)
-		assert.Equal(t, "wechat-longform", received.TargetType)
-		assert.Equal(t, "sspai", received.SourceProfile)
-		assert.Equal(t, "v2", received.RewriteProfileVersion)
-		assert.Equal(t, 900, received.PollIntervalSec)
-		assert.False(t, received.Enabled)
-	}
-	assert.Empty(t, stderr.String())
-}
-
-func TestCLIRSSSubscriptionUpdateInvokesRuntimeService(t *testing.T) {
-	root := t.TempDir()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	originalFactory := runtimeRSSServiceFactory
-	var received *domain.RSSSubscription
-	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
-		return &cliRSSServiceStub{
-			getSubscriptionFn: func(_ context.Context, id string) (*domain.RSSSubscription, error) {
-				return &domain.RSSSubscription{ID: id, Name: "Old Feed", FeedURL: "https://example.com/old.xml", TargetType: "wechat-short", SourceProfile: "old-source", Enabled: true, PollIntervalSec: 3600}, nil
-			},
-			updateSubscriptionFn: func(_ context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
-				received = sub
-				return sub, nil
-			},
-		}, func() error { return nil }, nil
-	}
-	defer func() { runtimeRSSServiceFactory = originalFactory }()
-
-	exitCode := run([]string{"rss", "subscriptions", "update", "sub-1", "--name", "Updated Feed", "--feed-url", "https://example.com/new.xml", "--target", "wechat-longform", "--source", "sspai", "--version", "v3", "--poll-interval", "1200", "--enabled", "true", "--root", root}, stdout, stderr)
-
-	assert.Equal(t, 0, exitCode)
-	if assert.NotNil(t, received) {
-		assert.Equal(t, "sub-1", received.ID)
-		assert.Equal(t, "Updated Feed", received.Name)
-		assert.Equal(t, "https://example.com/new.xml", received.FeedURL)
-		assert.Equal(t, "wechat-longform", received.TargetType)
-		assert.Equal(t, "sspai", received.SourceProfile)
-		assert.Equal(t, "v3", received.RewriteProfileVersion)
-		assert.Equal(t, 1200, received.PollIntervalSec)
-		assert.True(t, received.Enabled)
-	}
-	assert.Contains(t, stdout.String(), "Updated Feed")
-	assert.Empty(t, stderr.String())
-}
-
-func TestCLIRSSSubscriptionUpdateParsesIDAfterRootFlag(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	originalFactory := runtimeRSSServiceFactory
-	requestedID := ""
-	updatedID := ""
-	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
-		return &cliRSSServiceStub{
-			getSubscriptionFn: func(_ context.Context, id string) (*domain.RSSSubscription, error) {
-				requestedID = id
-				return &domain.RSSSubscription{ID: id, Name: "Old Feed", FeedURL: "https://example.com/old.xml", TargetType: "wechat-short", SourceProfile: "old-source", Enabled: true, PollIntervalSec: 3600}, nil
-			},
-			updateSubscriptionFn: func(_ context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
-				updatedID = sub.ID
-				return sub, nil
-			},
-		}, func() error { return nil }, nil
-	}
-	defer func() { runtimeRSSServiceFactory = originalFactory }()
-
-	exitCode := run([]string{"rss", "subscriptions", "update", "--root", "/tmp", "sub-1", "--name", "Updated Feed", "--feed-url", "https://example.com/new.xml", "--target", "wechat-longform", "--source", "sspai"}, stdout, stderr)
-
-	assert.Equal(t, 0, exitCode)
-	assert.Equal(t, "sub-1", requestedID)
-	assert.Equal(t, "sub-1", updatedID)
-	assert.Empty(t, stderr.String())
-}
-
-func TestCLIRSSSubscriptionRemoveInvokesRuntimeService(t *testing.T) {
-	root := t.TempDir()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	originalFactory := runtimeRSSServiceFactory
-	removedID := ""
-	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
-		return &cliRSSServiceStub{deleteSubscriptionFn: func(_ context.Context, id string) error {
-			removedID = id
-			return nil
-		}}, func() error { return nil }, nil
-	}
-	defer func() { runtimeRSSServiceFactory = originalFactory }()
-
-	exitCode := run([]string{"rss", "subscriptions", "remove", "sub-1", "--root", root}, stdout, stderr)
-
-	assert.Equal(t, 0, exitCode)
-	assert.Equal(t, "sub-1", removedID)
-	assert.Contains(t, stdout.String(), "deleted: true")
-	assert.Empty(t, stderr.String())
-}
-
-func TestCLIRSSSubscriptionRemoveRejectsUnsupportedTrailingArgs(t *testing.T) {
-	root := t.TempDir()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	exitCode := run([]string{"rss", "subscriptions", "remove", "sub-1", "--bogus", "value", "--root", root}, stdout, stderr)
-
-	assert.Equal(t, 2, exitCode)
-	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "unknown rss remove flag: --bogus")
-}
-
 func TestNewCollectorSourceDefaultsDetailFetchDisabled(t *testing.T) {
 	source := domain.NewCollectorSource("baidu", "Baidu")
 
@@ -618,141 +423,27 @@ func TestRuntimeAutomationCLIServiceRunDaemonBlocksUntilContextStops(t *testing.
 	}
 }
 
-func TestCLIRSSRunInvokesPullService(t *testing.T) {
+func TestLegacyRSSCLICommandsRemoved(t *testing.T) {
 	root := t.TempDir()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	originalFactory := runtimeRSSServiceFactory
-	runID := ""
-	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
-		return &cliRSSServiceStub{runByIDFn: func(_ context.Context, subscriptionID string) (*service.RSSPullResult, error) {
-			runID = subscriptionID
-			return &service.RSSPullResult{Run: &domain.RSSPullRun{ID: "run-1", SubscriptionID: subscriptionID, Status: domain.RSSPullRunStatusSucceeded}}, nil
-		}}, func() error { return nil }, nil
+	testCases := [][]string{
+		{"rss", "subscriptions", "list", "--root", root},
+		{"rss", "subscriptions", "add", "--name", "Daily Feed", "--feed-url", "https://example.com/feed.xml", "--target", "wechat-longform", "--source", "sspai", "--root", root},
+		{"rss", "subscriptions", "update", "sub-1", "--name", "Updated Feed", "--root", root},
+		{"rss", "subscriptions", "remove", "sub-1", "--root", root},
+		{"rss", "run", "sub-1", "--root", root},
+		{"rss", "run-all", "--root", root},
+		{"rss", "runs", "list", "--limit", "5", "--root", root},
+		{"rss", "items", "list", "--limit", "7", "--root", root},
 	}
-	defer func() { runtimeRSSServiceFactory = originalFactory }()
 
-	exitCode := run([]string{"rss", "run", "sub-1", "--root", root}, stdout, stderr)
-
-	assert.Equal(t, 0, exitCode)
-	assert.Equal(t, "sub-1", runID)
-	assert.Contains(t, stdout.String(), "run-1")
-	assert.Empty(t, stderr.String())
-}
-
-func TestCLIRSSRunParsesSubscriptionIDAfterRootFlag(t *testing.T) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	originalFactory := runtimeRSSServiceFactory
-	runID := ""
-	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
-		return &cliRSSServiceStub{runByIDFn: func(_ context.Context, subscriptionID string) (*service.RSSPullResult, error) {
-			runID = subscriptionID
-			return &service.RSSPullResult{Run: &domain.RSSPullRun{ID: "run-1", SubscriptionID: subscriptionID, Status: domain.RSSPullRunStatusSucceeded}}, nil
-		}}, func() error { return nil }, nil
+	for _, args := range testCases {
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+		exitCode := run(args, stdout, stderr)
+		assert.Equal(t, 2, exitCode, "%v should be rejected", args)
+		assert.Empty(t, stdout.String())
+		assert.Contains(t, stderr.String(), "unknown command: rss")
 	}
-	defer func() { runtimeRSSServiceFactory = originalFactory }()
-
-	exitCode := run([]string{"rss", "run", "--root", "/tmp", "sub-1"}, stdout, stderr)
-
-	assert.Equal(t, 0, exitCode)
-	assert.Equal(t, "sub-1", runID)
-	assert.Empty(t, stderr.String())
-}
-
-func TestCLIRSSRunRejectsUnsupportedTrailingArgs(t *testing.T) {
-	root := t.TempDir()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	exitCode := run([]string{"rss", "run", "sub-1", "--bogus", "value", "--root", root}, stdout, stderr)
-
-	assert.Equal(t, 2, exitCode)
-	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "unknown rss run flag: --bogus")
-}
-
-func TestCLIRSSRunAllInvokesScheduler(t *testing.T) {
-	root := t.TempDir()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	originalFactory := runtimeRSSServiceFactory
-	called := false
-	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
-		return &cliRSSServiceStub{runAllFn: func(_ context.Context) ([]service.RSSScheduledRunResult, error) {
-			called = true
-			return []service.RSSScheduledRunResult{{SubscriptionID: "sub-1", Result: &service.RSSPullResult{Run: &domain.RSSPullRun{ID: "run-1", SubscriptionID: "sub-1", Status: domain.RSSPullRunStatusSucceeded}}}}, nil
-		}}, func() error { return nil }, nil
-	}
-	defer func() { runtimeRSSServiceFactory = originalFactory }()
-
-	exitCode := run([]string{"rss", "run-all", "--root", root}, stdout, stderr)
-
-	assert.Equal(t, 0, exitCode)
-	assert.True(t, called)
-	assert.Contains(t, stdout.String(), "sub-1")
-	assert.Empty(t, stderr.String())
-}
-
-func TestCLIRSSRunAllRejectsUnsupportedTrailingArgs(t *testing.T) {
-	root := t.TempDir()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	exitCode := run([]string{"rss", "run-all", "--bogus", "value", "--root", root}, stdout, stderr)
-
-	assert.Equal(t, 2, exitCode)
-	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "unknown rss run-all flag: --bogus")
-}
-
-func TestCLIRSSRunsListInvokesRuntimeServiceWithLimit(t *testing.T) {
-	root := t.TempDir()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	originalFactory := runtimeRSSServiceFactory
-	receivedLimit := 0
-	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
-		return &cliRSSServiceStub{listRunsFn: func(_ context.Context, limit int) ([]domain.RSSPullRun, error) {
-			receivedLimit = limit
-			return []domain.RSSPullRun{{ID: "run-1", SubscriptionID: "sub-1", Status: domain.RSSPullRunStatusSucceeded}}, nil
-		}}, func() error { return nil }, nil
-	}
-	defer func() { runtimeRSSServiceFactory = originalFactory }()
-
-	exitCode := run([]string{"rss", "runs", "list", "--limit", "5", "--root", root}, stdout, stderr)
-
-	assert.Equal(t, 0, exitCode)
-	assert.Equal(t, 5, receivedLimit)
-	assert.Contains(t, stdout.String(), "run-1")
-	assert.Empty(t, stderr.String())
-}
-
-func TestCLIRSSItemsListInvokesRuntimeServiceWithLimit(t *testing.T) {
-	root := t.TempDir()
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	originalFactory := runtimeRSSServiceFactory
-	receivedLimit := 0
-	runtimeRSSServiceFactory = func(root string) (rssCLIService, func() error, error) {
-		return &cliRSSServiceStub{listItemsFn: func(_ context.Context, limit int) ([]domain.RSSItemRecord, error) {
-			receivedLimit = limit
-			return []domain.RSSItemRecord{{ID: "item-1", SubscriptionID: "sub-1", PullRunID: "run-1", GUID: "guid-1", Title: "RSS Item", Status: domain.RSSItemStatusImported}}, nil
-		}}, func() error { return nil }, nil
-	}
-	defer func() { runtimeRSSServiceFactory = originalFactory }()
-
-	exitCode := run([]string{"rss", "items", "list", "--limit", "7", "--root", root}, stdout, stderr)
-
-	assert.Equal(t, 0, exitCode)
-	assert.Equal(t, 7, receivedLimit)
-	assert.Contains(t, stdout.String(), "item-1")
-	assert.Empty(t, stderr.String())
 }
 
 func TestCLIRSSCommandReplacesLegacyIntakeAndCollectorSurface(t *testing.T) {
@@ -814,18 +505,6 @@ type stubRewriteCLIService struct {
 type stubWorkspaceReader struct {
 	workspace *domain.ArticleWorkspaceRecord
 	err       error
-}
-
-type cliRSSServiceStub struct {
-	createSubscriptionFn func(context.Context, *domain.RSSSubscription) (*domain.RSSSubscription, error)
-	getSubscriptionFn    func(context.Context, string) (*domain.RSSSubscription, error)
-	listSubscriptionsFn  func(context.Context) ([]domain.RSSSubscription, error)
-	updateSubscriptionFn func(context.Context, *domain.RSSSubscription) (*domain.RSSSubscription, error)
-	deleteSubscriptionFn func(context.Context, string) error
-	runByIDFn            func(context.Context, string) (*service.RSSPullResult, error)
-	runAllFn             func(context.Context) ([]service.RSSScheduledRunResult, error)
-	listRunsFn           func(context.Context, int) ([]domain.RSSPullRun, error)
-	listItemsFn          func(context.Context, int) ([]domain.RSSItemRecord, error)
 }
 
 func (s *cliReviewPublishServiceStub) ApproveReview(_ context.Context, id, reviewer, notes string) (*domain.ReviewTask, error) {
@@ -894,40 +573,4 @@ func (s stubWorkspaceReader) GetByID(_ context.Context, id string) (*domain.Arti
 		return nil, domain.NewNotFoundErr("workspace article", id)
 	}
 	return s.workspace, nil
-}
-
-func (s *cliRSSServiceStub) CreateSubscription(ctx context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
-	return s.createSubscriptionFn(ctx, sub)
-}
-
-func (s *cliRSSServiceStub) GetSubscription(ctx context.Context, id string) (*domain.RSSSubscription, error) {
-	return s.getSubscriptionFn(ctx, id)
-}
-
-func (s *cliRSSServiceStub) ListSubscriptions(ctx context.Context) ([]domain.RSSSubscription, error) {
-	return s.listSubscriptionsFn(ctx)
-}
-
-func (s *cliRSSServiceStub) UpdateSubscription(ctx context.Context, sub *domain.RSSSubscription) (*domain.RSSSubscription, error) {
-	return s.updateSubscriptionFn(ctx, sub)
-}
-
-func (s *cliRSSServiceStub) DeleteSubscription(ctx context.Context, id string) error {
-	return s.deleteSubscriptionFn(ctx, id)
-}
-
-func (s *cliRSSServiceStub) RunByID(ctx context.Context, id string) (*service.RSSPullResult, error) {
-	return s.runByIDFn(ctx, id)
-}
-
-func (s *cliRSSServiceStub) RunAll(ctx context.Context) ([]service.RSSScheduledRunResult, error) {
-	return s.runAllFn(ctx)
-}
-
-func (s *cliRSSServiceStub) ListRuns(ctx context.Context, limit int) ([]domain.RSSPullRun, error) {
-	return s.listRunsFn(ctx, limit)
-}
-
-func (s *cliRSSServiceStub) ListItems(ctx context.Context, limit int) ([]domain.RSSItemRecord, error) {
-	return s.listItemsFn(ctx, limit)
 }

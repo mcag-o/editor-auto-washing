@@ -25,21 +25,21 @@ type Server struct {
 }
 
 type Provider struct {
-	ContentSvc     *service.ContentService
-	TemplateSvc    *service.TemplateService
-	DraftSvc       *service.DraftService
-	FormattingSvc  *service.FormattingPipelineService
-	IngestionSvc   *service.IngestionPipelineService
-	AutomationSvc  *service.AutomationService
-	WorkspaceSvc   *service.WorkspaceArticleService
-	JobSvc         *service.JobService
-	ReviewSvc      *service.ReviewService
-	PublishSvc     *service.PublishGateService
-	RSSRuntime     *service.RSSRuntime
-	RewriteRuntime *service.RewriteRuntime
-	WorkflowEngine *service.WorkflowEngine
-	ConfigLoader   *config.Loader
-	WorkspaceRoot  string
+	ContentSvc          *service.ContentService
+	TemplateSvc         *service.TemplateService
+	DraftSvc            *service.DraftService
+	FormattingSvc       *service.FormattingPipelineService
+	IngestionSvc        *service.IngestionPipelineService
+	AutomationSvc       *service.AutomationService
+	WorkspaceSvc        *service.WorkspaceArticleService
+	JobSvc              *service.JobService
+	ReviewSvc           *service.ReviewService
+	PublishSvc          *service.PublishGateService
+	FolderIntakeRuntime *service.FolderIntakeRuntime
+	RewriteRuntime      *service.RewriteRuntime
+	WorkflowEngine      *service.WorkflowEngine
+	ConfigLoader        *config.Loader
+	WorkspaceRoot       string
 }
 
 func NewServer(cfg config.Config, provider *Provider) *Server {
@@ -74,34 +74,6 @@ func (s *Server) registerRoutes() {
 	jobHandler := handlers.NewJobHandler(s.provider.JobSvc)
 	reviewHandler := handlers.NewReviewHandler(s.provider.ReviewSvc)
 	publishHandler := handlers.NewPublishHandler(s.provider.PublishSvc)
-	var rssSubscriptionSvc interface {
-		Create(context.Context, *domain.RSSSubscription) (*domain.RSSSubscription, error)
-		Get(context.Context, string) (*domain.RSSSubscription, error)
-		List(context.Context) ([]domain.RSSSubscription, error)
-		Update(context.Context, *domain.RSSSubscription) (*domain.RSSSubscription, error)
-		Delete(context.Context, string) error
-	}
-	var rssScheduler interface {
-		RunByID(context.Context, string) (*service.RSSPullResult, error)
-		RunAll(context.Context) ([]service.RSSScheduledRunResult, error)
-	}
-	var rssRunsReader interface {
-		List(context.Context, int) ([]domain.RSSPullRun, error)
-		GetByID(context.Context, string) (*domain.RSSPullRun, error)
-	}
-	var rssItems interface {
-		List(context.Context, int) ([]domain.RSSItemRecord, error)
-		GetByID(context.Context, string) (*domain.RSSItemRecord, error)
-	}
-	if s.provider != nil && s.provider.RSSRuntime != nil {
-		rssSubscriptionSvc = s.provider.RSSRuntime.SubscriptionService
-		rssScheduler = s.provider.RSSRuntime.Scheduler
-		rssRunsReader = s.provider.RSSRuntime.PullRunReader
-		rssItems = s.provider.RSSRuntime.ItemReader
-	}
-	rssSubscriptionsHandler := handlers.NewRSSSubscriptionsHandler(rssSubscriptionSvc)
-	rssRunsHandler := handlers.NewRSSRunsHandler(rssRunsServiceAdapter{scheduler: rssScheduler, runs: rssRunsReader})
-	rssItemsHandler := handlers.NewRSSItemsHandler(rssItems)
 	var rewriteRunner interface {
 		Run(context.Context, service.RewriteRunRequest) (*domain.RewritePipelineRun, error)
 	}
@@ -185,64 +157,10 @@ func (s *Server) registerRoutes() {
 		rewrite.POST("/runs", rewriteHandler.Run)
 	}
 
-	rss := s.engine.Group("/rss")
-	{
-		rss.POST("/subscriptions", rssSubscriptionsHandler.Create)
-		rss.GET("/subscriptions", rssSubscriptionsHandler.List)
-		rss.GET("/subscriptions/:id", rssSubscriptionsHandler.Get)
-		rss.PUT("/subscriptions/:id", rssSubscriptionsHandler.Update)
-		rss.DELETE("/subscriptions/:id", rssSubscriptionsHandler.Delete)
-		rss.POST("/subscriptions/:id/run", rssRunsHandler.RunSubscription)
-		rss.POST("/run-all", rssRunsHandler.RunAll)
-		rss.GET("/runs", rssRunsHandler.List)
-		rss.GET("/runs/:id", rssRunsHandler.Get)
-		rss.GET("/items", rssItemsHandler.List)
-		rss.GET("/items/:id", rssItemsHandler.Get)
-	}
-
 	workflows := s.engine.Group("/workflows")
 	{
 		workflows.POST("/execute", s.handleWorkflowExecute)
 	}
-}
-
-type rssRunsServiceAdapter struct {
-	scheduler interface {
-		RunByID(context.Context, string) (*service.RSSPullResult, error)
-		RunAll(context.Context) ([]service.RSSScheduledRunResult, error)
-	}
-	runs interface {
-		List(context.Context, int) ([]domain.RSSPullRun, error)
-		GetByID(context.Context, string) (*domain.RSSPullRun, error)
-	}
-}
-
-func (a rssRunsServiceAdapter) RunByID(ctx context.Context, subscriptionID string) (*service.RSSPullResult, error) {
-	if a.scheduler == nil {
-		return nil, domain.NewInternalErr("rss scheduler is not configured", nil)
-	}
-	return a.scheduler.RunByID(ctx, subscriptionID)
-}
-
-func (a rssRunsServiceAdapter) RunAll(ctx context.Context) ([]service.RSSScheduledRunResult, error) {
-	if a.scheduler == nil {
-		return nil, domain.NewInternalErr("rss scheduler is not configured", nil)
-	}
-	return a.scheduler.RunAll(ctx)
-}
-
-func (a rssRunsServiceAdapter) List(ctx context.Context, limit int) ([]domain.RSSPullRun, error) {
-	if a.runs == nil {
-		return nil, domain.NewInternalErr("rss pull run service is not configured", nil)
-	}
-	return a.runs.List(ctx, limit)
-}
-
-func (a rssRunsServiceAdapter) GetByID(ctx context.Context, id string) (*domain.RSSPullRun, error) {
-	if a.runs == nil {
-		return nil, domain.NewInternalErr("rss pull run service is not configured", nil)
-	}
-	return a.runs.GetByID(ctx, id)
 }
 
 func (s *Server) handleWorkflowExecute(c *gin.Context) {

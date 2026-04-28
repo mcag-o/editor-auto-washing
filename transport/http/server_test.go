@@ -51,8 +51,6 @@ func newTestServer(t *testing.T) (*Server, *memory.Provider) {
 	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, workspaceinfra.WorkspaceConfigFileName), []byte("name: test\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, workspaceinfra.WorkspaceSecretsFileName), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
 	automationSvc := service.NewAutomationService(service.NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), ingestionSvc, jobSvc)
-	rssRuntime := &service.RSSRuntime{}
-
 	loader := config.NewLoader("")
 	loader.SetCurrent(cfg)
 
@@ -67,7 +65,6 @@ func newTestServer(t *testing.T) (*Server, *memory.Provider) {
 		JobSvc:         jobSvc,
 		ReviewSvc:      reviewSvc,
 		PublishSvc:     publishSvc,
-		RSSRuntime:     rssRuntime,
 		WorkflowEngine: workflowEngine,
 		ConfigLoader:   loader,
 		WorkspaceRoot:  workspaceRoot,
@@ -316,43 +313,31 @@ func TestAutomationEndpointsExposeRunOnceDaemonStatusHealthRetryFailedAndStop(t 
 	assert.Contains(t, w.Body.String(), "stopped")
 }
 
-func TestRSSRoutesRegisteredAndLegacyIntakeRoutesRemoved(t *testing.T) {
+func TestLegacyRSSRoutesRemovedFromActiveRuntime(t *testing.T) {
 	s, _ := newTestServer(t)
-	require.NotNil(t, s.provider.RSSRuntime)
 
 	rssRequests := []struct {
 		method string
 		path   string
-		body   string
-		code   int
 	}{
-		{method: http.MethodPost, path: "/rss/subscriptions", body: `{"name":"Tech Feed","feed_url":"https://example.com/feed.xml","target_type":"wechat-longform","source_profile":"sspai"}`, code: http.StatusInternalServerError},
-		{method: http.MethodGet, path: "/rss/subscriptions", code: http.StatusInternalServerError},
-		{method: http.MethodGet, path: "/rss/subscriptions/sub-1", code: http.StatusInternalServerError},
-		{method: http.MethodPut, path: "/rss/subscriptions/sub-1", body: `{"name":"Tech Feed","feed_url":"https://example.com/feed.xml","target_type":"wechat-longform","source_profile":"sspai"}`, code: http.StatusInternalServerError},
-		{method: http.MethodDelete, path: "/rss/subscriptions/sub-1", code: http.StatusInternalServerError},
-		{method: http.MethodPost, path: "/rss/subscriptions/sub-1/run", code: http.StatusInternalServerError},
-		{method: http.MethodPost, path: "/rss/run-all", code: http.StatusInternalServerError},
-		{method: http.MethodGet, path: "/rss/runs", code: http.StatusInternalServerError},
-		{method: http.MethodGet, path: "/rss/runs/run-1", code: http.StatusInternalServerError},
-		{method: http.MethodGet, path: "/rss/items", code: http.StatusInternalServerError},
-		{method: http.MethodGet, path: "/rss/items/item-1", code: http.StatusInternalServerError},
+		{method: http.MethodPost, path: "/rss/subscriptions"},
+		{method: http.MethodGet, path: "/rss/subscriptions"},
+		{method: http.MethodGet, path: "/rss/subscriptions/sub-1"},
+		{method: http.MethodPut, path: "/rss/subscriptions/sub-1"},
+		{method: http.MethodDelete, path: "/rss/subscriptions/sub-1"},
+		{method: http.MethodPost, path: "/rss/subscriptions/sub-1/run"},
+		{method: http.MethodPost, path: "/rss/run-all"},
+		{method: http.MethodGet, path: "/rss/runs"},
+		{method: http.MethodGet, path: "/rss/runs/run-1"},
+		{method: http.MethodGet, path: "/rss/items"},
+		{method: http.MethodGet, path: "/rss/items/item-1"},
 	}
 
 	for _, tc := range rssRequests {
-		var body *strings.Reader
-		if tc.body != "" {
-			body = strings.NewReader(tc.body)
-		} else {
-			body = strings.NewReader("")
-		}
-		req := httptest.NewRequest(tc.method, tc.path, body)
-		if tc.body != "" {
-			req.Header.Set("Content-Type", "application/json")
-		}
+		req := httptest.NewRequest(tc.method, tc.path, nil)
 		w := httptest.NewRecorder()
 		s.engine.ServeHTTP(w, req)
-		assert.Equal(t, tc.code, w.Code, "%s %s should be registered", tc.method, tc.path)
+		assert.Equal(t, http.StatusNotFound, w.Code, "%s %s should not be registered", tc.method, tc.path)
 	}
 
 	legacyRequests := []struct {
