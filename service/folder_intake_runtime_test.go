@@ -1,0 +1,49 @@
+package service
+
+import "testing"
+
+func TestBuildFolderIntakeRuntimeReturnsReadyServices(t *testing.T) {
+	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
+	if cleanup != nil {
+		defer func() {
+			if closeErr := cleanup(); closeErr != nil {
+				t.Fatalf("cleanup returned error: %v", closeErr)
+			}
+		}()
+	}
+	if err != nil {
+		t.Fatalf("BuildRuntimeRepos error: %v", err)
+	}
+
+	runtime, err := BuildFolderIntakeRuntime(repos)
+	if err != nil {
+		t.Fatalf("BuildFolderIntakeRuntime error: %v", err)
+	}
+	if runtime == nil {
+		t.Fatal("expected folder intake runtime to be configured")
+	}
+	if runtime.ImportService == nil || runtime.Scanner == nil {
+		t.Fatal("expected folder intake runtime import services to be configured")
+	}
+	if runtime.Scheduler == nil || runtime.Worker == nil {
+		t.Fatal("expected folder intake runtime processing services to be configured")
+	}
+	if runtime.SourceDocumentRepo == nil || runtime.ImportRunRepo == nil {
+		t.Fatal("expected folder intake runtime repos to be exposed")
+	}
+	if runtime.Scheduler.repo != repos.SourceDocumentRepo {
+		t.Fatal("expected scheduler to use runtime source document repo")
+	}
+	if runtime.Scheduler.worker != runtime.Worker {
+		t.Fatal("expected scheduler to use runtime worker")
+	}
+	if runtime.Scanner.importer != runtime.ImportService {
+		t.Fatal("expected scanner to use runtime import service")
+	}
+	if runtime.Worker.repo != repos.SourceDocumentRepo {
+		t.Fatal("expected worker to use runtime source document repo")
+	}
+	if runtime.Worker.rewrite == nil || runtime.Worker.render == nil {
+		t.Fatal("expected worker rewrite and render dependencies to be configured")
+	}
+}
