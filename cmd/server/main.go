@@ -78,7 +78,7 @@ func run() error {
 	draftSvc := service.NewDraftService(runtimeRepos.DraftRepo)
 	formattingSvc := service.NewFormattingPipelineService(runtimeRepos.DraftRepo, runtimeRepos.AssetRepo, runtimeRepos.WorkspaceRepo, runtimeRepos.Formatter).WithRenderedDir(runtimeRepos.RenderedDir)
 	ingestionSvc := service.NewIngestionPipelineService(runtimeRepos.IngestionRepo, runtimeRepos.WorkspaceRepo, runtimeRepos.BundleImportTxStarter, workspaceinfra.NewLoader())
-	automationSvc := service.NewAutomationService(workspaceConfigSvc, ingestionSvc, nil)
+	automationSvc := service.NewAutomationService(workspaceConfigSvc, ingestionSvc, nil, nil)
 	workspaceSvc := service.NewWorkspaceArticleService(runtimeRepos.WorkspaceRepo)
 	reviewSvc := service.NewReviewService(runtimeRepos.ReviewRepo, runtimeRepos.WorkspaceRepo)
 	publishSvc := service.NewPublishGateService(runtimeRepos.ReviewRepo, runtimeRepos.AssetRepo, runtimeRepos.DraftRepo, runtimeRepos.PublishRepo, runtimeRepos.WorkspaceRepo, map[string]service.PublisherProvider{"wechat": runtimePublishProvider{}})
@@ -96,6 +96,7 @@ func run() error {
 		if err != nil {
 			return err
 		}
+		automationSvc.SetFolderIntake(service.NewRuntimeAutomationFolderIntake(folderIntakeRuntime))
 	}
 	rewriteRuntime, err := service.BuildRewriteRuntime(runtimeRepos)
 	if err != nil {

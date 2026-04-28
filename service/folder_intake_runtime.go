@@ -29,6 +29,7 @@ type FolderIntakeRuntime struct {
 type sourceDocumentStatusReader interface {
 	ListByStatus(ctx context.Context, status string, limit int) ([]domain.SourceDocument, error)
 	GetByID(ctx context.Context, id string) (*domain.SourceDocument, error)
+	Update(ctx context.Context, doc *domain.SourceDocument) error
 }
 
 type importRunReader interface {

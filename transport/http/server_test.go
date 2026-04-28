@@ -50,7 +50,7 @@ func newTestServer(t *testing.T) (*Server, *memory.Provider) {
 	workspaceRoot := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, workspaceinfra.WorkspaceConfigFileName), []byte("name: test\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, workspaceinfra.WorkspaceSecretsFileName), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
-	automationSvc := service.NewAutomationService(service.NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), ingestionSvc, jobSvc)
+	automationSvc := service.NewAutomationService(service.NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), ingestionSvc, nil, jobSvc)
 	loader := config.NewLoader("")
 	loader.SetCurrent(cfg)
 

@@ -2,7 +2,6 @@ package service
 
 import (
 	"content-hub/domain"
-	"content-hub/infra/memory"
 	workspaceinfra "content-hub/infra/workspace"
 	"os"
 	"path/filepath"
@@ -16,14 +15,30 @@ func TestBuildDefaultWorkflowEngineRegistersConcreteAutomationNodes(t *testing.T
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceConfigFileName), []byte("name: workflow\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceSecretsFileName), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
-	provider := memory.NewProvider()
-	ingestionSvc := NewIngestionPipelineService(provider.IngestionRepo(), provider.WorkspaceRepo(), provider, workspaceinfra.NewLoader())
-	jobSvc := NewJobService(provider.JobRepo(), provider.JobEventRepo(), NewWorkflowEngine())
-	automationSvc := NewAutomationService(NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), ingestionSvc, jobSvc)
+	intake := &stubAutomationFolderIntake{runOnceResult: automationFolderRunSummary{ProcessedPending: 1, CompletedDocuments: 1}}
+	automationSvc := newAutomationServiceWithFolderIntakeForTest(root, intake)
 
 	engine := BuildDefaultWorkflowEngine(root, automationSvc)
 
 	assert.Contains(t, engine.RegisteredNames(), "automation_dispatch")
 	assert.Contains(t, engine.RegisteredNames(), "automation_snapshot")
 	require.NoError(t, engine.Execute(t.Context(), domain.DefaultWorkflowDefinition(), &domain.WorkflowContext{Payload: map[string]any{"automation_command": "run-once"}}))
+	assert.Equal(t, 1, intake.runOnceCalls)
+}
+
+func TestBuildDefaultWorkflowEngineDispatchesRetryFailedThroughFolderIntakeAutomation(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceConfigFileName), []byte("name: workflow\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceSecretsFileName), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
+	intake := &stubAutomationFolderIntake{retryResult: automationFolderRunSummary{ProcessedFailed: 1, CompletedDocuments: 1}}
+	automationSvc := newAutomationServiceWithFolderIntakeForTest(root, intake)
+
+	engine := BuildDefaultWorkflowEngine(root, automationSvc)
+	wc := &domain.WorkflowContext{Payload: map[string]any{"automation_command": "retry-failed"}}
+
+	require.NoError(t, engine.Execute(t.Context(), domain.DefaultWorkflowDefinition(), wc))
+	assert.Equal(t, 1, intake.retryFailedCalls)
+	result, ok := wc.Payload["automation_result"].(*domain.AutomationRunResult)
+	require.True(t, ok)
+	assert.Equal(t, "retry-failed", result.Mode)
 }

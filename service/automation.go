@@ -15,6 +15,7 @@ import (
 type AutomationService struct {
 	workspaceConfig *WorkspaceConfigService
 	ingestion       *IngestionPipelineService
+	folderIntake    automationFolderIntake
 	jobSvc          *JobService
 	mu              sync.Mutex
 	running         bool
@@ -23,8 +24,24 @@ type AutomationService struct {
 	daemonDoneCh    chan struct{}
 }
 
-func NewAutomationService(workspaceConfig *WorkspaceConfigService, ingestion *IngestionPipelineService, jobSvc *JobService) *AutomationService {
-	return &AutomationService{workspaceConfig: workspaceConfig, ingestion: ingestion, jobSvc: jobSvc}
+type automationFolderIntake interface {
+	RunOnce(ctx context.Context, root string) (automationFolderRunSummary, error)
+	RetryFailed(ctx context.Context, root string) (automationFolderRunSummary, error)
+}
+
+type automationFolderRunSummary struct {
+	ScannedFiles       int
+	ImportedFiles      int
+	SkippedFiles       int
+	FailedFiles        int
+	ProcessedPending   int
+	ProcessedFailed    int
+	CompletedDocuments int
+	FailedDocuments    int
+}
+
+func NewAutomationService(workspaceConfig *WorkspaceConfigService, ingestion *IngestionPipelineService, folderIntake automationFolderIntake, jobSvc *JobService) *AutomationService {
+	return &AutomationService{workspaceConfig: workspaceConfig, ingestion: ingestion, folderIntake: folderIntake, jobSvc: jobSvc}
 }
 
 func (s *AutomationService) SetJobService(jobSvc *JobService) {
@@ -33,7 +50,22 @@ func (s *AutomationService) SetJobService(jobSvc *JobService) {
 	s.jobSvc = jobSvc
 }
 
+func (s *AutomationService) SetFolderIntake(folderIntake automationFolderIntake) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.folderIntake = folderIntake
+}
+
 func (s *AutomationService) RunOnce(ctx context.Context, root string) (*domain.AutomationRunResult, error) {
+	if s.folderIntake != nil {
+		return s.runAndPersist(ctx, root, "run-once", func(runCtx context.Context) (map[string]any, error) {
+			result, err := s.folderIntake.RunOnce(runCtx, root)
+			if err != nil {
+				return nil, err
+			}
+			return folderIntakeSummaryMap(result), nil
+		})
+	}
 	return s.runAndPersist(ctx, root, "run-once", func(runCtx context.Context) (map[string]any, error) {
 		result, err := s.ingestion.ImportIncoming(runCtx, root)
 		if err != nil {
@@ -44,6 +76,15 @@ func (s *AutomationService) RunOnce(ctx context.Context, root string) (*domain.A
 }
 
 func (s *AutomationService) RetryFailed(ctx context.Context, root string) (*domain.AutomationRunResult, error) {
+	if s.folderIntake != nil {
+		return s.runAndPersist(ctx, root, "retry-failed", func(runCtx context.Context) (map[string]any, error) {
+			result, err := s.folderIntake.RetryFailed(runCtx, root)
+			if err != nil {
+				return nil, err
+			}
+			return folderIntakeSummaryMap(result), nil
+		})
+	}
 	return s.runAndPersist(ctx, root, "retry-failed", func(runCtx context.Context) (map[string]any, error) {
 		result, err := s.ingestion.RetryFailed(runCtx, root)
 		if err != nil {
@@ -297,6 +338,138 @@ func ingestionSummaryMap(result *domain.IngestionRunResult) map[string]any {
 	}
 }
 
+func folderIntakeSummaryMap(result automationFolderRunSummary) map[string]any {
+	return map[string]any{
+		"scanned_files":               result.ScannedFiles,
+		"imported_files":              result.ImportedFiles,
+		"skipped_files":               result.SkippedFiles,
+		"failed_files":                result.FailedFiles,
+		"processed_pending_documents": result.ProcessedPending,
+		"processed_failed_documents":  result.ProcessedFailed,
+		"completed_documents":         result.CompletedDocuments,
+		"failed_documents":            result.FailedDocuments,
+	}
+}
+
+type runtimeAutomationFolderIntake struct {
+	runtime *FolderIntakeRuntime
+}
+
+func NewRuntimeAutomationFolderIntake(runtime *FolderIntakeRuntime) *runtimeAutomationFolderIntake {
+	return &runtimeAutomationFolderIntake{runtime: runtime}
+}
+
+func (a *runtimeAutomationFolderIntake) RunOnce(ctx context.Context, _ string) (automationFolderRunSummary, error) {
+	if a == nil || a.runtime == nil || a.runtime.Scanner == nil || a.runtime.Scheduler == nil {
+		return automationFolderRunSummary{}, domain.NewInternalErr("folder intake automation is not configured", nil)
+	}
+	summary := automationFolderRunSummary{}
+	run, err := a.runtime.Scanner.ScanOnce(ctx, a.runtime.WatchDir, a.runtime.ArchiveDir)
+	if run != nil {
+		summary.ScannedFiles = intMetadata(run.Metadata, "scanned_files")
+		summary.ImportedFiles = intMetadata(run.Metadata, "imported_files")
+		summary.SkippedFiles = intMetadata(run.Metadata, "skipped_files")
+		summary.FailedFiles = intMetadata(run.Metadata, "failed_files")
+	}
+	if err != nil {
+		return summary, err
+	}
+	processed, processErr := a.runtime.Scheduler.ProcessPending(ctx)
+	summary.ProcessedPending = len(processed)
+	completed, failed, reloadErr := summarizeProcessedDocuments(ctx, a.runtime.SourceDocumentRepo, processed)
+	summary.CompletedDocuments = completed
+	summary.FailedDocuments = failed
+	if reloadErr != nil {
+		return summary, reloadErr
+	}
+	if processErr != nil {
+		return summary, processErr
+	}
+	return summary, nil
+}
+
+func (a *runtimeAutomationFolderIntake) RetryFailed(ctx context.Context, _ string) (automationFolderRunSummary, error) {
+	if a == nil || a.runtime == nil || a.runtime.SourceDocumentRepo == nil || a.runtime.Scheduler == nil {
+		return automationFolderRunSummary{}, domain.NewInternalErr("folder intake automation is not configured", nil)
+	}
+	failedDocs, err := a.runtime.SourceDocumentRepo.ListByStatus(ctx, domain.SourceDocumentStatusFailed, 1000)
+	if err != nil {
+		return automationFolderRunSummary{}, fmt.Errorf("list failed source documents: %w", err)
+	}
+	for idx := range failedDocs {
+		doc := failedDocs[idx]
+		doc.Status = domain.SourceDocumentStatusPending
+		doc.ClaimedBy = ""
+		doc.ClaimedAt = nil
+		doc.ProcessingStartedAt = nil
+		doc.CompletedAt = nil
+		doc.ErrorSummary = ""
+		if err := a.runtime.SourceDocumentRepo.Update(ctx, &doc); err != nil {
+			return automationFolderRunSummary{}, fmt.Errorf("requeue failed source document %s: %w", doc.ID, err)
+		}
+	}
+	processed, processErr := a.runtime.Scheduler.ProcessPending(ctx)
+	summary := automationFolderRunSummary{ProcessedFailed: len(failedDocs)}
+	completed, failed, reloadErr := summarizeProcessedDocuments(ctx, a.runtime.SourceDocumentRepo, processed)
+	summary.ProcessedPending = len(processed) - len(failedDocs)
+	if summary.ProcessedPending < 0 {
+		summary.ProcessedPending = 0
+	}
+	summary.CompletedDocuments = completed
+	summary.FailedDocuments = failed
+	if reloadErr != nil {
+		return summary, reloadErr
+	}
+	if processErr != nil {
+		return summary, processErr
+	}
+	return summary, nil
+}
+
+func summarizeProcessedDocuments(ctx context.Context, repo sourceDocumentStatusReader, docs []domain.SourceDocument) (int, int, error) {
+	if repo == nil {
+		return 0, 0, domain.NewInternalErr("source document repo is not configured", nil)
+	}
+	completed := 0
+	failed := 0
+	for _, doc := range docs {
+		stored, err := repo.GetByID(ctx, doc.ID)
+		if err != nil {
+			return 0, 0, fmt.Errorf("load source document %s: %w", doc.ID, err)
+		}
+		if stored == nil {
+			continue
+		}
+		switch stored.Status {
+		case domain.SourceDocumentStatusCompleted:
+			completed++
+		case domain.SourceDocumentStatusFailed:
+			failed++
+		}
+	}
+	return completed, failed, nil
+}
+
+func intMetadata(metadata map[string]any, key string) int {
+	if metadata == nil {
+		return 0
+	}
+	value, ok := metadata[key]
+	if !ok {
+		return 0
+	}
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	default:
+		return 0
+	}
+}
+
 func NewRuntimeAutomationService(root string) (*AutomationService, func() error, error) {
 	workspaceConfig := NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator())
 	repos, cleanup, err := BuildRuntimeRepos(root)
@@ -306,7 +479,22 @@ func NewRuntimeAutomationService(root string) (*AutomationService, func() error,
 	workflow := NewWorkflowEngine()
 	jobSvc := NewJobService(repos.JobRepo, repos.JobEventRepo, workflow)
 	ingestionSvc := NewIngestionPipelineService(repos.IngestionRepo, repos.WorkspaceRepo, repos.BundleImportTxStarter, workspaceinfra.NewLoader())
-	automationSvc := NewAutomationService(workspaceConfig, ingestionSvc, jobSvc)
+	automationSvc := NewAutomationService(workspaceConfig, ingestionSvc, nil, jobSvc)
+	resolved, err := workspaceConfig.Resolve(root)
+	if err != nil {
+		_ = cleanup()
+		return nil, nil, err
+	}
+	folderRuntime, err := BuildFolderIntakeRuntime(repos, FolderIntakeConfig{
+		WatchDir:    resolved.Paths.IncomingDir,
+		ArchiveDir:  resolved.Paths.ProcessedDir,
+		Concurrency: resolved.Workspace.Collector.GlobalConcurrency,
+	})
+	if err != nil {
+		_ = cleanup()
+		return nil, nil, err
+	}
+	automationSvc.SetFolderIntake(NewRuntimeAutomationFolderIntake(folderRuntime))
 	workflow = BuildDefaultWorkflowEngine(root, automationSvc)
 	jobSvc = NewJobService(repos.JobRepo, repos.JobEventRepo, workflow)
 	automationSvc.SetJobService(jobSvc)

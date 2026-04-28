@@ -228,7 +228,7 @@ func TestRuntimeWorkflowEngineRegistersDefaultAutomationNodes(t *testing.T) {
 	provider := memory.NewProvider()
 	workspaceConfigSvc := service.NewWorkspaceConfigService(nil, nil)
 	ingestionSvc := service.NewIngestionPipelineService(provider.IngestionRepo(), provider.WorkspaceRepo(), provider, nil)
-	automationSvc := service.NewAutomationService(workspaceConfigSvc, ingestionSvc, nil)
+	automationSvc := service.NewAutomationService(workspaceConfigSvc, ingestionSvc, nil, nil)
 	engine := service.BuildDefaultWorkflowEngine(t.TempDir(), automationSvc)
 
 	assert.Contains(t, engine.RegisteredNames(), "automation_dispatch")

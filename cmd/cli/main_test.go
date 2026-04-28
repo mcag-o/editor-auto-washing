@@ -386,7 +386,7 @@ func TestRuntimeAutomationCLIServiceRunDaemonBlocksUntilContextStops(t *testing.
 
 	provider := memory.NewProvider()
 	ingestionSvc := service.NewIngestionPipelineService(provider.IngestionRepo(), provider.WorkspaceRepo(), provider, workspaceinfra.NewLoader())
-	automationSvc := service.NewAutomationService(service.NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), ingestionSvc, nil)
+	automationSvc := service.NewAutomationService(service.NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), ingestionSvc, nil, nil)
 	cliSvc := &runtimeAutomationCLIService{root: root, svc: automationSvc}
 
 	ctx, cancel := context.WithCancel(context.Background())
