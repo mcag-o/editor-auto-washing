@@ -54,7 +54,7 @@ Run from repository root.
 - Run rewrite orchestrator test: `go test ./service -run TestRewriteOrchestratorRunsPipelineAndCreatesDraft`
 - Run one integration test: `go test ./integration -run TestFolderIntakeMainlineCreatesRenderedOutput`
 - Run rewrite integration test: `go test ./integration -run TestRewritePipelineMainlineMaterializesDraft`
-- Run verbose package test: `go test -v ./transport/http/handlers -run 'TestRSS|TestRewrite'`
+- Run verbose package test: `go test -v ./transport/http/handlers -run 'TestFolder|TestRewrite'`
 - Build via Makefile: `make build`
 - Run built server: `make run`
 - Clean build artifacts: `make clean`

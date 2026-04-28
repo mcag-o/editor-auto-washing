@@ -175,11 +175,10 @@ go run ./cmd/cli workspace doctor --root .
 ### Folder Intake
 
 ```bash
-go run ./cmd/cli source ingest --workspace <workspace-id> --root .
 go run ./cmd/cli automation run-once --root .
 ```
 
-说明：当前 CLI 文档只把 folder intake / source document workflow 作为默认 intake 入口描述；默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。旧的 RSS、`ingestion ...` 与 `collector ...` CLI 入口不再作为当前运行时文档化接口。
+说明：当前运行时的默认 intake 路径仍然是 folder intake / source document workflow，但它目前通过 `automation` 命令驱动执行；仓库里尚未暴露独立的 folder-intake CLI 子命令。默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。旧的 RSS、`ingestion ...` 与 `collector ...` CLI 入口不再作为当前运行时文档化接口。
 
 ### Formatting
 
@@ -243,13 +242,8 @@ go run ./cmd/cli automation stop --root .
 - `POST /drafts/:id/validate`
 - `GET /assets/:id`
 
-### Folder Intake / Workspace
+### Workspace
 
-- `POST /folders/intake`
-- `GET /folders/intake/runs`
-- `GET /folders/intake/runs/:id`
-- `GET /source-documents`
-- `GET /source-documents/:id`
 - `GET /workspace/articles`
 
 ### Rewrite
@@ -280,7 +274,7 @@ go run ./cmd/cli automation stop --root .
 - `GET /automation/health`
 - `POST /automation/stop`
 
-说明：folder intake / source document workflow 是当前 active runtime 的默认 intake surface；review 与 publish API 仍可单独调用，但不会由默认自动化链自动进入。旧的 `/ingestion/*` 与 `/collector/*` 路径不再作为支持中的运行时入口。
+说明：folder intake / source document workflow 是当前 active runtime 的默认 intake 路径，但当前 HTTP 暴露的是 automation、rewrite、workspace article、review/publish 等可调用 surface；仓库里尚未注册独立的 folder-intake 或 source-document HTTP endpoint。review 与 publish API 仍可单独调用，但不会由默认自动化链自动进入。旧的 `/ingestion/*` 与 `/collector/*` 路径不再作为支持中的运行时入口。
 
 ---
 
@@ -327,7 +321,7 @@ go test ./...
 ## 当前限制与边界
 
 - Go 版已经可以替代 Python 主链路，但不是历史兼容层逐字复刻
-- folder intake / source document processing 是当前默认 intake surface；旧的 collector/ingestion HTTP 与 CLI 入口不再受支持
+- folder intake / source document processing 是当前默认 intake 路径，但独立的 folder-intake HTTP/CLI surface 目前尚未暴露；对外可调用入口以 automation、rewrite、workspace/review/publish 等现有接口为主
 - 默认自动化结果停在 draft + render；review / publish 作为后续可选人工步骤保留
 - 归档项目里的采集/ingestion 文档仍保留历史语义，不代表根目录 Go runtime 的当前对外接口
 - automation daemon 目前是单进程内模型，不是外部 supervisor 模型
