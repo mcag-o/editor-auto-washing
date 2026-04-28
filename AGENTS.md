@@ -23,7 +23,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 
 - Assume repo root is the default working project unless the task explicitly points into `Archive/`.
 - Do not treat archived docs as source of truth for current commands, APIs, or architecture.
-- Treat folder intake / source document processing as the supported active-runtime default intake path. Review/publish are optional later steps, not part of the default automated chain. Do not present legacy collector/ingestion HTTP or CLI surfaces as current supported entrypoints unless the task explicitly targets historical behavior.
+- Treat folder intake / source document processing as the supported and only documented active-runtime default intake path. Draft + render are the default automated result path. Review/publish are optional later steps, not part of the default automated chain. Do not present legacy RSS/collector/ingestion HTTP or CLI surfaces as current supported entrypoints unless the task explicitly targets historical behavior.
 - Preserve Chinese user-facing documentation where it already exists; bilingual docs are normal here.
 - Prefer minimal, local edits over wide migration-era cleanup unless the task explicitly asks for broader normalization.
 - When touching path-sensitive docs or metadata, check whether the target should reference root runtime code or archived legacy code.
@@ -42,16 +42,17 @@ Run from repository root.
 - Run server: `go run ./cmd/server`
 - Run CLI: `go run ./cmd/cli`
 - Run TUI: `go run ./cmd/tui --api http://localhost:8080`
-- RSS/rewrite transport verification: `go test ./transport/http/... -run 'TestRSS|TestRewrite'`
-- RSS/rewrite CLI verification: `go test ./cmd/cli -run 'TestCLIRSS|TestCLIRewrite'`
-- RSS/rewrite integration verification: `go test ./integration -run 'TestRSSPullMainlineCreatesWorkspaceAndDraft|TestRewritePipelineMainlineMaterializesDraft'`
+- Folder/rewrite service verification: `go test ./service -run 'TestSource|TestFolder|TestRewrite'`
+- Folder/rewrite transport verification: `go test ./transport/http/... -run 'TestFolder|TestRewrite'`
+- Folder/rewrite CLI verification: `go test ./cmd/cli -run 'TestCLIFolder|TestCLIRewrite'`
+- Folder/rewrite integration verification: `go test ./integration -run 'TestFolderIntakeMainlineCreatesRenderedOutput|TestRewritePipelineMainlineMaterializesDraft'`
 - Run all tests: `go test ./...`
 - Run all tests with race and coverage: `make test`
 - Run one package: `go test ./collector/service`
 - Run one exact test: `go test ./collector/service -run TestRunService`
 - Run rewrite service tests: `go test ./service -run TestRewrite`
 - Run rewrite orchestrator test: `go test ./service -run TestRewriteOrchestratorRunsPipelineAndCreatesDraft`
-- Run one integration test: `go test ./integration -run TestRSSPullMainlineCreatesWorkspaceAndDraft`
+- Run one integration test: `go test ./integration -run TestFolderIntakeMainlineCreatesRenderedOutput`
 - Run rewrite integration test: `go test ./integration -run TestRewritePipelineMainlineMaterializesDraft`
 - Run verbose package test: `go test -v ./transport/http/handlers -run 'TestRSS|TestRewrite'`
 - Build via Makefile: `make build`
@@ -166,7 +167,7 @@ Match the active area you are editing. Do not normalize root Go code and archive
 - When fixing a bug, update the nearest existing test or add a close regression test instead of creating a disconnected test file.
 - Prefer fixture-driven tests for collector parsing, normalization, and migration-reference behavior.
 - Prefer `go test ./service -run TestRewrite...` for rewrite service verification before broader `go test ./...` runs.
-- Prefer `go test ./integration -run TestRewritePipeline...` when validating rewrite-to-draft mainline behavior.
+- Prefer `go test ./integration -run 'TestFolderIntakeMainlineCreatesRenderedOutput|TestRewritePipelineMainlineMaterializesDraft'` when validating the default automated mainline.
 - Start with a package-level or exact-test run before `go test ./...`.
 - Archived Python tests use `unittest.TestCase` under `Archive/ArticleWashing/tests/content_hub/`.
 - Archived Node tests use Vitest under `Archive/DataCollection/test/`.

@@ -60,7 +60,7 @@
 - `infra/sqlite/source_document_repo.go`
 - `infra/sqlite/article_workspace_repo.go`
 
-说明：RSS 与 `service/ingestion_pipeline.go`、`collector/` 下的实现仍可作为迁移、补充入口或历史兼容参考存在，但默认自动化主路径已经切换为 folder intake，它们不是当前文档中的默认 intake 叙述。
+说明：旧的 RSS、`service/ingestion_pipeline.go` 与 `collector/` 相关实现仅作为迁移参考或历史上下文保留；当前文档中的唯一 active/default intake 叙述是 folder intake / source document workflow。
 
 ### 2.6. AI Rewrite Pipeline
 
@@ -172,17 +172,14 @@ go run ./cmd/cli workspace resolve-config --root .
 go run ./cmd/cli workspace doctor --root .
 ```
 
-### RSS
+### Folder Intake
 
 ```bash
-go run ./cmd/cli rss subscriptions add --name tech --feed-url https://example.com/feed.xml --target wechat-longform --source sspai --root .
-go run ./cmd/cli rss subscriptions list --root .
-go run ./cmd/cli rss subscriptions run <subscription-id> --root .
-go run ./cmd/cli rss runs list --root .
-go run ./cmd/cli rss items list --root .
+go run ./cmd/cli source ingest --workspace <workspace-id> --root .
+go run ./cmd/cli automation run-once --root .
 ```
 
-说明：RSS CLI 仍可作为补充入口存在，但不是当前 active runtime 的默认 intake 入口；默认 intake 路径是 folder intake / source document workflow，默认自动处理结果停在 draft + render。旧的 `ingestion ...` 与 `collector ...` CLI 命令不再作为支持中的运行时接口。
+说明：当前 CLI 文档只把 folder intake / source document workflow 作为默认 intake 入口描述；默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。旧的 RSS、`ingestion ...` 与 `collector ...` CLI 入口不再作为当前运行时文档化接口。
 
 ### Formatting
 
@@ -197,7 +194,7 @@ go run ./cmd/cli formatting validate <draft-id> --platform wechat --template dai
 go run ./cmd/cli rewrite run <workspace-article-id> --target wechat-longform --source sspai --root .
 ```
 
-说明：rewrite CLI 会读取 workspace article 元数据，并按 `target + source + version` 解析 rewrite profile；当前 CLI 不提供 `--version` 参数，版本选择走运行时默认值。RSS intake 只负责把 source article 导入到 workspace，不负责 rewrite 编排。
+说明：rewrite CLI 会读取 workspace article 元数据，并按 `target + source + version` 解析 rewrite profile；当前 CLI 不提供 `--version` 参数，版本选择走运行时默认值。默认 intake 路径仍是 folder intake / source document workflow，rewrite 编排衔接其导入结果继续执行。
 
 ### Review / Publish
 
@@ -246,19 +243,13 @@ go run ./cmd/cli automation stop --root .
 - `POST /drafts/:id/validate`
 - `GET /assets/:id`
 
-### RSS / Workspace
+### Folder Intake / Workspace
 
-- `POST /rss/subscriptions`
-- `GET /rss/subscriptions`
-- `GET /rss/subscriptions/:id`
-- `PUT /rss/subscriptions/:id`
-- `DELETE /rss/subscriptions/:id`
-- `POST /rss/subscriptions/:id/run`
-- `POST /rss/run-all`
-- `GET /rss/runs`
-- `GET /rss/runs/:id`
-- `GET /rss/items`
-- `GET /rss/items/:id`
+- `POST /folders/intake`
+- `GET /folders/intake/runs`
+- `GET /folders/intake/runs/:id`
+- `GET /source-documents`
+- `GET /source-documents/:id`
 - `GET /workspace/articles`
 
 ### Rewrite
@@ -310,6 +301,10 @@ go run ./cmd/cli automation stop --root .
 当前仓库已经在 Go 主项目上通过完整测试：
 
 ```bash
+go test ./service -run 'TestSource|TestFolder|TestRewrite'
+go test ./transport/http/... -run 'TestFolder|TestRewrite'
+go test ./cmd/cli -run 'TestCLIFolder|TestCLIRewrite'
+go test ./integration -run 'TestFolderIntakeMainlineCreatesRenderedOutput|TestRewritePipelineMainlineMaterializesDraft'
 go test ./...
 ```
 
