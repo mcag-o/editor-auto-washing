@@ -180,13 +180,15 @@ func TestProcessingSchedulerReturnsClaimError(t *testing.T) {
 	require.Empty(t, worker.processed)
 }
 
-func TestProcessingSchedulerStopsWhenWorkerFails(t *testing.T) {
+func TestProcessingSchedulerContinuesAfterEarlierWorkerFailure(t *testing.T) {
 	repo := &stubSourceProcessingSchedulerRepo{claimedDocs: []domain.SourceDocument{
+		*validClaimedSourceProcessingDocument(),
 		*validClaimedSourceProcessingDocument(),
 		*validClaimedSourceProcessingDocument(),
 	}}
 	repo.claimedDocs[0].ID = "doc-a"
 	repo.claimedDocs[1].ID = "doc-b"
+	repo.claimedDocs[2].ID = "doc-c"
 	worker := &stubSourceProcessingSchedulerWorker{errByID: map[string]error{"doc-a": errors.New("process exploded")}}
 	scheduler := NewSourceProcessingScheduler(repo, worker, 2, "scheduler-1")
 
@@ -194,7 +196,45 @@ func TestProcessingSchedulerStopsWhenWorkerFails(t *testing.T) {
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, "process source document doc-a")
-	require.Len(t, processed, 1)
-	require.Len(t, worker.processed, 1)
-	require.Equal(t, "doc-a", worker.processed[0].ID)
+	require.Len(t, processed, 2)
+	require.Len(t, worker.processed, 2)
+	require.Equal(t, []string{"doc-a", "doc-b"}, []string{worker.processed[0].ID, worker.processed[1].ID})
+}
+
+func TestProcessingSchedulerReturnsErrorIfAnyClaimedDocumentFails(t *testing.T) {
+	repo := &stubSourceProcessingSchedulerRepo{claimedDocs: []domain.SourceDocument{
+		*validClaimedSourceProcessingDocument(),
+		*validClaimedSourceProcessingDocument(),
+	}}
+	repo.claimedDocs[0].ID = "doc-a"
+	repo.claimedDocs[1].ID = "doc-b"
+	worker := &stubSourceProcessingSchedulerWorker{errByID: map[string]error{"doc-b": errors.New("render exploded")}}
+	scheduler := NewSourceProcessingScheduler(repo, worker, 2, "scheduler-1")
+
+	processed, err := scheduler.ProcessPending(t.Context())
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "process source document doc-b")
+	require.Len(t, processed, 2)
+	require.Len(t, worker.processed, 2)
+}
+
+func TestProcessingSchedulerDoesNotLeaveClaimedBatchUnprocessedAfterFailure(t *testing.T) {
+	repo := &stubSourceProcessingSchedulerRepo{claimedDocs: []domain.SourceDocument{
+		*validClaimedSourceProcessingDocument(),
+		*validClaimedSourceProcessingDocument(),
+		*validClaimedSourceProcessingDocument(),
+	}}
+	repo.claimedDocs[0].ID = "doc-a"
+	repo.claimedDocs[1].ID = "doc-b"
+	repo.claimedDocs[2].ID = "doc-c"
+	worker := &stubSourceProcessingSchedulerWorker{errByID: map[string]error{"doc-b": errors.New("rewrite exploded")}}
+	scheduler := NewSourceProcessingScheduler(repo, worker, 3, "scheduler-1")
+
+	processed, err := scheduler.ProcessPending(t.Context())
+
+	require.Error(t, err)
+	require.Len(t, processed, 3)
+	require.Len(t, worker.processed, 3)
+	require.Equal(t, []string{"doc-a", "doc-b", "doc-c"}, []string{worker.processed[0].ID, worker.processed[1].ID, worker.processed[2].ID})
 }

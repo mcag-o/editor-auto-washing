@@ -54,12 +54,18 @@ func (s *SourceProcessingScheduler) ProcessPending(ctx context.Context) ([]domai
 	}
 
 	processed := make([]domain.SourceDocument, 0, len(claimed))
+	var firstErr error
 	for i := range claimed {
 		doc := claimed[i]
 		processed = append(processed, doc)
 		if err := s.worker.Process(ctx, &doc); err != nil {
-			return processed, fmt.Errorf("process source document %s: %w", strings.TrimSpace(doc.ID), err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("process source document %s: %w", strings.TrimSpace(doc.ID), err)
+			}
 		}
+	}
+	if firstErr != nil {
+		return processed, firstErr
 	}
 	return processed, nil
 }
