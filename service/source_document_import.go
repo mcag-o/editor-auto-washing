@@ -58,7 +58,7 @@ func (s *SourceDocumentImportService) ImportFile(ctx context.Context, path strin
 		return nil, fmt.Errorf("create source document: %w", err)
 	}
 
-	archivedPath, err := archiveSourceDocument(path, s.archiveDir)
+	archivedPath, err := archiveSourceDocument(path, s.archiveDir, doc)
 	if err != nil {
 		return nil, fmt.Errorf("archive source document: %w", err)
 	}
@@ -102,25 +102,27 @@ func sourceDocumentMetadata(parsed *ParsedSourceDocument) map[string]any {
 	return metadata
 }
 
-func archiveSourceDocument(path, archiveDir string) (string, error) {
+func archiveSourceDocument(path, archiveDir string, doc *domain.SourceDocument) (string, error) {
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		return "", fmt.Errorf("create archive dir: %w", err)
 	}
-	targetPath := filepath.Join(archiveDir, archivedFilename(path))
+	targetPath := filepath.Join(archiveDir, archivedFilename(doc))
 	if err := os.Rename(path, targetPath); err != nil {
 		return "", err
 	}
 	return targetPath, nil
 }
 
-func archivedFilename(path string) string {
-	base := filepath.Base(path)
+func archivedFilename(doc *domain.SourceDocument) string {
+	base := filepath.Base(doc.OriginalFilename)
 	ext := filepath.Ext(base)
 	name := strings.TrimSuffix(base, ext)
-	checksum := sha256.Sum256([]byte(path))
-	shortHash := hex.EncodeToString(checksum[:])[:12]
-	if ext == "" {
-		return name + "." + shortHash
+	shortHash := doc.Hash
+	if len(shortHash) > 12 {
+		shortHash = shortHash[:12]
 	}
-	return name + "." + shortHash + ext
+	if ext == "" {
+		return name + "." + shortHash + "." + doc.ID
+	}
+	return name + "." + shortHash + "." + doc.ID + ext
 }

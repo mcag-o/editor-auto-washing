@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,6 +75,7 @@ func TestSourceDocumentImportPersistsAndArchivesFile(t *testing.T) {
 	require.DirExists(t, archive)
 	require.Equal(t, archive, filepath.Dir(doc.ArchivedPath))
 	require.NotEqual(t, filepath.Join(archive, "article.json"), doc.ArchivedPath)
+	requireArchivedPathSuffixStrategy(t, doc)
 	require.Equal(t, "json", doc.FileType)
 	require.Equal(t, "Title", doc.Title)
 	require.Equal(t, "Body", doc.Body)
@@ -121,6 +123,60 @@ func TestSourceDocumentImportSameNameImportsProduceDifferentArchivedPaths(t *tes
 	require.FileExists(t, secondDoc.ArchivedPath)
 	require.Equal(t, archive, filepath.Dir(firstDoc.ArchivedPath))
 	require.Equal(t, archive, filepath.Dir(secondDoc.ArchivedPath))
+	requireArchivedPathSuffixStrategy(t, firstDoc)
+	requireArchivedPathSuffixStrategy(t, secondDoc)
+}
+
+func TestSourceDocumentImportSameSourcePathDifferentContentGetsDifferentArchivedPaths(t *testing.T) {
+	root := t.TempDir()
+	archive := filepath.Join(root, "SyncOver")
+	require.NoError(t, os.MkdirAll(archive, 0o755))
+
+	path := filepath.Join(root, "article.md")
+	repo := &stubSourceDocumentRepo{}
+	svc := NewSourceDocumentImportService(repo, archive)
+
+	require.NoError(t, os.WriteFile(path, []byte("# Title A\n\nBody A"), 0o644))
+	firstDoc, err := svc.ImportFile(t.Context(), path)
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(path, []byte("# Title B\n\nBody B"), 0o644))
+	secondDoc, err := svc.ImportFile(t.Context(), path)
+	require.NoError(t, err)
+
+	require.NotEqual(t, firstDoc.ArchivedPath, secondDoc.ArchivedPath)
+	require.NotEqual(t, firstDoc.Hash, secondDoc.Hash)
+	require.FileExists(t, firstDoc.ArchivedPath)
+	require.FileExists(t, secondDoc.ArchivedPath)
+	requireArchivedPathSuffixStrategy(t, firstDoc)
+	requireArchivedPathSuffixStrategy(t, secondDoc)
+}
+
+func TestSourceDocumentImportSameSourcePathSameContentStillGetsUniqueArchivedPath(t *testing.T) {
+	root := t.TempDir()
+	archive := filepath.Join(root, "SyncOver")
+	require.NoError(t, os.MkdirAll(archive, 0o755))
+
+	path := filepath.Join(root, "article.md")
+	repo := &stubSourceDocumentRepo{}
+	svc := NewSourceDocumentImportService(repo, archive)
+
+	content := []byte("# Same Title\n\nSame Body")
+	require.NoError(t, os.WriteFile(path, content, 0o644))
+	firstDoc, err := svc.ImportFile(t.Context(), path)
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(path, content, 0o644))
+	secondDoc, err := svc.ImportFile(t.Context(), path)
+	require.NoError(t, err)
+
+	require.Equal(t, firstDoc.Hash, secondDoc.Hash)
+	require.NotEqual(t, firstDoc.ID, secondDoc.ID)
+	require.NotEqual(t, firstDoc.ArchivedPath, secondDoc.ArchivedPath)
+	require.FileExists(t, firstDoc.ArchivedPath)
+	require.FileExists(t, secondDoc.ArchivedPath)
+	requireArchivedPathSuffixStrategy(t, firstDoc)
+	requireArchivedPathSuffixStrategy(t, secondDoc)
 }
 
 func TestSourceDocumentImportReturnsExplicitErrorWhenArchiveMoveFails(t *testing.T) {
@@ -195,4 +251,21 @@ func cloneSourceDocument(doc *domain.SourceDocument) *domain.SourceDocument {
 		copyValue.CompletedAt = &copiedTime
 	}
 	return &copyValue
+}
+
+func requireArchivedPathSuffixStrategy(t *testing.T, doc *domain.SourceDocument) {
+	t.Helper()
+	base := filepath.Base(doc.ArchivedPath)
+	ext := filepath.Ext(base)
+	nameWithoutExt := strings.TrimSuffix(base, ext)
+	parts := strings.Split(nameWithoutExt, ".")
+	require.GreaterOrEqual(t, len(parts), 3)
+	require.Equal(t, trimFilenameExt(doc.OriginalFilename), strings.Join(parts[:len(parts)-2], "."))
+	require.Equal(t, doc.Hash[:12], parts[len(parts)-2])
+	require.Equal(t, doc.ID, parts[len(parts)-1])
+	require.Equal(t, filepath.Ext(doc.OriginalFilename), ext)
+}
+
+func trimFilenameExt(name string) string {
+	return strings.TrimSuffix(name, filepath.Ext(name))
 }
