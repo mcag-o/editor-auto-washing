@@ -67,6 +67,8 @@ func (w *SourceProcessingWorker) Process(ctx context.Context, doc *domain.Source
 		return w.fail(ctx, loaded, err)
 	}
 
+	// Automated folder intake stops after draft materialization and render.
+	// Review and publish remain optional/manual follow-up steps.
 	completedAt := time.Now().UTC()
 	loaded.Status = domain.SourceDocumentStatusCompleted
 	loaded.CompletedAt = &completedAt

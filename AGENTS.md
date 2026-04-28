@@ -5,7 +5,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 ## Repository Shape
 
 - Active project: repo root Go module `content-hub`
-- Active documented intake path: RSS subscription and pull surfaces in the root Go runtime
+- Active documented intake path: folder intake / source document processing in the root Go runtime
 - Archived reference projects:
   - `Archive/ArticleWashing/` - legacy Python content-hub implementation
   - `Archive/DataCollection/` - legacy Node.js collector implementation
@@ -23,7 +23,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 
 - Assume repo root is the default working project unless the task explicitly points into `Archive/`.
 - Do not treat archived docs as source of truth for current commands, APIs, or architecture.
-- Treat RSS as the supported active-runtime intake path; do not present legacy collector/ingestion HTTP or CLI surfaces as current supported entrypoints unless the task explicitly targets historical behavior.
+- Treat folder intake / source document processing as the supported active-runtime default intake path. Review/publish are optional later steps, not part of the default automated chain. Do not present legacy collector/ingestion HTTP or CLI surfaces as current supported entrypoints unless the task explicitly targets historical behavior.
 - Preserve Chinese user-facing documentation where it already exists; bilingual docs are normal here.
 - Prefer minimal, local edits over wide migration-era cleanup unless the task explicitly asks for broader normalization.
 - When touching path-sensitive docs or metadata, check whether the target should reference root runtime code or archived legacy code.

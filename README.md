@@ -1,6 +1,6 @@
 # content-hub
 
-> 当前默认主实现（Go 版，仓库根目录），已覆盖工作区配置、RSS 订阅拉取、结构化排版、审核发布、作业与自动化主链路。
+> 当前默认主实现（Go 版，仓库根目录），已覆盖工作区配置、folder intake、rewrite/draft/render、审核发布能力、作业与自动化主链路。
 
 ---
 
@@ -11,14 +11,14 @@
 当前已经完成的主链路替代范围：
 
 - workspace 驱动配置
-- RSS subscription / pull run / item intake
+- folder intake / source document processing
 - article workspace 生命周期
 - 结构化 draft / render / validate / asset persistence
 - review / publish gate / publish history
 - workflow / jobs / automation
 - HTTP API / CLI / 基础 TUI
 
-这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；当前对外支持的 intake 路径是 RSS subscription / pull run / item workflow，旧的 collector/ingestion surface 不再作为 active runtime 当前能力。
+这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；当前 active runtime 的默认 intake 路径是 folder intake / source document workflow，自动处理默认产物会停在 draft + render，review / publish 保持为后续可选人工步骤。旧的 collector/ingestion surface 不再作为 active runtime 当前能力。
 
 不包含的承诺：
 
@@ -43,32 +43,31 @@
 - `infra/workspace/loader.go`
 - `infra/workspace/validator.go`
 
-### 2. RSS Intake 与文章工作区
+### 2. Folder Intake 与文章工作区
 
-- RSS subscription 是当前 active runtime 唯一对外支持的 intake 入口
-- 支持 subscription CRUD、单订阅 pull、批量 pull、pull run 查询、item 查询
-- RSS item intake 会直接创建 workspace article，并进入后续 rewrite / draft / review / publish 主链路
+- folder intake / source document processing 是当前 active runtime 默认 intake 主路径
+- 目录扫描、认领、rewrite、draft materialize、render 会组成默认自动化处理链
+- 默认自动化链在 render 结束；review / publish 保持可选，由后续人工或显式调用触发
 - article workspace record 与状态流转仍由当前 Go runtime 持久化
 
 相关代码：
 
-- `service/rss_runtime.go`
-- `service/rss_subscription_service.go`
-- `service/rss_scheduler.go`
+- `service/folder_intake_runtime.go`
+- `service/folder_intake_worker.go`
+- `service/source_processing_scheduler.go`
+- `service/source_processing_worker.go`
 - `service/article_intake.go`
-- `infra/sqlite/rss_subscription_repo.go`
-- `infra/sqlite/rss_pull_run_repo.go`
-- `infra/sqlite/rss_item_repo.go`
+- `infra/sqlite/source_document_repo.go`
 - `infra/sqlite/article_workspace_repo.go`
 
-说明：`service/ingestion_pipeline.go` 与 `collector/` 下的实现仍可作为迁移或历史兼容参考存在，但它们不是当前 active runtime 的对外支持入口。
+说明：RSS 与 `service/ingestion_pipeline.go`、`collector/` 下的实现仍可作为迁移、补充入口或历史兼容参考存在，但默认自动化主路径已经切换为 folder intake，它们不是当前文档中的默认 intake 叙述。
 
 ### 2.6. AI Rewrite Pipeline
 
 - imported workspace article 可以在 draft 创建前进入独立 rewrite pipeline
 - rewrite run 由 `target type + source profile + version` 选择对应 profile
 - rewrite 执行会持久化 stage history、prompt snapshot 与最终 draft linkage
-- rewrite 成功后由 materializer 创建 draft，并把 workspace article 推进到后续状态
+- rewrite 成功后由 materializer 创建 draft，默认自动化链随后执行 render 并结束
 
 相关代码：
 
@@ -209,6 +208,8 @@ go run ./cmd/cli publish run <review-id> --root .
 go run ./cmd/cli publish history <article-id> --root .
 ```
 
+说明：review / publish CLI 仍然保留，但它们不是默认自动化 folder-processing 链的一部分；默认自动处理结果停在 draft + render。
+
 ### Automation
 
 ```bash
@@ -288,7 +289,7 @@ go run ./cmd/cli automation stop --root .
 - `GET /automation/health`
 - `POST /automation/stop`
 
-说明：RSS 是当前 active runtime 的 intake HTTP surface；旧的 `/ingestion/*` 与 `/collector/*` 路径不再作为支持中的运行时入口。
+说明：folder intake / source document workflow 是当前 active runtime 的默认 intake surface；review 与 publish API 仍可单独调用，但不会由默认自动化链自动进入。旧的 `/ingestion/*` 与 `/collector/*` 路径不再作为支持中的运行时入口。
 
 ---
 
@@ -315,7 +316,7 @@ go test ./...
 覆盖范围包括：
 
 - workspace/config
-- RSS subscription/pull/item integration
+- folder intake/source document processing
 - rewrite orchestrator/stage execution/draft materialization
 - article intake/workspace
 - formatting/render/validate/assets
@@ -331,7 +332,8 @@ go test ./...
 ## 当前限制与边界
 
 - Go 版已经可以替代 Python 主链路，但不是历史兼容层逐字复刻
-- RSS 是当前默认 intake surface；旧的 collector/ingestion HTTP 与 CLI 入口不再受支持
+- folder intake / source document processing 是当前默认 intake surface；旧的 collector/ingestion HTTP 与 CLI 入口不再受支持
+- 默认自动化结果停在 draft + render；review / publish 作为后续可选人工步骤保留
 - 归档项目里的采集/ingestion 文档仍保留历史语义，不代表根目录 Go runtime 的当前对外接口
 - automation daemon 目前是单进程内模型，不是外部 supervisor 模型
 - TUI 范围有意收敛，不覆盖全部 automation 管理面
@@ -381,5 +383,6 @@ go test ./...
 
 - 已完成对 `Archive/ArticleWashing/`（Python 版）的主链路功能等价替代
 - 可以作为当前默认主实现使用
-- 根目录 Go runtime 当前以 RSS 作为默认 intake 主路径
+- 根目录 Go runtime 当前以 folder intake 作为默认 intake 主路径
+- 默认自动化链产物为 draft + render，review / publish 不会自动触发
 - 旧的 collector/ingestion surface 已从 active runtime 对外接口集合中移除

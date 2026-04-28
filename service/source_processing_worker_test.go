@@ -114,7 +114,7 @@ func (s *stubSourceProcessingArticleIntake) IntakeResultIntoWorkspace(_ context.
 	return s.result, nil
 }
 
-func TestSourceProcessingWorkerRunsRewriteAndRender(t *testing.T) {
+func TestSourceProcessingWorkerStopsAfterRender(t *testing.T) {
 	doc := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-1")
 	doc.Status = domain.SourceDocumentStatusClaimed
 	now := time.Now().UTC()
@@ -141,6 +141,8 @@ func TestSourceProcessingWorkerRunsRewriteAndRender(t *testing.T) {
 	require.Equal(t, "workspace-1", render.lastWork)
 	require.Equal(t, "draft-1", render.lastDraft)
 	require.NotEqual(t, render.lastWork, render.lastDraft)
+	require.Equal(t, domain.SourceDocumentStatusProcessing, rewrite.gotDoc.Status)
+	require.Equal(t, domain.SourceDocumentStatusProcessing, render.lastDoc.Status)
 	require.Len(t, repo.updated, 2)
 	require.Equal(t, domain.SourceDocumentStatusProcessing, repo.updated[0].Status)
 	require.NotNil(t, repo.updated[0].ProcessingStartedAt)
@@ -149,6 +151,7 @@ func TestSourceProcessingWorkerRunsRewriteAndRender(t *testing.T) {
 	require.NotEmpty(t, repo.updated[1].RewriteRunID)
 	require.Equal(t, "rewrite-1", repo.updated[1].RewriteRunID)
 	require.NotNil(t, repo.updated[1].CompletedAt)
+	require.Empty(t, repo.updated[1].ErrorSummary)
 }
 
 func TestSourceProcessingWorkerFailsWhenTargetTypeMissing(t *testing.T) {
