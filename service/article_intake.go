@@ -13,6 +13,12 @@ type rewriteRunner interface {
 	Run(ctx context.Context, req RewriteRunRequest) (*domain.RewritePipelineRun, error)
 }
 
+type ArticleIntakeResult struct {
+	WorkspaceArticle *domain.ArticleWorkspaceRecord
+	RewriteRun       *domain.RewritePipelineRun
+	DraftID          string
+}
+
 type ArticleIntakeService struct {
 	workspaces workspaceArticleWriter
 	rewrite    rewriteRunner
@@ -27,14 +33,36 @@ func NewArticleIntakeService(workspaces workspaceArticleWriter, rewrite rewriteR
 }
 
 func (s *ArticleIntakeService) Intake(ctx context.Context, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error) {
-	return s.intake(ctx, "", article)
+	result, err := s.IntakeResult(ctx, article)
+	if err != nil {
+		if result == nil {
+			return nil, err
+		}
+		return result.WorkspaceArticle, err
+	}
+	return result.WorkspaceArticle, nil
 }
 
 func (s *ArticleIntakeService) IntakeIntoWorkspace(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error) {
+	result, err := s.IntakeResultIntoWorkspace(ctx, strings.TrimSpace(workspaceArticleID), article)
+	if err != nil {
+		if result == nil {
+			return nil, err
+		}
+		return result.WorkspaceArticle, err
+	}
+	return result.WorkspaceArticle, nil
+}
+
+func (s *ArticleIntakeService) IntakeResult(ctx context.Context, article domain.IntakeArticle) (*ArticleIntakeResult, error) {
+	return s.intake(ctx, "", article)
+}
+
+func (s *ArticleIntakeService) IntakeResultIntoWorkspace(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*ArticleIntakeResult, error) {
 	return s.intake(ctx, strings.TrimSpace(workspaceArticleID), article)
 }
 
-func (s *ArticleIntakeService) intake(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error) {
+func (s *ArticleIntakeService) intake(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*ArticleIntakeResult, error) {
 	if err := article.Validate(); err != nil {
 		return nil, err
 	}
@@ -60,18 +88,24 @@ func (s *ArticleIntakeService) intake(ctx context.Context, workspaceArticleID st
 		}
 	}
 
-	if _, err := s.rewrite.Run(ctx, RewriteRunRequest{
+	run, err := s.rewrite.Run(ctx, RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
 		CollectorArticleID: article.ExternalID,
 		Title:              article.Title,
 		TargetType:         article.TargetType,
 		SourceProfile:      article.SourceProfile,
 		Version:            normalizeRewriteProfileVersion(article.RewriteProfileVersion),
-	}); err != nil {
-		return workspace, fmt.Errorf("run rewrite orchestrator: %w", err)
+	})
+	result := &ArticleIntakeResult{WorkspaceArticle: workspace}
+	if run != nil {
+		result.RewriteRun = run
+		result.DraftID = strings.TrimSpace(run.FinalDraftID)
+	}
+	if err != nil {
+		return result, fmt.Errorf("run rewrite orchestrator: %w", err)
 	}
 
-	return workspace, nil
+	return result, nil
 }
 
 func buildIntakeWorkspaceMetadata(article domain.IntakeArticle) map[string]any {

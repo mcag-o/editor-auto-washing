@@ -10,8 +10,8 @@ import (
 )
 
 type sourceProcessingRewriteEntryPoint interface {
-	Intake(ctx context.Context, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error)
-	IntakeIntoWorkspace(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error)
+	IntakeResult(ctx context.Context, article domain.IntakeArticle) (*ArticleIntakeResult, error)
+	IntakeResultIntoWorkspace(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*ArticleIntakeResult, error)
 }
 
 type sourceProcessingRenderRunner interface {
@@ -120,15 +120,14 @@ func (w *SourceProcessingWorker) fail(ctx context.Context, doc *domain.SourceDoc
 
 type ArticleIntakeSourceProcessingRewriteRunner struct {
 	intake sourceProcessingRewriteEntryPoint
-	repo   repo.SourceDocumentRepo
 }
 
-func NewArticleIntakeSourceProcessingRewriteRunner(intake sourceProcessingRewriteEntryPoint, repo repo.SourceDocumentRepo) *ArticleIntakeSourceProcessingRewriteRunner {
-	return &ArticleIntakeSourceProcessingRewriteRunner{intake: intake, repo: repo}
+func NewArticleIntakeSourceProcessingRewriteRunner(intake sourceProcessingRewriteEntryPoint) *ArticleIntakeSourceProcessingRewriteRunner {
+	return &ArticleIntakeSourceProcessingRewriteRunner{intake: intake}
 }
 
 func (r *ArticleIntakeSourceProcessingRewriteRunner) Run(ctx context.Context, doc *domain.SourceDocument) (*SourceProcessingRewriteResult, error) {
-	if r.intake == nil || r.repo == nil {
+	if r.intake == nil {
 		return nil, domain.NewInternalErr("source processing rewrite runner is not configured", nil)
 	}
 	if doc == nil {
@@ -150,38 +149,32 @@ func (r *ArticleIntakeSourceProcessingRewriteRunner) Run(ctx context.Context, do
 
 	workspaceID := strings.TrimSpace(doc.WorkspaceArticleID)
 	var (
-		workspace *domain.ArticleWorkspaceRecord
-		err       error
+		result *ArticleIntakeResult
+		err    error
 	)
 	if workspaceID == "" {
-		workspace, err = r.intake.Intake(ctx, article)
+		result, err = r.intake.IntakeResult(ctx, article)
 	} else {
-		workspace, err = r.intake.IntakeIntoWorkspace(ctx, workspaceID, article)
+		result, err = r.intake.IntakeResultIntoWorkspace(ctx, workspaceID, article)
 	}
 	if err != nil {
 		return nil, err
 	}
-
-	stored, err := r.repo.GetByID(ctx, doc.ID)
-	if err != nil {
-		return nil, fmt.Errorf("reload source document after rewrite: %w", err)
+	if result == nil || result.WorkspaceArticle == nil {
+		return nil, domain.NewInternalErr("source processing rewrite runner did not return a workspace article", nil)
 	}
-	if strings.TrimSpace(stored.WorkspaceArticleID) == "" {
-		stored.WorkspaceArticleID = workspace.ID
+	if result.RewriteRun == nil || strings.TrimSpace(result.RewriteRun.ID) == "" {
+		return nil, domain.NewInternalErr("source processing rewrite runner did not return a rewrite run id", nil)
 	}
-
-	result := &SourceProcessingRewriteResult{
-		WorkspaceArticleID: strings.TrimSpace(stored.WorkspaceArticleID),
-		DraftID:            strings.TrimSpace(stored.WorkspaceArticleID),
-		RewriteRunID:       strings.TrimSpace(stored.RewriteRunID),
+	draftID := strings.TrimSpace(result.DraftID)
+	if draftID == "" {
+		return nil, domain.NewInternalErr("source processing rewrite runner did not return a draft id", nil)
 	}
-	if result.WorkspaceArticleID == "" {
-		result.WorkspaceArticleID = workspace.ID
-	}
-	if result.DraftID == "" {
-		result.DraftID = workspace.ID
-	}
-	return result, nil
+	return &SourceProcessingRewriteResult{
+		WorkspaceArticleID: strings.TrimSpace(result.WorkspaceArticle.ID),
+		DraftID:            draftID,
+		RewriteRunID:       strings.TrimSpace(result.RewriteRun.ID),
+	}, nil
 }
 
 type FormattingPipelineSourceProcessingRenderRunner struct {

@@ -87,6 +87,33 @@ func (r *stubSourceProcessingRenderRunner) Render(_ context.Context, workspaceAr
 	return r.err
 }
 
+type stubSourceProcessingArticleIntake struct {
+	called        bool
+	lastWorkspace string
+	lastArticle   domain.IntakeArticle
+	result        *ArticleIntakeResult
+	err           error
+}
+
+func (s *stubSourceProcessingArticleIntake) IntakeResult(_ context.Context, article domain.IntakeArticle) (*ArticleIntakeResult, error) {
+	s.called = true
+	s.lastArticle = article
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.result, nil
+}
+
+func (s *stubSourceProcessingArticleIntake) IntakeResultIntoWorkspace(_ context.Context, workspaceArticleID string, article domain.IntakeArticle) (*ArticleIntakeResult, error) {
+	s.called = true
+	s.lastWorkspace = workspaceArticleID
+	s.lastArticle = article
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.result, nil
+}
+
 func TestSourceProcessingWorkerRunsRewriteAndRender(t *testing.T) {
 	doc := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-1")
 	doc.Status = domain.SourceDocumentStatusClaimed
@@ -113,11 +140,13 @@ func TestSourceProcessingWorkerRunsRewriteAndRender(t *testing.T) {
 	require.True(t, render.called)
 	require.Equal(t, "workspace-1", render.lastWork)
 	require.Equal(t, "draft-1", render.lastDraft)
+	require.NotEqual(t, render.lastWork, render.lastDraft)
 	require.Len(t, repo.updated, 2)
 	require.Equal(t, domain.SourceDocumentStatusProcessing, repo.updated[0].Status)
 	require.NotNil(t, repo.updated[0].ProcessingStartedAt)
 	require.Equal(t, domain.SourceDocumentStatusCompleted, repo.updated[1].Status)
 	require.Equal(t, "workspace-1", repo.updated[1].WorkspaceArticleID)
+	require.NotEmpty(t, repo.updated[1].RewriteRunID)
 	require.Equal(t, "rewrite-1", repo.updated[1].RewriteRunID)
 	require.NotNil(t, repo.updated[1].CompletedAt)
 }
@@ -231,6 +260,42 @@ func TestSourceProcessingWorkerMarksFailedWhenRenderFails(t *testing.T) {
 	require.Equal(t, "workspace-1", repo.updated[1].WorkspaceArticleID)
 	require.Equal(t, "rewrite-1", repo.updated[1].RewriteRunID)
 	require.Equal(t, "render exploded", repo.updated[1].ErrorSummary)
+}
+
+func TestArticleIntakeSourceProcessingRewriteRunnerReturnsExplicitRewriteOutputs(t *testing.T) {
+	doc := validClaimedSourceProcessingDocument()
+	doc.WorkspaceArticleID = "workspace-existing"
+	intake := &stubSourceProcessingArticleIntake{result: &ArticleIntakeResult{
+		WorkspaceArticle: &domain.ArticleWorkspaceRecord{ID: "workspace-existing"},
+		RewriteRun:       &domain.RewritePipelineRun{ID: "rewrite-real", FinalDraftID: "draft-real"},
+		DraftID:          "draft-real",
+	}}
+	runner := NewArticleIntakeSourceProcessingRewriteRunner(intake)
+
+	result, err := runner.Run(t.Context(), doc)
+
+	require.NoError(t, err)
+	require.True(t, intake.called)
+	require.Equal(t, "workspace-existing", intake.lastWorkspace)
+	require.Equal(t, "workspace-existing", result.WorkspaceArticleID)
+	require.Equal(t, "rewrite-real", result.RewriteRunID)
+	require.Equal(t, "draft-real", result.DraftID)
+	require.NotEqual(t, result.WorkspaceArticleID, result.DraftID)
+}
+
+func TestArticleIntakeSourceProcessingRewriteRunnerRejectsMissingExplicitDraftID(t *testing.T) {
+	doc := validClaimedSourceProcessingDocument()
+	intake := &stubSourceProcessingArticleIntake{result: &ArticleIntakeResult{
+		WorkspaceArticle: &domain.ArticleWorkspaceRecord{ID: "workspace-1"},
+		RewriteRun:       &domain.RewritePipelineRun{ID: "rewrite-real", FinalDraftID: ""},
+	}}
+	runner := NewArticleIntakeSourceProcessingRewriteRunner(intake)
+
+	result, err := runner.Run(t.Context(), doc)
+
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "draft id")
 }
 
 func validClaimedSourceProcessingDocument() *domain.SourceDocument {

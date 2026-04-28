@@ -152,3 +152,30 @@ func TestArticleIntakeServiceReusesExistingWorkspaceID(t *testing.T) {
 	require.True(t, rewrite.called)
 	require.Equal(t, "workspace-existing", rewrite.lastReq.WorkspaceArticleID)
 }
+
+func TestArticleIntakeServiceReturnsExplicitRewriteResult(t *testing.T) {
+	workspaceRepo := &stubArticleIntakeWorkspaceRepo{}
+	rewrite := &stubArticleIntakeRewriteRunner{}
+	svc := NewArticleIntakeService(workspaceRepo, rewrite)
+	article := domain.IntakeArticle{
+		ExternalID:            "guid-1",
+		SourceType:            "rss",
+		SubscriptionID:        "sub-1",
+		Title:                 "Title",
+		Body:                  "Body",
+		Summary:               "Summary",
+		OriginalURL:           "https://example.com/a",
+		TargetType:            "wechat-longform",
+		SourceProfile:         "sspai",
+		RewriteProfileVersion: "latest",
+	}
+
+	result, err := svc.IntakeResult(t.Context(), article)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.WorkspaceArticle)
+	require.NotNil(t, result.RewriteRun)
+	require.Equal(t, "run-1", result.RewriteRun.ID)
+	require.Equal(t, result.RewriteRun.FinalDraftID, result.DraftID)
+}
