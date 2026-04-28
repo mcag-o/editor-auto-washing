@@ -3,6 +3,7 @@ package repo
 import (
 	"content-hub/domain"
 	"context"
+	"time"
 )
 
 type ArticleRepo interface {
@@ -120,6 +121,22 @@ type RSSItemRepo interface {
 	FindRetryableDuplicate(ctx context.Context, key domain.RSSDuplicateKey) (*domain.RSSItemRecord, error)
 	GetByID(ctx context.Context, id string) (*domain.RSSItemRecord, error)
 	List(ctx context.Context, limit int) ([]domain.RSSItemRecord, error)
+}
+
+type SourceDocumentRepo interface {
+	Create(ctx context.Context, doc *domain.SourceDocument) error
+	Update(ctx context.Context, doc *domain.SourceDocument) error
+	GetByID(ctx context.Context, id string) (*domain.SourceDocument, error)
+	FindByHash(ctx context.Context, hash string) (*domain.SourceDocument, error)
+	ClaimPending(ctx context.Context, limit int, claimedBy string, now time.Time) ([]domain.SourceDocument, error)
+	ListByStatus(ctx context.Context, status string, limit int) ([]domain.SourceDocument, error)
+}
+
+type ImportRunRepo interface {
+	Create(ctx context.Context, run *domain.ImportRun) error
+	Update(ctx context.Context, run *domain.ImportRun) error
+	GetByID(ctx context.Context, id string) (*domain.ImportRun, error)
+	List(ctx context.Context, limit int) ([]domain.ImportRun, error)
 }
 
 type PromptTemplateRepo interface {
