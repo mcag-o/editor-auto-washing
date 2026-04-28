@@ -75,13 +75,15 @@ type stubSourceProcessingRenderRunner struct {
 	called    bool
 	lastDraft string
 	lastWork  string
+	lastDoc   *domain.SourceDocument
 	err       error
 }
 
-func (r *stubSourceProcessingRenderRunner) Render(_ context.Context, workspaceArticleID, draftID string) error {
+func (r *stubSourceProcessingRenderRunner) Render(_ context.Context, workspaceArticleID, draftID string, doc *domain.SourceDocument) error {
 	r.called = true
 	r.lastWork = workspaceArticleID
 	r.lastDraft = draftID
+	r.lastDoc = cloneSourceDocument(doc)
 	return r.err
 }
 
@@ -91,6 +93,12 @@ func TestSourceProcessingWorkerRunsRewriteAndRender(t *testing.T) {
 	now := time.Now().UTC()
 	doc.ClaimedBy = "worker-1"
 	doc.ClaimedAt = &now
+	doc.Metadata = map[string]any{
+		"target_type":             "wechat-longform",
+		"source_profile":          "sspai",
+		"render_platform":         "wechat",
+		"rewrite_profile_version": "latest",
+	}
 	rewrite := &stubSourceProcessingRewriteRunner{result: &SourceProcessingRewriteResult{
 		WorkspaceArticleID: "workspace-1",
 		DraftID:            "draft-1",
@@ -114,6 +122,57 @@ func TestSourceProcessingWorkerRunsRewriteAndRender(t *testing.T) {
 	require.NotNil(t, repo.updated[1].CompletedAt)
 }
 
+func TestSourceProcessingWorkerFailsWhenTargetTypeMissing(t *testing.T) {
+	doc := validClaimedSourceProcessingDocument()
+	delete(doc.Metadata, "target_type")
+	rewrite := &stubSourceProcessingRewriteRunner{}
+	render := &stubSourceProcessingRenderRunner{}
+	repo := &stubSourceProcessingRepo{stored: cloneSourceDocument(doc)}
+	worker := NewSourceProcessingWorker(repo, rewrite, render)
+
+	err := worker.Process(t.Context(), doc)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "target_type")
+	require.False(t, rewrite.called)
+	require.False(t, render.called)
+	require.Empty(t, repo.updated)
+}
+
+func TestSourceProcessingWorkerFailsWhenSourceProfileMissing(t *testing.T) {
+	doc := validClaimedSourceProcessingDocument()
+	delete(doc.Metadata, "source_profile")
+	rewrite := &stubSourceProcessingRewriteRunner{}
+	render := &stubSourceProcessingRenderRunner{}
+	repo := &stubSourceProcessingRepo{stored: cloneSourceDocument(doc)}
+	worker := NewSourceProcessingWorker(repo, rewrite, render)
+
+	err := worker.Process(t.Context(), doc)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "source_profile")
+	require.False(t, rewrite.called)
+	require.False(t, render.called)
+	require.Empty(t, repo.updated)
+}
+
+func TestSourceProcessingWorkerFailsWhenRenderPlatformMissing(t *testing.T) {
+	doc := validClaimedSourceProcessingDocument()
+	delete(doc.Metadata, "render_platform")
+	rewrite := &stubSourceProcessingRewriteRunner{}
+	render := &stubSourceProcessingRenderRunner{}
+	repo := &stubSourceProcessingRepo{stored: cloneSourceDocument(doc)}
+	worker := NewSourceProcessingWorker(repo, rewrite, render)
+
+	err := worker.Process(t.Context(), doc)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "render_platform")
+	require.False(t, rewrite.called)
+	require.False(t, render.called)
+	require.Empty(t, repo.updated)
+}
+
 func TestSourceProcessingWorkerRejectsNonClaimedDocument(t *testing.T) {
 	doc := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-1")
 	doc.Status = domain.SourceDocumentStatusPending
@@ -132,11 +191,7 @@ func TestSourceProcessingWorkerRejectsNonClaimedDocument(t *testing.T) {
 }
 
 func TestSourceProcessingWorkerMarksFailedWhenRewriteFails(t *testing.T) {
-	doc := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-1")
-	doc.Status = domain.SourceDocumentStatusClaimed
-	now := time.Now().UTC()
-	doc.ClaimedBy = "worker-1"
-	doc.ClaimedAt = &now
+	doc := validClaimedSourceProcessingDocument()
 	rewrite := &stubSourceProcessingRewriteRunner{err: errors.New("rewrite exploded")}
 	render := &stubSourceProcessingRenderRunner{}
 	repo := &stubSourceProcessingRepo{stored: cloneSourceDocument(doc)}
@@ -155,11 +210,7 @@ func TestSourceProcessingWorkerMarksFailedWhenRewriteFails(t *testing.T) {
 }
 
 func TestSourceProcessingWorkerMarksFailedWhenRenderFails(t *testing.T) {
-	doc := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-1")
-	doc.Status = domain.SourceDocumentStatusClaimed
-	now := time.Now().UTC()
-	doc.ClaimedBy = "worker-1"
-	doc.ClaimedAt = &now
+	doc := validClaimedSourceProcessingDocument()
 	rewrite := &stubSourceProcessingRewriteRunner{result: &SourceProcessingRewriteResult{
 		WorkspaceArticleID: "workspace-1",
 		DraftID:            "draft-1",
@@ -180,4 +231,19 @@ func TestSourceProcessingWorkerMarksFailedWhenRenderFails(t *testing.T) {
 	require.Equal(t, "workspace-1", repo.updated[1].WorkspaceArticleID)
 	require.Equal(t, "rewrite-1", repo.updated[1].RewriteRunID)
 	require.Equal(t, "render exploded", repo.updated[1].ErrorSummary)
+}
+
+func validClaimedSourceProcessingDocument() *domain.SourceDocument {
+	doc := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-1")
+	doc.Status = domain.SourceDocumentStatusClaimed
+	now := time.Now().UTC()
+	doc.ClaimedBy = "worker-1"
+	doc.ClaimedAt = &now
+	doc.Metadata = map[string]any{
+		"target_type":             "wechat-longform",
+		"source_profile":          "sspai",
+		"render_platform":         "wechat",
+		"rewrite_profile_version": "latest",
+	}
+	return doc
 }

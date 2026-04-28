@@ -9,19 +9,13 @@ import (
 	"time"
 )
 
-const (
-	defaultSourceProcessingTargetType    = "wechat-longform"
-	defaultSourceProcessingSourceProfile = "sspai"
-	defaultSourceProcessingPlatform      = "wechat"
-)
-
 type sourceProcessingRewriteEntryPoint interface {
 	Intake(ctx context.Context, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error)
 	IntakeIntoWorkspace(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error)
 }
 
 type sourceProcessingRenderRunner interface {
-	Render(ctx context.Context, workspaceArticleID, draftID string) error
+	Render(ctx context.Context, workspaceArticleID, draftID string, doc *domain.SourceDocument) error
 }
 
 type SourceProcessingRewriteResult struct {
@@ -69,7 +63,7 @@ func (w *SourceProcessingWorker) Process(ctx context.Context, doc *domain.Source
 	loaded.WorkspaceArticleID = strings.TrimSpace(result.WorkspaceArticleID)
 	loaded.RewriteRunID = strings.TrimSpace(result.RewriteRunID)
 
-	if err := w.render.Render(ctx, loaded.WorkspaceArticleID, strings.TrimSpace(result.DraftID)); err != nil {
+	if err := w.render.Render(ctx, loaded.WorkspaceArticleID, strings.TrimSpace(result.DraftID), loaded); err != nil {
 		return w.fail(ctx, loaded, err)
 	}
 
@@ -106,6 +100,9 @@ func (w *SourceProcessingWorker) loadClaimed(ctx context.Context, doc *domain.So
 	}
 	if loaded.Status != domain.SourceDocumentStatusClaimed {
 		return nil, domain.NewValidationErr("source document must be claimed before processing", nil)
+	}
+	if err := validateSourceProcessingMetadata(loaded); err != nil {
+		return nil, err
 	}
 	return loaded, nil
 }
@@ -145,8 +142,8 @@ func (r *ArticleIntakeSourceProcessingRewriteRunner) Run(ctx context.Context, do
 		Body:                  doc.Body,
 		Summary:               strings.TrimSpace(doc.Summary),
 		OriginalURL:           sourceDocumentOriginalURL(doc),
-		TargetType:            sourceDocumentTargetType(doc),
-		SourceProfile:         sourceDocumentSourceProfile(doc),
+		TargetType:            requiredSourceDocumentMetadataString(doc, "target_type"),
+		SourceProfile:         requiredSourceDocumentMetadataString(doc, "source_profile"),
 		RewriteProfileVersion: sourceDocumentRewriteProfileVersion(doc),
 		Metadata:              sourceDocumentIntakeMetadata(doc),
 	}
@@ -189,26 +186,24 @@ func (r *ArticleIntakeSourceProcessingRewriteRunner) Run(ctx context.Context, do
 
 type FormattingPipelineSourceProcessingRenderRunner struct {
 	renderer            *FormattingPipelineService
-	defaultPlatform     string
 	defaultTemplateName string
 }
 
-func NewFormattingPipelineSourceProcessingRenderRunner(renderer *FormattingPipelineService, defaultPlatform, defaultTemplateName string) *FormattingPipelineSourceProcessingRenderRunner {
+func NewFormattingPipelineSourceProcessingRenderRunner(renderer *FormattingPipelineService, defaultTemplateName string) *FormattingPipelineSourceProcessingRenderRunner {
 	return &FormattingPipelineSourceProcessingRenderRunner{
 		renderer:            renderer,
-		defaultPlatform:     strings.TrimSpace(defaultPlatform),
 		defaultTemplateName: strings.TrimSpace(defaultTemplateName),
 	}
 }
 
-func (r *FormattingPipelineSourceProcessingRenderRunner) Render(ctx context.Context, _ string, draftID string) error {
+func (r *FormattingPipelineSourceProcessingRenderRunner) Render(ctx context.Context, _ string, draftID string, doc *domain.SourceDocument) error {
 	if r.renderer == nil {
 		return domain.NewInternalErr("source processing render runner is not configured", nil)
 	}
 	if strings.TrimSpace(draftID) == "" {
 		return domain.NewValidationErr("draft id is required for render", nil)
 	}
-	_, err := r.renderer.Render(ctx, strings.TrimSpace(draftID), fallbackSourceProcessingPlatform(r.defaultPlatform), r.defaultTemplateName)
+	_, err := r.renderer.Render(ctx, strings.TrimSpace(draftID), requiredSourceDocumentMetadataString(doc, "render_platform"), r.defaultTemplateName)
 	return err
 }
 
@@ -230,26 +225,6 @@ func sourceDocumentOriginalURL(doc *domain.SourceDocument) string {
 		return strings.TrimSpace(doc.ArchivedPath)
 	}
 	return strings.TrimSpace(doc.OriginalPath)
-}
-
-func sourceDocumentTargetType(doc *domain.SourceDocument) string {
-	if doc == nil {
-		return defaultSourceProcessingTargetType
-	}
-	if value, ok := doc.Metadata["target_type"].(string); ok && strings.TrimSpace(value) != "" {
-		return strings.TrimSpace(value)
-	}
-	return defaultSourceProcessingTargetType
-}
-
-func sourceDocumentSourceProfile(doc *domain.SourceDocument) string {
-	if doc == nil {
-		return defaultSourceProcessingSourceProfile
-	}
-	if value, ok := doc.Metadata["source_profile"].(string); ok && strings.TrimSpace(value) != "" {
-		return strings.TrimSpace(value)
-	}
-	return defaultSourceProcessingSourceProfile
 }
 
 func sourceDocumentRewriteProfileVersion(doc *domain.SourceDocument) string {
@@ -277,9 +252,22 @@ func sourceDocumentIntakeMetadata(doc *domain.SourceDocument) map[string]any {
 	return metadata
 }
 
-func fallbackSourceProcessingPlatform(platform string) string {
-	if strings.TrimSpace(platform) == "" {
-		return defaultSourceProcessingPlatform
+func validateSourceProcessingMetadata(doc *domain.SourceDocument) error {
+	for _, key := range []string{"target_type", "source_profile", "render_platform"} {
+		if requiredSourceDocumentMetadataString(doc, key) == "" {
+			return domain.NewValidationErr(fmt.Sprintf("source document metadata %s is required", key), nil)
+		}
 	}
-	return strings.TrimSpace(platform)
+	return nil
+}
+
+func requiredSourceDocumentMetadataString(doc *domain.SourceDocument, key string) string {
+	if doc == nil || doc.Metadata == nil {
+		return ""
+	}
+	value, ok := doc.Metadata[key].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(value)
 }
