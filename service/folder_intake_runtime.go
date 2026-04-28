@@ -9,9 +9,13 @@ import (
 type SourceDocumentParser func(path string) (*ParsedSourceDocument, error)
 
 type FolderIntakeConfig struct {
-	WatchDir    string
-	ArchiveDir  string
-	Concurrency int
+	WatchDir              string
+	ArchiveDir            string
+	Concurrency           int
+	TargetType            string
+	SourceProfile         string
+	RenderPlatform        string
+	RewriteProfileVersion string
 }
 
 type FolderIntakeRuntime struct {
@@ -54,7 +58,12 @@ func BuildFolderIntakeRuntime(repos *RuntimeRepos, cfg FolderIntakeConfig) (*Fol
 	}
 
 	importService := NewSourceDocumentImportService(repos.SourceDocumentRepo, archiveDir)
-	scanner := NewFolderScanner(importService)
+	scannerImporter := folderIntakeImporterWithDefaults(
+		importService,
+		repos.SourceDocumentRepo,
+		cfg,
+	)
+	scanner := NewFolderScanner(scannerImporter)
 	rewriteAssembly := buildRewriteAssembly(repos)
 	articleIntakeService := NewArticleIntakeService(repos.WorkspaceRepo, rewriteAssembly.orchestrator)
 	renderer := NewFormattingPipelineService(repos.DraftRepo, repos.AssetRepo, repos.WorkspaceRepo, repos.Formatter).WithRenderedDir(repos.RenderedDir)
@@ -74,4 +83,54 @@ func BuildFolderIntakeRuntime(repos *RuntimeRepos, cfg FolderIntakeConfig) (*Fol
 		SourceDocumentRepo: repos.SourceDocumentRepo,
 		ImportRunRepo:      repos.ImportRunRepo,
 	}, nil
+}
+
+type folderIntakeImporter interface {
+	ImportFile(ctx context.Context, path string) (*domain.SourceDocument, error)
+}
+
+type folderIntakeDefaultingImporter struct {
+	base     folderIntakeImporter
+	repo     sourceDocumentStatusReader
+	metadata map[string]string
+}
+
+func folderIntakeImporterWithDefaults(base folderIntakeImporter, repo sourceDocumentStatusReader, cfg FolderIntakeConfig) folderIntakeImporter {
+	metadata := map[string]string{}
+	if value := strings.TrimSpace(cfg.TargetType); value != "" {
+		metadata["target_type"] = value
+	}
+	if value := strings.TrimSpace(cfg.SourceProfile); value != "" {
+		metadata["source_profile"] = value
+	}
+	if value := strings.TrimSpace(cfg.RenderPlatform); value != "" {
+		metadata["render_platform"] = value
+	}
+	if value := strings.TrimSpace(cfg.RewriteProfileVersion); value != "" {
+		metadata["rewrite_profile_version"] = value
+	}
+	if len(metadata) == 0 {
+		return base
+	}
+	return &folderIntakeDefaultingImporter{base: base, repo: repo, metadata: metadata}
+}
+
+func (i *folderIntakeDefaultingImporter) ImportFile(ctx context.Context, path string) (*domain.SourceDocument, error) {
+	doc, err := i.base.ImportFile(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		return nil, nil
+	}
+	if doc.Metadata == nil {
+		doc.Metadata = map[string]any{}
+	}
+	for key, value := range i.metadata {
+		doc.Metadata[key] = value
+	}
+	if err := i.repo.Update(ctx, doc); err != nil {
+		return nil, err
+	}
+	return doc, nil
 }

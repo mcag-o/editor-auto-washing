@@ -47,6 +47,45 @@ func TestDraftMaterializerCreatesDraftAndTransitionsWorkspace(t *testing.T) {
 	assert.Equal(t, []string{domain.ArticleWorkspaceStatusImported, domain.ArticleWorkspaceStatusDraft}, storedWorkspace.StatusHistory)
 }
 
+func TestDraftMaterializerPreservesRenderableStructuredFields(t *testing.T) {
+	provider := memory.NewProvider()
+	workspace := domain.NewArticleWorkspaceRecord("article-structured", "Original Title", "Summary", domain.ArticleWorkspaceSource{SourceType: "collector"}, nil)
+	require.NoError(t, provider.WorkspaceRepo().Create(t.Context(), workspace))
+
+	materializer := NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo())
+
+	sections := []any{map[string]any{"cn": "板块", "blocks": []any{map[string]any{"type": "card", "title": "观察", "body": []any{"内容"}, "source": "公开信息"}}}}
+	sourceRefs := []any{map[string]any{"title": "Source 1"}}
+	draft, err := materializer.Materialize(t.Context(), workspace.ID, map[string]any{
+		"title":       "New Title",
+		"body":        "Body",
+		"template":    "daily-intelligence",
+		"meta":        map[string]any{"digest": "盘前摘要", "author": "编辑部"},
+		"sections":    sections,
+		"conclusion":  "结论",
+		"cta":         "继续关注",
+		"source_refs": sourceRefs,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, draft)
+	assert.Equal(t, "盘前摘要", draft.Meta["digest"])
+	assert.Equal(t, "编辑部", draft.Meta["author"])
+	assert.Equal(t, sections, draft.Sections)
+	assert.Equal(t, "结论", draft.Conclusion)
+	assert.Equal(t, "继续关注", draft.CTA)
+	assert.Equal(t, sourceRefs, draft.SourceRefs)
+
+	storedDraft, err := provider.DraftRepo().GetByID(t.Context(), workspace.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "盘前摘要", storedDraft.Meta["digest"])
+	assert.Equal(t, "编辑部", storedDraft.Meta["author"])
+	assert.Equal(t, sections, storedDraft.Sections)
+	assert.Equal(t, "结论", storedDraft.Conclusion)
+	assert.Equal(t, "继续关注", storedDraft.CTA)
+	assert.Equal(t, sourceRefs, storedDraft.SourceRefs)
+}
+
 func TestDraftMaterializerDoesNotTransitionWorkspaceWhenDraftCreateFails(t *testing.T) {
 	provider := memory.NewProvider()
 	workspace := domain.NewArticleWorkspaceRecord("article-2", "Original Title", "Summary", domain.ArticleWorkspaceSource{SourceType: "collector"}, nil)

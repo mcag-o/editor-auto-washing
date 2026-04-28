@@ -44,8 +44,19 @@ func (m *DraftMaterializer) Materialize(ctx context.Context, workspaceID string,
 	draft := domain.NewArticleDraft(template)
 	draft.ID = workspaceID
 	draft.Meta["title"] = title
+	for key, value := range draftMaterializerMap(finalOutput["meta"]) {
+		draft.Meta[key] = value
+	}
 	draft.Headline["title"] = title
 	draft.Headline["body"] = body
+	if sections, ok := finalOutput["sections"].([]any); ok {
+		draft.Sections = append([]any(nil), sections...)
+	}
+	draft.Conclusion = domain.DraftString(finalOutput["conclusion"])
+	draft.CTA = domain.DraftString(finalOutput["cta"])
+	if sourceRefs, ok := finalOutput["source_refs"].([]any); ok {
+		draft.SourceRefs = append([]any(nil), sourceRefs...)
+	}
 
 	if err := m.drafts.Create(ctx, draft); err != nil {
 		return nil, err
@@ -56,4 +67,12 @@ func (m *DraftMaterializer) Materialize(ctx context.Context, workspaceID string,
 	}
 
 	return draft, nil
+}
+
+func draftMaterializerMap(value any) map[string]any {
+	metadata, ok := value.(map[string]any)
+	if !ok || len(metadata) == 0 {
+		return nil
+	}
+	return metadata
 }
