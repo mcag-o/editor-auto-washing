@@ -3,15 +3,21 @@ package service
 import (
 	"content-hub/domain"
 	"context"
-	"path/filepath"
+	"strings"
 )
-
-const defaultFolderIntakeConcurrency = 1
 
 type SourceDocumentParser func(path string) (*ParsedSourceDocument, error)
 
+type FolderIntakeConfig struct {
+	WatchDir    string
+	ArchiveDir  string
+	Concurrency int
+}
+
 type FolderIntakeRuntime struct {
 	Parser             SourceDocumentParser
+	WatchDir           string
+	ArchiveDir         string
 	ImportService      *SourceDocumentImportService
 	Scanner            *FolderScanner
 	Worker             *SourceProcessingWorker
@@ -30,12 +36,22 @@ type importRunReader interface {
 	List(ctx context.Context, limit int) ([]domain.ImportRun, error)
 }
 
-func BuildFolderIntakeRuntime(repos *RuntimeRepos) (*FolderIntakeRuntime, error) {
+func BuildFolderIntakeRuntime(repos *RuntimeRepos, cfg FolderIntakeConfig) (*FolderIntakeRuntime, error) {
 	if repos == nil {
 		return nil, domain.NewInternalErr("folder intake runtime repos are required", nil)
 	}
+	watchDir := strings.TrimSpace(cfg.WatchDir)
+	if watchDir == "" {
+		return nil, domain.NewValidationErr("folder intake watch directory is required", nil)
+	}
+	archiveDir := strings.TrimSpace(cfg.ArchiveDir)
+	if archiveDir == "" {
+		return nil, domain.NewValidationErr("folder intake archive directory is required", nil)
+	}
+	if cfg.Concurrency <= 0 {
+		return nil, domain.NewValidationErr("folder intake processing concurrency must be greater than zero", nil)
+	}
 
-	archiveDir := filepath.Join(repos.RenderedDir, "source-documents")
 	importService := NewSourceDocumentImportService(repos.SourceDocumentRepo, archiveDir)
 	scanner := NewFolderScanner(importService)
 	rewriteAssembly := buildRewriteAssembly(repos)
@@ -44,10 +60,12 @@ func BuildFolderIntakeRuntime(repos *RuntimeRepos) (*FolderIntakeRuntime, error)
 	rewriteRunner := NewArticleIntakeSourceProcessingRewriteRunner(articleIntakeService)
 	renderRunner := NewFormattingPipelineSourceProcessingRenderRunner(renderer, "")
 	worker := NewSourceProcessingWorker(repos.SourceDocumentRepo, rewriteRunner, renderRunner)
-	scheduler := NewSourceProcessingScheduler(repos.SourceDocumentRepo, worker, defaultFolderIntakeConcurrency, "folder-intake-runtime")
+	scheduler := NewSourceProcessingScheduler(repos.SourceDocumentRepo, worker, cfg.Concurrency, "folder-intake-runtime")
 
 	return &FolderIntakeRuntime{
 		Parser:             ParseSourceDocument,
+		WatchDir:           watchDir,
+		ArchiveDir:         archiveDir,
 		ImportService:      importService,
 		Scanner:            scanner,
 		Worker:             worker,
