@@ -61,25 +61,22 @@ func (s *FolderScanner) ScanOnce(ctx context.Context, watchDir, archiveDir strin
 			return nil
 		}
 
+		scannedFiles++
+
 		if !isSupportedFolderImportFile(path) {
 			skippedFiles++
 			return nil
 		}
 
-		scannedFiles++
 		if _, err := s.importer.ImportFile(ctx, path); err != nil {
 			run.FailedCount++
-			failedPaths = append(failedPaths, filepath.Base(path))
+			failedPaths = append(failedPaths, relativeScannerPath(cleanWatchDir, path))
 			return nil
 		}
 
 		run.ImportedCount++
 		return nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("scan watch directory: %w", err)
-	}
-
 	completedAt := time.Now().UTC()
 	run.CompletedAt = &completedAt
 	run.Metadata = map[string]any{
@@ -88,6 +85,12 @@ func (s *FolderScanner) ScanOnce(ctx context.Context, watchDir, archiveDir strin
 		"skipped_files":  skippedFiles,
 		"failed_files":   run.FailedCount,
 	}
+	if err != nil {
+		run.Status = domain.ImportRunStatusFailed
+		run.ErrorSummary = fmt.Sprintf("scan watch directory: %v", err)
+		return run, fmt.Errorf("scan watch directory: %w", err)
+	}
+
 	if len(failedPaths) > 0 {
 		run.Status = domain.ImportRunStatusFailed
 		run.ErrorSummary = "failed imports: " + strings.Join(failedPaths, ", ")
@@ -118,4 +121,12 @@ func sameOrUnderPath(path, root string) bool {
 		return false
 	}
 	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func relativeScannerPath(watchDir, path string) string {
+	rel, err := filepath.Rel(watchDir, path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	return rel
 }
