@@ -72,6 +72,37 @@ func TestSourceDocumentRepoClaimPending(t *testing.T) {
 	require.Equal(t, other.ID, completed[0].ID)
 }
 
+func TestSourceDocumentRepoClaimPendingSkipsRowsNotActuallyClaimed(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	doc := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-race")
+	doc.Status = domain.SourceDocumentStatusPending
+	require.NoError(t, provider.SourceDocumentRepo().Create(t.Context(), doc))
+
+	// Simulate a race where the guarded claim UPDATE matches the candidate id,
+	// but SQLite ignores the write before it can be applied.
+	_, err := provider.DB().ExecContext(t.Context(), `
+		CREATE TRIGGER source_documents_ignore_claim_update
+		BEFORE UPDATE ON source_documents
+		FOR EACH ROW
+		WHEN OLD.id = '`+doc.ID+`' AND OLD.status = 'pending' AND NEW.status = 'claimed'
+		BEGIN
+			SELECT RAISE(IGNORE);
+		END;
+	`)
+	require.NoError(t, err)
+
+	claimedAt := time.Now().UTC().Truncate(time.Second)
+	claimed, err := provider.SourceDocumentRepo().ClaimPending(t.Context(), 1, "worker-1", claimedAt)
+	require.NoError(t, err)
+	require.Empty(t, claimed)
+
+	stored, err := provider.SourceDocumentRepo().GetByID(t.Context(), doc.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.SourceDocumentStatusPending, stored.Status)
+	require.Empty(t, stored.ClaimedBy)
+	require.Nil(t, stored.ClaimedAt)
+}
+
 func TestImportRunRepoCreateUpdateAndList(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	run := domain.NewImportRun("folder")

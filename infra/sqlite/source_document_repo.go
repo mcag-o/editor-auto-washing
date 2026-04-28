@@ -110,17 +110,29 @@ func (r *sourceDocumentRepo) ClaimPending(ctx context.Context, limit int, claime
 	}
 
 	claimedAt := now.UTC().Format(time.RFC3339Nano)
+	claimedIDs := make([]string, 0, len(ids))
 	for _, id := range ids {
-		if _, err := tx.ExecContext(ctx, `UPDATE source_documents SET status = ?, claimed_by = ?, claimed_at = ? WHERE id = ? AND status = ?`, domain.SourceDocumentStatusClaimed, claimedBy, claimedAt, id, domain.SourceDocumentStatusPending); err != nil {
+		result, err := tx.ExecContext(ctx, `UPDATE source_documents SET status = ?, claimed_by = ?, claimed_at = ? WHERE id = ? AND status = ?`, domain.SourceDocumentStatusClaimed, claimedBy, claimedAt, id, domain.SourceDocumentStatusPending)
+		if err != nil {
 			return nil, fmt.Errorf("claim source document %s: %w", id, err)
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("check claim source document %s result: %w", id, err)
+		}
+		if rowsAffected == 1 {
+			claimedIDs = append(claimedIDs, id)
 		}
 	}
 
-	claimed := make([]domain.SourceDocument, 0, len(ids))
-	for _, id := range ids {
-		row := tx.QueryRowContext(ctx, `SELECT id, source_type, original_filename, original_path, archived_path, file_type, title, body, summary, metadata_json, hash, imported_at, status, workspace_article_id, rewrite_run_id, claimed_by, claimed_at, processing_started_at, completed_at, error_summary FROM source_documents WHERE id = ?`, id)
+	claimed := make([]domain.SourceDocument, 0, len(claimedIDs))
+	for _, id := range claimedIDs {
+		row := tx.QueryRowContext(ctx, `SELECT id, source_type, original_filename, original_path, archived_path, file_type, title, body, summary, metadata_json, hash, imported_at, status, workspace_article_id, rewrite_run_id, claimed_by, claimed_at, processing_started_at, completed_at, error_summary FROM source_documents WHERE id = ? AND claimed_by = ?`, id, claimedBy)
 		doc, err := scanSourceDocument(row)
 		if err != nil {
+			if err == sql.ErrNoRows {
+				continue
+			}
 			return nil, fmt.Errorf("load claimed source document %s: %w", id, err)
 		}
 		claimed = append(claimed, *doc)
