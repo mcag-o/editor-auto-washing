@@ -12,10 +12,10 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,23 +75,23 @@ func newTestServer(t *testing.T) (*Server, *testWebControlRepos) {
 	loader.SetCurrent(cfg)
 
 	provider := &Provider{
-		ContentSvc:     contentSvc,
-		TemplateSvc:    templateSvc,
-		DraftSvc:       draftSvc,
-		FormattingSvc:  formattingSvc,
-		AutomationSvc:  automationSvc,
-		WorkspaceSvc:   workspaceSvc,
-		JobSvc:         jobSvc,
-		ReviewSvc:      reviewSvc,
-		PublishSvc:     publishSvc,
-		WebControlRuntime: webControlRuntime,
-		WorkflowEngine: workflowEngine,
-		ConfigLoader:   loader,
+		ContentSvc:         contentSvc,
+		TemplateSvc:        templateSvc,
+		DraftSvc:           draftSvc,
+		FormattingSvc:      formattingSvc,
+		AutomationSvc:      automationSvc,
+		WorkspaceSvc:       workspaceSvc,
+		JobSvc:             jobSvc,
+		ReviewSvc:          reviewSvc,
+		PublishSvc:         publishSvc,
+		WebControlRuntime:  webControlRuntime,
+		WorkflowEngine:     workflowEngine,
+		ConfigLoader:       loader,
 		SourceDocumentRepo: sourceDocumentRepo,
-		RewriteRunRepo: memProvider.RewritePipelineRunRepo(),
-		RewriteStageRepo: memProvider.RewriteStageRunRepo(),
-		AuditLogRepo: auditLogRepo,
-		WorkspaceRoot:  workspaceRoot,
+		RewriteRunRepo:     memProvider.RewritePipelineRunRepo(),
+		RewriteStageRepo:   memProvider.RewriteStageRunRepo(),
+		AuditLogRepo:       auditLogRepo,
+		WorkspaceRoot:      workspaceRoot,
 	}
 
 	return NewServer(cfg, provider), webRepos
@@ -167,6 +167,21 @@ func TestReadyEndpoint(t *testing.T) {
 	if resp["status"] != "ready" {
 		t.Errorf("expected status=ready, got %q", resp["status"])
 	}
+}
+
+func TestAdminFrontendServedFromRoot(t *testing.T) {
+	s, _ := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Header().Get("Content-Type"), "text/html")
+	require.Contains(t, w.Body.String(), "<title>Content Hub Admin</title>")
+	require.Contains(t, w.Body.String(), "Dashboard")
+	require.Contains(t, w.Body.String(), "/app.js")
+	require.Contains(t, w.Body.String(), "/styles.css")
 }
 
 func TestCreateContent(t *testing.T) {

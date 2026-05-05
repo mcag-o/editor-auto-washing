@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Content Hub Admin</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div>
+        <p class="eyebrow">Content Hub</p>
+        <h1>Admin Control Plane</h1>
+      </div>
+      <div class="status-pill">Go-hosted frontend shell</div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="hero-card card">
+      <div>
+        <p class="eyebrow">Operations Overview</p>
+        <h2>Manage intake, workflows, configuration, and audits from one place</h2>
+        <p class="muted">This task ships the hosted admin shell only. Data wiring and richer interactions can be layered in without changing the page structure.</p>
+      </div>
+      <div class="hero-stats">
+        <div class="metric-card">
+          <span class="metric-label">Runtime</span>
+          <strong>Web Control Plane</strong>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Delivery</span>
+          <strong>Embedded Static Assets</strong>
+        </div>
+      </div>
+    </section>
+
+    <nav class="tabs card" aria-label="Admin sections">
+      <button class="tab is-active" type="button" data-tab="dashboard">Dashboard</button>
+      <button class="tab" type="button" data-tab="article-intake">Article Intake</button>
+      <button class="tab" type="button" data-tab="article-list">Article List</button>
+      <button class="tab" type="button" data-tab="workflow-control">Workflow Control</button>
+      <button class="tab" type="button" data-tab="configuration">Configuration</button>
+      <button class="tab" type="button" data-tab="audit-log">Audit Log</button>
+    </nav>
+
+    <section class="tab-panels">
+      <section class="tab-panel is-active" data-panel="dashboard">
+        <div class="grid grid--metrics">
+          <article class="card compact-card">
+            <p class="eyebrow">Pipeline State</p>
+            <h3>Dashboard</h3>
+            <p class="muted">Summary cards and live counters can mount here without reworking the layout shell.</p>
+          </article>
+          <article class="card compact-card">
+            <p class="eyebrow">Recent Activity</p>
+            <h3>Queue Snapshot</h3>
+            <p class="muted">Expose status, backlog, and operator notices in a compact SaaS-style card layout.</p>
+          </article>
+          <article class="card compact-card">
+            <p class="eyebrow">Operational Health</p>
+            <h3>System Readiness</h3>
+            <p class="muted">Reserved for runtime health, worker heartbeat, and intake readiness indicators.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="article-intake">
+        <article class="card section-card">
+          <div class="section-card__header">
+            <div>
+              <p class="eyebrow">Input Queue</p>
+              <h3>Article Intake</h3>
+            </div>
+            <span class="badge">Shell Ready</span>
+          </div>
+          <div class="section-grid">
+            <div class="input-surface">
+              <label for="source-url">Source URL</label>
+              <input id="source-url" type="url" placeholder="https://example.com/article">
+              <label for="source-text">Manual Paste</label>
+              <textarea id="source-text" rows="8" placeholder="Paste article content here"></textarea>
+              <div class="actions-row">
+                <button type="button" class="btn btn-primary">Queue Intake</button>
+                <button type="button" class="btn">Clear</button>
+              </div>
+            </div>
+            <div class="helper-card">
+              <h4>Supported Shell Targets</h4>
+              <ul>
+                <li>Upload and paste entry points</li>
+                <li>Queued intake status summary</li>
+                <li>Operator notes and validation hints</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="tab-panel" data-panel="article-list">
+        <article class="card section-card">
+          <div class="section-card__header">
+            <div>
+              <p class="eyebrow">Content Inventory</p>
+              <h3>Article List</h3>
+            </div>
+            <input class="table-filter" type="search" placeholder="Filter articles">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Status</th>
+                  <th>Pipeline</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Example source article</td>
+                  <td><span class="badge">Draft</span></td>
+                  <td>Rewrite</td>
+                  <td>Today</td>
+                </tr>
+                <tr>
+                  <td>Workspace article shell</td>
+                  <td><span class="badge badge--muted">Queued</span></td>
+                  <td>Intake</td>
+                  <td>Pending</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="tab-panel" data-panel="workflow-control">
+        <div class="grid grid--two">
+          <article class="card compact-card">
+            <p class="eyebrow">Execution</p>
+            <h3>Workflow Control</h3>
+            <p class="muted">Start, pause, resume, and retry controls can bind to the existing APIs in a later task.</p>
+            <div class="actions-row">
+              <button type="button" class="btn btn-primary">Start</button>
+              <button type="button" class="btn">Pause</button>
+              <button type="button" class="btn">Resume</button>
+            </div>
+          </article>
+          <article class="card compact-card">
+            <p class="eyebrow">Visibility</p>
+            <h3>Run State</h3>
+            <p class="muted">Structured status details, worker utilization, and retry history can render in this card area.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="configuration">
+        <article class="card section-card">
+          <div class="section-card__header">
+            <div>
+              <p class="eyebrow">System Settings</p>
+              <h3>Configuration</h3>
+            </div>
+            <button type="button" class="btn">Refresh</button>
+          </div>
+          <div class="config-list">
+            <div class="config-item">
+              <span>Workspace root</span>
+              <code>/workspace</code>
+            </div>
+            <div class="config-item">
+              <span>Rewrite profile</span>
+              <code>wechat-longform</code>
+            </div>
+            <div class="config-item">
+              <span>Runtime mode</span>
+              <code>operator-preview</code>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="tab-panel" data-panel="audit-log">
+        <article class="card section-card">
+          <div class="section-card__header">
+            <div>
+              <p class="eyebrow">Traceability</p>
+              <h3>Audit Log</h3>
+            </div>
+            <span class="badge">Readiness Shell</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Actor</th>
+                  <th>Action</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>2026-05-06 00:00</td>
+                  <td>system</td>
+                  <td>frontend.hosted</td>
+                  <td>success</td>
+                </tr>
+                <tr>
+                  <td>2026-05-05 23:42</td>
+                  <td>operator</td>
+                  <td>rewrite.retry</td>
+                  <td>queued</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

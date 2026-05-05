@@ -7,8 +7,11 @@ import (
 	"content-hub/service"
 	"content-hub/transport/http/handlers"
 	"content-hub/transport/http/middleware"
+	"content-hub/web"
 	"context"
 	"fmt"
+	"io/fs"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -148,6 +151,23 @@ func validateProvider(provider *Provider) error {
 }
 
 func (s *Server) registerRoutes() {
+	adminAssets, err := fs.Sub(web.Static, "static")
+	if err != nil {
+		panic(fmt.Errorf("load admin frontend assets: %w", err))
+	}
+	indexHTML, err := fs.ReadFile(adminAssets, "index.html")
+	if err != nil {
+		panic(fmt.Errorf("read admin frontend index: %w", err))
+	}
+	appJS, err := fs.ReadFile(adminAssets, "app.js")
+	if err != nil {
+		panic(fmt.Errorf("read admin frontend app.js: %w", err))
+	}
+	stylesCSS, err := fs.ReadFile(adminAssets, "styles.css")
+	if err != nil {
+		panic(fmt.Errorf("read admin frontend styles.css: %w", err))
+	}
+
 	healthHandler := handlers.NewHealthHandler()
 	configHandler := handlers.NewConfigHandler(s.provider.ConfigLoader)
 	contentHandler := handlers.NewContentHandler(s.provider.ContentSvc)
@@ -171,6 +191,15 @@ func (s *Server) registerRoutes() {
 		rewriteRunner = s.provider.RewriteRuntime.Orchestrator
 	}
 	rewriteHandler := handlers.NewRewriteHandler(rewriteRunner)
+	serveAdminAsset := func(contentType string, body []byte) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			c.Data(http.StatusOK, contentType, body)
+		}
+	}
+
+	s.engine.GET("/", serveAdminAsset("text/html; charset=utf-8", indexHTML))
+	s.engine.GET("/app.js", serveAdminAsset(mime.TypeByExtension(".js"), appJS))
+	s.engine.GET("/styles.css", serveAdminAsset("text/css; charset=utf-8", stylesCSS))
 
 	s.engine.GET("/health", healthHandler.Health)
 	s.engine.GET("/ready", healthHandler.Ready)
