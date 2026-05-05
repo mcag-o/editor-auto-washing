@@ -43,6 +43,9 @@ type RuntimeRepos struct {
 	ImportRunRepo              repo.ImportRunRepo
 	PromptTemplateRepo         repo.PromptTemplateRepo
 	LLMProfileRepo             repo.LLMProfileRepo
+	BusinessConfigRepo         repo.BusinessConfigRepo
+	SystemControlStateRepo     repo.SystemControlStateRepo
+	AuditLogRepo               repo.AuditLogRepo
 	LLMClient                  llminfra.Client
 }
 
@@ -113,6 +116,9 @@ func buildRuntimeReposFromResolved(runtimeCfg config.Config, renderedDir string,
 		ImportRunRepo:              sqliteProvider.ImportRunRepo(),
 		PromptTemplateRepo:         sqliteProvider.PromptTemplateRepo(),
 		LLMProfileRepo:             sqliteProvider.LLMProfileRepo(),
+		BusinessConfigRepo:         sqliteProvider.BusinessConfigRepo(),
+		SystemControlStateRepo:     sqliteProvider.SystemControlStateRepo(),
+		AuditLogRepo:               sqliteProvider.AuditLogRepo(),
 		LLMClient:                  llminfra.NewProvider(runtimeCfg.LLM.BaseURL, runtimeCfg.LLM.APIKey, runtimeCfg.LLM.Model, time.Duration(runtimeCfg.LLM.TimeoutSec)*time.Second),
 	}, sqliteProvider.Close, nil
 }

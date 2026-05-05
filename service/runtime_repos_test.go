@@ -70,3 +70,23 @@ func TestBuildRuntimeReposExposesFolderIntakeRepos(t *testing.T) {
 		t.Fatal("expected ImportRunRepo to be wired")
 	}
 }
+
+func TestBuildRuntimeReposExposesWebControlPlaneRepos(t *testing.T) {
+	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
+	if cleanup != nil {
+		defer func() {
+			if closeErr := cleanup(); closeErr != nil {
+				t.Fatalf("cleanup returned error: %v", closeErr)
+			}
+		}()
+	}
+	if err != nil {
+		t.Fatalf("BuildRuntimeRepos returned error: %v", err)
+	}
+	if repos.BusinessConfigRepo == nil {
+		t.Fatal("expected BusinessConfigRepo to be wired")
+	}
+	if repos.AuditLogRepo == nil {
+		t.Fatal("expected AuditLogRepo to be wired")
+	}
+}
