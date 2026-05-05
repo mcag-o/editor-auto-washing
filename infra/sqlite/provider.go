@@ -20,6 +20,9 @@ type Provider struct {
 	templateRepo                repo.TemplateRepo
 	draftRepo                   repo.DraftRepo
 	assetRepo                   repo.AssetRepo
+	businessConfigRepo          repo.BusinessConfigRepo
+	systemControlStateRepo      repo.SystemControlStateRepo
+	auditLogRepo                repo.AuditLogRepo
 	publishRepo                 repo.PublishRepo
 	reviewRepo                  repo.ReviewRepo
 	jobRepo                     repo.JobRepo
@@ -74,6 +77,9 @@ func NewProvider(dbPath string) (*Provider, error) {
 	p.templateRepo = &templateRepo{db: db}
 	p.draftRepo = &draftRepo{db: db}
 	p.assetRepo = &assetRepo{db: db}
+	p.businessConfigRepo = &businessConfigRepo{db: db}
+	p.systemControlStateRepo = &controlStateRepo{db: db}
+	p.auditLogRepo = &auditLogRepo{db: db}
 	p.reviewRepo = &reviewRepo{db: db}
 	p.publishRepo = &publishRepo{db: db}
 	p.jobRepo = &jobRepo{db: db}
@@ -122,6 +128,18 @@ func (p *Provider) DraftRepo() repo.DraftRepo {
 
 func (p *Provider) AssetRepo() repo.AssetRepo {
 	return p.assetRepo
+}
+
+func (p *Provider) BusinessConfigRepo() repo.BusinessConfigRepo {
+	return p.businessConfigRepo
+}
+
+func (p *Provider) SystemControlStateRepo() repo.SystemControlStateRepo {
+	return p.systemControlStateRepo
+}
+
+func (p *Provider) AuditLogRepo() repo.AuditLogRepo {
+	return p.auditLogRepo
 }
 
 func (p *Provider) PublishRepo() repo.PublishRepo {
