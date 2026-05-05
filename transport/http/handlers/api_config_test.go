@@ -55,3 +55,23 @@ func TestAPIConfigPutUpsertsBusinessConfigCategory(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	require.Equal(t, true, resp["auto_resume"])
 }
+
+func TestAPIConfigPutRejectsNonObjectPayload(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	svc := service.NewBusinessConfigService(&stubBusinessConfigRepo{})
+	handler := NewAPIConfigHandler(svc)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.PUT("/api/config", handler.Update)
+
+	for _, payload := range []string{`[]`, `"text"`, `123`, `true`, `null`} {
+		req := httptest.NewRequest(http.MethodPut, "/api/config", bytes.NewBufferString(payload))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), "config payload must be a json object")
+	}
+}

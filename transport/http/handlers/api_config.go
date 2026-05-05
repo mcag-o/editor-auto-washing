@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"bytes"
 	"content-hub/domain"
 	"content-hub/service"
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -45,8 +47,19 @@ func (h *APIConfigHandler) Get(c *gin.Context) {
 }
 
 func (h *APIConfigHandler) Update(c *gin.Context) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		HandleError(c, domain.NewValidationErr("config payload must be valid json", err))
+		return
+	}
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "config payload must be a json object"})
+		return
+	}
+
 	var payload map[string]any
-	if err := c.ShouldBindJSON(&payload); err != nil {
+	if err := json.Unmarshal(trimmed, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

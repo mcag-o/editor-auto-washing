@@ -27,6 +27,7 @@ func TestAPIArticlesListReturnsSourceDocuments(t *testing.T) {
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubSystemControlStateRepo{state: startedControlState("runner", domain.SystemStateRunning, "started", 2)},
 	)
 
 	router := gin.New()
@@ -58,6 +59,7 @@ func TestAPIArticlesGetDetailReturnsSourceDocument(t *testing.T) {
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubSystemControlStateRepo{},
 	)
 
 	router := gin.New()
@@ -107,6 +109,7 @@ func TestAPIArticlesStagesReturnsSourceAndRewriteStages(t *testing.T) {
 		runRepo,
 		stageRepo,
 		sourceRepo,
+		&stubSystemControlStateRepo{},
 	)
 
 	router := gin.New()
@@ -131,7 +134,7 @@ func TestAPIArticlesStagesReturnsSourceAndRewriteStages(t *testing.T) {
 	require.Equal(t, stage.ID, resp.Stages[0].ID)
 }
 
-func TestAPIArticlesRetryResetsFailedDocumentToPending(t *testing.T) {
+func TestAPIArticlesRetryRequeuesFailedDocumentWhenSystemRunning(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	sourceRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
 	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-1")
@@ -144,6 +147,7 @@ func TestAPIArticlesRetryResetsFailedDocumentToPending(t *testing.T) {
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubSystemControlStateRepo{state: startedControlState("runner", domain.SystemStateRunning, "started", 2)},
 	)
 
 	router := gin.New()
@@ -156,10 +160,88 @@ func TestAPIArticlesRetryResetsFailedDocumentToPending(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Equal(t, "requeued", resp["status"])
+	require.Equal(t, true, resp["worker_running"])
+	require.Contains(t, resp["message"], "re-queued")
 	stored, err := sourceRepo.GetByID(t.Context(), doc.ID)
 	require.NoError(t, err)
 	require.Equal(t, domain.SourceDocumentStatusPending, stored.Status)
 	require.Empty(t, stored.ErrorSummary)
 	require.Empty(t, stored.ClaimedBy)
 	require.Empty(t, stored.RewriteRunID)
+}
+
+func TestAPIArticlesRetryFromNonRetryableStateFails(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	sourceRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
+	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-1")
+	doc.Status = domain.SourceDocumentStatusPending
+	require.NoError(t, sourceRepo.Create(t.Context(), doc))
+
+	handler := NewAPIArticlesHandler(
+		service.NewArticleQueryService(sourceRepo),
+		&stubRewritePipelineRunRepo{},
+		&stubRewriteStageRunRepo{},
+		sourceRepo,
+		&stubSystemControlStateRepo{},
+	)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/articles/:id/retry", handler.Retry)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/retry", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "retry is only allowed from failed state")
+	stored, err := sourceRepo.GetByID(t.Context(), doc.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.SourceDocumentStatusPending, stored.Status)
+}
+
+func TestAPIArticlesRetryWhenSystemPausedSignalsQueuedNotRunning(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	sourceRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
+	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-1")
+	doc.Status = domain.SourceDocumentStatusFailed
+	doc.ErrorSummary = "broken"
+	require.NoError(t, sourceRepo.Create(t.Context(), doc))
+
+	handler := NewAPIArticlesHandler(
+		service.NewArticleQueryService(sourceRepo),
+		&stubRewritePipelineRunRepo{},
+		&stubRewriteStageRunRepo{},
+		sourceRepo,
+		&stubSystemControlStateRepo{state: startedControlState("operator", domain.SystemStatePaused, "paused", 2)},
+	)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/articles/:id/retry", handler.Retry)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/retry", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Equal(t, "requeued", resp["status"])
+	require.Equal(t, false, resp["worker_running"])
+	require.Equal(t, domain.SystemStatePaused, resp["system_state"])
+	require.Contains(t, resp["message"], "worker is not actively running")
+}
+
+func startedControlState(updatedBy, state, reason string, limit int) *domain.SystemControlState {
+	control := domain.NewSystemControlState(updatedBy)
+	control.State = state
+	control.Reason = reason
+	control.Metadata["concurrency_limit"] = limit
+	return control
 }

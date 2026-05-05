@@ -80,7 +80,7 @@ func (s *Server) registerRoutes() {
 	reviewHandler := handlers.NewReviewHandler(s.provider.ReviewSvc)
 	publishHandler := handlers.NewPublishHandler(s.provider.PublishSvc)
 	apiIntakeHandler := handlers.NewAPIIntakeHandler(s.provider.WebControlRuntime.Intake)
-	apiArticlesHandler := handlers.NewAPIArticlesHandler(s.provider.WebControlRuntime.Articles, s.provider.RewriteRunRepo, s.provider.RewriteStageRepo, s.provider.SourceDocumentRepo)
+	apiArticlesHandler := handlers.NewAPIArticlesHandler(s.provider.WebControlRuntime.Articles, s.provider.RewriteRunRepo, s.provider.RewriteStageRepo, s.provider.SourceDocumentRepo, s.provider.WebControlRuntime.Control)
 	apiConfigHandler := handlers.NewAPIConfigHandler(s.provider.WebControlRuntime.Config)
 	apiSystemHandler := handlers.NewAPISystemHandler(s.provider.WebControlRuntime.Control)
 	apiAuditHandler := handlers.NewAPIAuditHandler(s.provider.WebControlRuntime.Audit, s.provider.AuditLogRepo)

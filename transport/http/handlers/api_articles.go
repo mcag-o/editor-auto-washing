@@ -4,6 +4,7 @@ import (
 	"content-hub/domain"
 	"content-hub/pkg/repo"
 	"content-hub/service"
+	"context"
 	"net/http"
 	"strings"
 
@@ -15,10 +16,15 @@ type APIArticlesHandler struct {
 	runs     repo.RewritePipelineRunRepo
 	stages   repo.RewriteStageRunRepo
 	source   repo.SourceDocumentRepo
+	control  interface {
+		Get(context.Context) (*domain.SystemControlState, error)
+	}
 }
 
-func NewAPIArticlesHandler(articles *service.ArticleQueryService, runs repo.RewritePipelineRunRepo, stages repo.RewriteStageRunRepo, source repo.SourceDocumentRepo) *APIArticlesHandler {
-	return &APIArticlesHandler{articles: articles, runs: runs, stages: stages, source: source}
+func NewAPIArticlesHandler(articles *service.ArticleQueryService, runs repo.RewritePipelineRunRepo, stages repo.RewriteStageRunRepo, source repo.SourceDocumentRepo, control interface {
+	Get(context.Context) (*domain.SystemControlState, error)
+}) *APIArticlesHandler {
+	return &APIArticlesHandler{articles: articles, runs: runs, stages: stages, source: source, control: control}
 }
 
 func (h *APIArticlesHandler) List(c *gin.Context) {
@@ -74,6 +80,10 @@ func (h *APIArticlesHandler) Retry(c *gin.Context) {
 		HandleError(c, err)
 		return
 	}
+	if item.Status != domain.SourceDocumentStatusFailed {
+		HandleError(c, domain.NewValidationErr("retry is only allowed from failed state", nil))
+		return
+	}
 
 	item.Status = domain.SourceDocumentStatusPending
 	item.ErrorSummary = ""
@@ -88,5 +98,25 @@ func (h *APIArticlesHandler) Retry(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, item)
+	workerRunning := false
+	systemState := domain.SystemStateStopped
+	message := "article re-queued for retry"
+	if h.control != nil {
+		state, stateErr := h.control.Get(c.Request.Context())
+		if stateErr == nil {
+			systemState = state.State
+			workerRunning = state.State == domain.SystemStateRunning
+		}
+	}
+	if !workerRunning {
+		message = "article re-queued, but the worker is not actively running"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":         "requeued",
+		"message":        message,
+		"worker_running": workerRunning,
+		"system_state":   systemState,
+		"article":        item,
+	})
 }
