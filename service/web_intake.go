@@ -4,7 +4,6 @@ import (
 	"content-hub/domain"
 	"content-hub/pkg/repo"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -158,45 +157,7 @@ func (s *WebIntakeService) parseUploadedDocument(filename string, content io.Rea
 		return nil, fmt.Errorf("read upload content: %w", err)
 	}
 
-	switch strings.ToLower(filepath.Ext(filename)) {
-	case ".md":
-		text := string(body)
-		return &ParsedSourceDocument{
-			Title: inferMarkdownTitle(text, filename),
-			Body:  text,
-		}, nil
-	case ".txt":
-		text := string(body)
-		return &ParsedSourceDocument{
-			Title: fallbackTitle(filename),
-			Body:  text,
-		}, nil
-	case ".json":
-		var payload struct {
-			Title   string   `json:"title"`
-			Content string   `json:"content"`
-			Summary string   `json:"summary"`
-			Tags    []string `json:"tags"`
-		}
-		if err := json.Unmarshal(body, &payload); err != nil {
-			return nil, domain.NewValidationErr("decode source document json", err)
-		}
-		if strings.TrimSpace(payload.Content) == "" {
-			return nil, domain.NewValidationErr("source document content is required", nil)
-		}
-		title := strings.TrimSpace(payload.Title)
-		if title == "" {
-			title = fallbackTitle(filename)
-		}
-		return &ParsedSourceDocument{
-			Title:   title,
-			Body:    payload.Content,
-			Summary: strings.TrimSpace(payload.Summary),
-			Tags:    normalizeTags(payload.Tags),
-		}, nil
-	default:
-		return nil, domain.NewValidationErr("unsupported source document type", nil)
-	}
+	return ParseSourceDocumentBytes(filename, body)
 }
 
 func isSupportedWebUploadExtension(filename string) bool {

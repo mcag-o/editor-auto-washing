@@ -24,6 +24,23 @@ func TestParseMarkdownExtractsTitleAndBody(t *testing.T) {
 	require.Empty(t, parsed.Tags)
 }
 
+func TestParseSourceDocumentBytesMatchesFilePathForMarkdown(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "article.md")
+	raw := []byte("# Title\n\nBody text")
+	require.NoError(t, os.WriteFile(path, raw, 0o644))
+
+	fromPath, err := ParseSourceDocument(path)
+	require.NoError(t, err)
+
+	fromBytes, err := ParseSourceDocumentBytes("article.md", raw)
+	require.NoError(t, err)
+
+	require.Equal(t, fromPath.Title, fromBytes.Title)
+	require.Equal(t, fromPath.Body, fromBytes.Body)
+	require.Equal(t, fromPath.Summary, fromBytes.Summary)
+	require.Equal(t, fromPath.Tags, fromBytes.Tags)
+}
+
 func TestParseTextUsesFilenameAsFallbackTitle(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "notes.txt")
 	require.NoError(t, os.WriteFile(path, []byte("Plain text body"), 0o644))
@@ -94,6 +111,23 @@ func TestParseJSONWhitespaceOnlyTitleFallsBackToFilename(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "article", parsed.Title)
 	require.Equal(t, "Body", parsed.Body)
+}
+
+func TestParseSourceDocumentBytesMatchesFilePathForTitlelessJSONFallback(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "article.json")
+	raw := []byte(`{"content":"Body"}`)
+	require.NoError(t, os.WriteFile(path, raw, 0o644))
+
+	fromPath, err := ParseSourceDocument(path)
+	require.NoError(t, err)
+
+	fromBytes, err := ParseSourceDocumentBytes("article.json", raw)
+	require.NoError(t, err)
+
+	require.Equal(t, fromPath.Title, fromBytes.Title)
+	require.Equal(t, fromPath.Body, fromBytes.Body)
+	require.Equal(t, fromPath.Summary, fromBytes.Summary)
+	require.Equal(t, fromPath.Tags, fromBytes.Tags)
 }
 
 func TestParseDOCXExtractsPlainText(t *testing.T) {

@@ -26,52 +26,62 @@ func ParseSourceDocument(path string) (*ParsedSourceDocument, error) {
 		return nil, domain.NewValidationErr("source document path is required", nil)
 	}
 
-	switch strings.ToLower(filepath.Ext(path)) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".md":
+			return nil, fmt.Errorf("read markdown document: %w", err)
+		case ".txt":
+			return nil, fmt.Errorf("read text document: %w", err)
+		case ".json":
+			return nil, fmt.Errorf("read json document: %w", err)
+		case ".docx":
+			return nil, fmt.Errorf("read docx document: %w", err)
+		default:
+			return nil, domain.NewValidationErr("unsupported source document type", nil)
+		}
+	}
+
+	return ParseSourceDocumentBytes(path, body)
+}
+
+func ParseSourceDocumentBytes(filename string, raw []byte) (*ParsedSourceDocument, error) {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return nil, domain.NewValidationErr("source document filename is required", nil)
+	}
+
+	switch strings.ToLower(filepath.Ext(filename)) {
 	case ".md":
-		return parseMarkdownDocument(path)
+		return parseMarkdownDocumentBytes(filename, raw)
 	case ".txt":
-		return parseTextDocument(path)
+		return parseTextDocumentBytes(filename, raw)
 	case ".json":
-		return parseJSONDocument(path)
+		return parseJSONDocumentBytes(filename, raw)
 	case ".docx":
-		return parseDOCXDocument(path)
+		return parseDOCXDocumentBytes(filename, raw)
 	default:
 		return nil, domain.NewValidationErr("unsupported source document type", nil)
 	}
 }
 
-func parseMarkdownDocument(path string) (*ParsedSourceDocument, error) {
-	body, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read markdown document: %w", err)
-	}
-
+func parseMarkdownDocumentBytes(filename string, body []byte) (*ParsedSourceDocument, error) {
 	text := string(body)
 	return &ParsedSourceDocument{
-		Title: inferMarkdownTitle(text, path),
+		Title: inferMarkdownTitle(text, filename),
 		Body:  text,
 	}, nil
 }
 
-func parseTextDocument(path string) (*ParsedSourceDocument, error) {
-	body, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read text document: %w", err)
-	}
-
+func parseTextDocumentBytes(filename string, body []byte) (*ParsedSourceDocument, error) {
 	text := string(body)
 	return &ParsedSourceDocument{
-		Title: fallbackTitle(path),
+		Title: fallbackTitle(filename),
 		Body:  text,
 	}, nil
 }
 
-func parseJSONDocument(path string) (*ParsedSourceDocument, error) {
-	body, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read json document: %w", err)
-	}
-
+func parseJSONDocumentBytes(filename string, body []byte) (*ParsedSourceDocument, error) {
 	var payload struct {
 		Title   string   `json:"title"`
 		Content string   `json:"content"`
@@ -88,7 +98,7 @@ func parseJSONDocument(path string) (*ParsedSourceDocument, error) {
 
 	title := strings.TrimSpace(payload.Title)
 	if title == "" {
-		title = fallbackTitle(path)
+		title = fallbackTitle(filename)
 	}
 
 	return &ParsedSourceDocument{
@@ -99,12 +109,7 @@ func parseJSONDocument(path string) (*ParsedSourceDocument, error) {
 	}, nil
 }
 
-func parseDOCXDocument(path string) (*ParsedSourceDocument, error) {
-	body, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read docx document: %w", err)
-	}
-
+func parseDOCXDocumentBytes(filename string, body []byte) (*ParsedSourceDocument, error) {
 	reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
 		return nil, domain.NewValidationErr("open docx archive", err)
@@ -116,7 +121,7 @@ func parseDOCXDocument(path string) (*ParsedSourceDocument, error) {
 	}
 
 	return &ParsedSourceDocument{
-		Title: fallbackTitle(path),
+		Title: fallbackTitle(filename),
 		Body:  text,
 	}, nil
 }
