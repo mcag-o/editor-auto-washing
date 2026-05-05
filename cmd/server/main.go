@@ -124,7 +124,6 @@ func run() error {
 		TemplateSvc:         templateSvc,
 		DraftSvc:            draftSvc,
 		FormattingSvc:       formattingSvc,
-		IngestionSvc:        ingestionSvc,
 		AutomationSvc:       automationSvc,
 		WorkspaceSvc:        workspaceSvc,
 		JobSvc:              jobSvc,

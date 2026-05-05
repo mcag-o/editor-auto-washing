@@ -23,7 +23,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 
 - Assume repo root is the default working project unless the task explicitly points into `Archive/`.
 - Do not treat archived docs as source of truth for current commands, APIs, or architecture.
-- Treat folder intake / source document processing as the supported and only documented active-runtime default intake path. Draft + render are the default automated result path. Review/publish are optional later steps, not part of the default automated chain. Do not present legacy RSS/collector/ingestion HTTP or CLI surfaces as current supported entrypoints unless the task explicitly targets historical behavior.
+- Treat folder intake / source document processing as the supported and only documented active-runtime intake path. Draft + render are the default automated result path. Review/publish are optional later steps, not part of the default automated chain. Do not present legacy RSS/collector/ingestion HTTP or CLI surfaces as current supported entrypoints unless the task explicitly targets historical behavior.
 - Preserve Chinese user-facing documentation where it already exists; bilingual docs are normal here.
 - Prefer minimal, local edits over wide migration-era cleanup unless the task explicitly asks for broader normalization.
 - When touching path-sensitive docs or metadata, check whether the target should reference root runtime code or archived legacy code.
@@ -48,8 +48,8 @@ Run from repository root.
 - Folder/rewrite integration verification: `go test ./integration -run 'TestFolderIntakeMainlineCreatesRenderedOutput|TestRewritePipelineMainlineMaterializesDraft'`
 - Run all tests: `go test ./...`
 - Run all tests with race and coverage: `make test`
-- Run one package: `go test ./collector/service`
-- Run one exact test: `go test ./collector/service -run TestRunService`
+- Run one package: `go test ./service`
+- Run one exact test: `go test ./service -run TestRewriteOrchestratorRunsPipelineAndCreatesDraft`
 - Run rewrite service tests: `go test ./service -run TestRewrite`
 - Run rewrite orchestrator test: `go test ./service -run TestRewriteOrchestratorRunsPipelineAndCreatesDraft`
 - Run one integration test: `go test ./integration -run TestFolderIntakeMainlineCreatesRenderedOutput`

@@ -18,7 +18,7 @@
 - workflow / jobs / automation
 - HTTP API / CLI / 基础 TUI
 
-这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；当前 active runtime 的默认 intake 路径是 folder intake / source document workflow，自动处理默认产物会停在 draft + render，review / publish 保持为后续可选人工步骤。旧的 collector/ingestion surface 不再作为 active runtime 当前能力。
+这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；当前 active runtime 唯一文档化且默认的 intake 路径是 folder intake / source document workflow，自动处理默认产物会停在 draft + render，review / publish 保持为后续可选人工步骤。旧的 RSS、collector、ingestion surface 不再属于 active runtime 当前能力。
 
 不包含的承诺：
 
@@ -60,7 +60,7 @@
 - `infra/sqlite/source_document_repo.go`
 - `infra/sqlite/article_workspace_repo.go`
 
-说明：旧的 RSS、`service/ingestion_pipeline.go` 与 `collector/` 相关实现仅作为迁移参考或历史上下文保留；当前文档中的唯一 active/default intake 叙述是 folder intake / source document workflow。
+说明：旧的 RSS 与 collector / ingestion 相关实现仅作为迁移参考或历史上下文保留；当前文档中的唯一 active/default intake 叙述是 folder intake / source document workflow。
 
 ### 2.6. AI Rewrite Pipeline
 
@@ -178,7 +178,7 @@ go run ./cmd/cli workspace doctor --root .
 go run ./cmd/cli automation run-once --root .
 ```
 
-说明：当前运行时的默认 intake 路径仍然是 folder intake / source document workflow，但它目前通过 `automation` 命令驱动执行；仓库里尚未暴露独立的 folder-intake CLI 子命令。默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。旧的 RSS、`ingestion ...` 与 `collector ...` CLI 入口不再作为当前运行时文档化接口。
+说明：当前运行时的唯一文档化 intake 路径是 folder intake / source document workflow，但它目前通过 `automation` 命令驱动执行；仓库里尚未暴露独立的 folder-intake CLI 子命令。默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。旧的 RSS、`ingestion ...` 与 `collector ...` CLI 入口不再作为当前运行时文档化接口。
 
 ### Formatting
 
@@ -274,7 +274,7 @@ go run ./cmd/cli automation stop --root .
 - `GET /automation/health`
 - `POST /automation/stop`
 
-说明：folder intake / source document workflow 是当前 active runtime 的默认 intake 路径，但当前 HTTP 暴露的是 automation、rewrite、workspace article、review/publish 等可调用 surface；仓库里尚未注册独立的 folder-intake 或 source-document HTTP endpoint。review 与 publish API 仍可单独调用，但不会由默认自动化链自动进入。旧的 `/ingestion/*` 与 `/collector/*` 路径不再作为支持中的运行时入口。
+说明：folder intake / source document workflow 是当前 active runtime 唯一文档化且默认的 intake 路径，但当前 HTTP 暴露的是 automation、rewrite、workspace article、review/publish 等可调用 surface；仓库里尚未注册独立的 folder-intake 或 source-document HTTP endpoint。review 与 publish API 仍可单独调用，但不会由默认自动化链自动进入。旧的 `/ingestion/*` 与 `/collector/*` 路径不再作为支持中的运行时入口。
 
 ---
 
@@ -321,7 +321,7 @@ go test ./...
 ## 当前限制与边界
 
 - Go 版已经可以替代 Python 主链路，但不是历史兼容层逐字复刻
-- folder intake / source document processing 是当前默认 intake 路径，但独立的 folder-intake HTTP/CLI surface 目前尚未暴露；对外可调用入口以 automation、rewrite、workspace/review/publish 等现有接口为主
+- folder intake / source document processing 是当前唯一文档化且默认的 intake 路径，但独立的 folder-intake HTTP/CLI surface 目前尚未暴露；对外可调用入口以 automation、rewrite、workspace/review/publish 等现有接口为主
 - 默认自动化结果停在 draft + render；review / publish 作为后续可选人工步骤保留
 - 归档项目里的采集/ingestion 文档仍保留历史语义，不代表根目录 Go runtime 的当前对外接口
 - automation daemon 目前是单进程内模型，不是外部 supervisor 模型
@@ -374,4 +374,4 @@ go test ./...
 - 可以作为当前默认主实现使用
 - 根目录 Go runtime 当前以 folder intake 作为默认 intake 主路径
 - 默认自动化链产物为 draft + render，review / publish 不会自动触发
-- 旧的 collector/ingestion surface 已从 active runtime 对外接口集合中移除
+- 旧的 RSS、collector、ingestion surface 已从 active runtime 对外接口集合中移除

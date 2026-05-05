@@ -29,7 +29,6 @@ type Provider struct {
 	TemplateSvc         *service.TemplateService
 	DraftSvc            *service.DraftService
 	FormattingSvc       *service.FormattingPipelineService
-	IngestionSvc        *service.IngestionPipelineService
 	AutomationSvc       *service.AutomationService
 	WorkspaceSvc        *service.WorkspaceArticleService
 	JobSvc              *service.JobService

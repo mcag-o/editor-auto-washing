@@ -59,7 +59,6 @@ func newTestServer(t *testing.T) (*Server, *memory.Provider) {
 		TemplateSvc:    templateSvc,
 		DraftSvc:       draftSvc,
 		FormattingSvc:  formattingSvc,
-		IngestionSvc:   ingestionSvc,
 		AutomationSvc:  automationSvc,
 		WorkspaceSvc:   workspaceSvc,
 		JobSvc:         jobSvc,
