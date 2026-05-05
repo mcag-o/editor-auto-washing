@@ -77,6 +77,9 @@ func (sourceDocumentRepoCompileStub) Update(context.Context, *domain.SourceDocum
 func (sourceDocumentRepoCompileStub) GetByID(context.Context, string) (*domain.SourceDocument, error) {
 	return nil, nil
 }
+func (sourceDocumentRepoCompileStub) List(context.Context, int) ([]domain.SourceDocument, error) {
+	return nil, nil
+}
 func (sourceDocumentRepoCompileStub) FindByHash(context.Context, string) (*domain.SourceDocument, error) {
 	return nil, nil
 }

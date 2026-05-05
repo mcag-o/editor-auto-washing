@@ -103,6 +103,26 @@ func TestSourceDocumentRepoClaimPendingSkipsRowsNotActuallyClaimed(t *testing.T)
 	require.Nil(t, stored.ClaimedAt)
 }
 
+func TestSourceDocumentRepoListReturnsDocumentsAcrossStatuses(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	pending := domain.NewSourceDocument("pending.md", "/inbox/pending.md", "md", "Pending", "Body A", "hash-list-a")
+	pending.Status = domain.SourceDocumentStatusPending
+	completed := domain.NewSourceDocument("completed.md", "/inbox/completed.md", "md", "Completed", "Body B", "hash-list-b")
+	completed.Status = domain.SourceDocumentStatusCompleted
+	completedAt := time.Now().UTC().Truncate(time.Second)
+	completed.CompletedAt = &completedAt
+
+	require.NoError(t, provider.SourceDocumentRepo().Create(t.Context(), pending))
+	require.NoError(t, provider.SourceDocumentRepo().Create(t.Context(), completed))
+
+	docs, err := provider.SourceDocumentRepo().List(t.Context(), 10)
+	require.NoError(t, err)
+	require.Len(t, docs, 2)
+	ids := []string{docs[0].ID, docs[1].ID}
+	require.Contains(t, ids, pending.ID)
+	require.Contains(t, ids, completed.ID)
+}
+
 func TestImportRunRepoCreateUpdateAndList(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	run := domain.NewImportRun("folder")

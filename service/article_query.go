@@ -26,7 +26,7 @@ func (s *ArticleQueryService) ListSourceDocuments(ctx context.Context, filter Ar
 	}
 	status := strings.TrimSpace(filter.Status)
 	if status == "" {
-		return nil, domain.NewValidationErr("status is required", nil)
+		return s.repo.List(ctx, filter.Limit)
 	}
 	return s.repo.ListByStatus(ctx, status, filter.Limit)
 }

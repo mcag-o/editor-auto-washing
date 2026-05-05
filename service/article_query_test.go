@@ -43,6 +43,36 @@ func TestArticleQueryServiceListsSourceDocumentsByStatus(t *testing.T) {
 	require.NotEqual(t, completed.ID, docs[0].ID)
 }
 
+func TestArticleQueryServiceListsSourceDocumentsWithoutStatusFilter(t *testing.T) {
+	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
+	if cleanup != nil {
+		defer func() {
+			require.NoError(t, cleanup())
+		}()
+	}
+	require.NoError(t, err)
+
+	pending := domain.NewSourceDocument("pending.md", "pending.md", "md", "Pending", "Body A", "hash-pending")
+	pending.Status = domain.SourceDocumentStatusPending
+	completed := domain.NewSourceDocument("completed.md", "completed.md", "md", "Completed", "Body B", "hash-completed")
+	completed.Status = domain.SourceDocumentStatusCompleted
+	now := time.Now().UTC()
+	completed.CompletedAt = &now
+
+	require.NoError(t, repos.SourceDocumentRepo.Create(t.Context(), pending))
+	require.NoError(t, repos.SourceDocumentRepo.Create(t.Context(), completed))
+
+	svc := NewArticleQueryService(repos.SourceDocumentRepo)
+
+	docs, err := svc.ListSourceDocuments(t.Context(), ArticleQueryFilter{Limit: 10})
+
+	require.NoError(t, err)
+	require.Len(t, docs, 2)
+	ids := []string{docs[0].ID, docs[1].ID}
+	require.Contains(t, ids, pending.ID)
+	require.Contains(t, ids, completed.ID)
+}
+
 func TestArticleQueryServiceGetsSourceDocumentDetailByID(t *testing.T) {
 	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
 	if cleanup != nil {

@@ -63,6 +63,27 @@ func (r *sourceDocumentRepo) GetByID(ctx context.Context, id string) (*domain.So
 	return doc, nil
 }
 
+func (r *sourceDocumentRepo) List(ctx context.Context, limit int) ([]domain.SourceDocument, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id, source_type, original_filename, original_path, archived_path, file_type, title, body, summary, metadata_json, hash, imported_at, status, workspace_article_id, rewrite_run_id, claimed_by, claimed_at, processing_started_at, completed_at, error_summary FROM source_documents ORDER BY claimed_at DESC, imported_at DESC, id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query source documents: %w", err)
+	}
+	defer rows.Close()
+
+	items := []domain.SourceDocument{}
+	for rows.Next() {
+		doc, err := scanSourceDocument(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *doc)
+	}
+	return items, rows.Err()
+}
+
 func (r *sourceDocumentRepo) FindByHash(ctx context.Context, hash string) (*domain.SourceDocument, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT id, source_type, original_filename, original_path, archived_path, file_type, title, body, summary, metadata_json, hash, imported_at, status, workspace_article_id, rewrite_run_id, claimed_by, claimed_at, processing_started_at, completed_at, error_summary FROM source_documents WHERE hash = ? ORDER BY imported_at DESC, id DESC LIMIT 1`, hash)
 	doc, err := scanSourceDocument(row)

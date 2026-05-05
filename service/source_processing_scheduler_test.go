@@ -62,6 +62,10 @@ func (r *stubSourceProcessingSchedulerRepo) GetByID(_ context.Context, id string
 	return nil, domain.NewNotFoundErr("source_document", id)
 }
 
+func (r *stubSourceProcessingSchedulerRepo) List(context.Context, int) ([]domain.SourceDocument, error) {
+	return nil, nil
+}
+
 func (r *stubSourceProcessingSchedulerRepo) FindByHash(context.Context, string) (*domain.SourceDocument, error) {
 	return nil, domain.NewNotFoundErr("source_document_hash", "missing")
 }

@@ -13,10 +13,10 @@ import (
 )
 
 type stubSourceDocumentRepo struct {
-	created []*domain.SourceDocument
-	updated []*domain.SourceDocument
-	createErr error
-	updateErr error
+	created     []*domain.SourceDocument
+	updated     []*domain.SourceDocument
+	createErr   error
+	updateErr   error
 	updateCalls int
 }
 
@@ -41,6 +41,10 @@ func (r *stubSourceDocumentRepo) Update(_ context.Context, doc *domain.SourceDoc
 
 func (r *stubSourceDocumentRepo) GetByID(context.Context, string) (*domain.SourceDocument, error) {
 	return nil, domain.NewNotFoundErr("source_document", "missing")
+}
+
+func (r *stubSourceDocumentRepo) List(context.Context, int) ([]domain.SourceDocument, error) {
+	return nil, nil
 }
 
 func (r *stubSourceDocumentRepo) FindByHash(context.Context, string) (*domain.SourceDocument, error) {

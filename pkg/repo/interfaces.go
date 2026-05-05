@@ -127,6 +127,7 @@ type SourceDocumentRepo interface {
 	Create(ctx context.Context, doc *domain.SourceDocument) error
 	Update(ctx context.Context, doc *domain.SourceDocument) error
 	GetByID(ctx context.Context, id string) (*domain.SourceDocument, error)
+	List(ctx context.Context, limit int) ([]domain.SourceDocument, error)
 	FindByHash(ctx context.Context, hash string) (*domain.SourceDocument, error)
 	ClaimPending(ctx context.Context, limit int, claimedBy string, now time.Time) ([]domain.SourceDocument, error)
 	ListByStatus(ctx context.Context, status string, limit int) ([]domain.SourceDocument, error)

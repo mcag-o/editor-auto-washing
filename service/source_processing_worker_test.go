@@ -43,6 +43,10 @@ func (r *stubSourceProcessingRepo) GetByID(_ context.Context, id string) (*domai
 	return cloneSourceDocument(r.stored), nil
 }
 
+func (r *stubSourceProcessingRepo) List(context.Context, int) ([]domain.SourceDocument, error) {
+	return nil, nil
+}
+
 func (r *stubSourceProcessingRepo) FindByHash(context.Context, string) (*domain.SourceDocument, error) {
 	return nil, domain.NewNotFoundErr("source_document_hash", "missing")
 }
