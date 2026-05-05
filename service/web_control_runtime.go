@@ -50,9 +50,30 @@ func (s *WebControlPlaneService) Start(ctx context.Context, updatedBy string, co
 			limit = value
 		}
 	}
+	stopState := func(reason string) (*domain.SystemControlState, error) {
+		current, getErr := s.control.Get(ctx)
+		if getErr != nil {
+			return nil, getErr
+		}
+		now := current.UpdatedAt
+		now = now.UTC()
+		current.State = domain.SystemStateStopped
+		current.Reason = reason
+		current.UpdatedBy = updatedBy
+		current.RequestedAt = &now
+		current.UpdatedAt = now
+		if err := s.control.repo.Upsert(ctx, current); err != nil {
+			return nil, err
+		}
+		return s.control.repo.Get(ctx)
+	}
 	if s.runner != nil {
 		if err := s.runner.ProcessPending(ctx, limit); err != nil {
 			wrapped := fmt.Errorf("process pending source documents: %w", err)
+			stoppedState, stopErr := stopState("cycle_failed")
+			if stopErr != nil {
+				return nil, stopErr
+			}
 			if auditErr := s.recordAudit(ctx, AuditLogCreateInput{
 				Actor:    updatedBy,
 				Action:   "control_plane.started",
@@ -63,8 +84,13 @@ func (s *WebControlPlaneService) Start(ctx context.Context, updatedBy string, co
 			}); auditErr != nil {
 				return nil, auditErr
 			}
+			_ = stoppedState
 			return nil, wrapped
 		}
+	}
+	stoppedState, stopErr := stopState("cycle_completed")
+	if stopErr != nil {
+		return nil, stopErr
 	}
 	if err := s.recordAudit(ctx, AuditLogCreateInput{
 		Actor:    updatedBy,
@@ -76,7 +102,7 @@ func (s *WebControlPlaneService) Start(ctx context.Context, updatedBy string, co
 	}); err != nil {
 		return nil, err
 	}
-	return state, nil
+	return stoppedState, nil
 }
 
 func (s *WebControlPlaneService) Pause(ctx context.Context, updatedBy string) (*domain.SystemControlState, error) {

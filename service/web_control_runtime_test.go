@@ -64,12 +64,16 @@ func TestWebControlPlaneServiceStartPassesConfiguredConcurrencyToProcessingCycle
 
 	require.NoError(t, err)
 	require.NotNil(t, state)
+	require.Equal(t, domain.SystemStateStopped, state.State)
 	require.True(t, runner.called)
 	require.Equal(t, 3, runner.concurrencyLimit)
 	require.Len(t, auditRepo.logs, 1)
 	require.Equal(t, "control_plane.started", auditRepo.logs[0].Action)
 	require.Equal(t, "success", auditRepo.logs[0].Result)
 	require.Equal(t, 3, auditRepo.logs[0].Metadata["concurrency_limit"])
+	storedState, getErr := controlRepo.Get(t.Context())
+	require.NoError(t, getErr)
+	require.Equal(t, domain.SystemStateStopped, storedState.State)
 }
 
 func TestWebControlPlaneServiceStartReturnsFailureSemanticsWhenProcessingCycleFails(t *testing.T) {
@@ -95,5 +99,5 @@ func TestWebControlPlaneServiceStartReturnsFailureSemanticsWhenProcessingCycleFa
 	require.Equal(t, 2, auditRepo.logs[0].Metadata["concurrency_limit"])
 	storedState, getErr := controlRepo.Get(t.Context())
 	require.NoError(t, getErr)
-	require.Equal(t, domain.SystemStateRunning, storedState.State)
+	require.Equal(t, domain.SystemStateStopped, storedState.State)
 }

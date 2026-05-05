@@ -132,7 +132,7 @@ func TestWebControlPlanePasteToRenderedResult(t *testing.T) {
 
 	var startedState domain.SystemControlState
 	require.NoError(t, json.NewDecoder(startResp.Body).Decode(&startedState))
-	require.Equal(t, domain.SystemStateRunning, startedState.State)
+	require.Equal(t, domain.SystemStateStopped, startedState.State)
 
 	statusResp, err := http.Get(httpTestServer.URL + "/api/system/status")
 	require.NoError(t, err)
@@ -141,7 +141,7 @@ func TestWebControlPlanePasteToRenderedResult(t *testing.T) {
 
 	var systemStatus domain.SystemControlState
 	require.NoError(t, json.NewDecoder(statusResp.Body).Decode(&systemStatus))
-	require.Equal(t, domain.SystemStateRunning, systemStatus.State)
+	require.Equal(t, domain.SystemStateStopped, systemStatus.State)
 
 	articleListResp, err := http.Get(httpTestServer.URL + "/api/articles")
 	require.NoError(t, err)
