@@ -86,6 +86,9 @@ func TestBuildRuntimeReposExposesWebControlPlaneRepos(t *testing.T) {
 	if repos.BusinessConfigRepo == nil {
 		t.Fatal("expected BusinessConfigRepo to be wired")
 	}
+	if repos.SystemControlStateRepo == nil {
+		t.Fatal("expected SystemControlStateRepo to be wired")
+	}
 	if repos.AuditLogRepo == nil {
 		t.Fatal("expected AuditLogRepo to be wired")
 	}
