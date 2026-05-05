@@ -420,6 +420,9 @@ func TestRunDefaultsWebControlPlaneToPrimaryPort8123(t *testing.T) {
 
 	newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serverRunner {
 		assert.Equal(t, 8123, cfg.HTTP.Port)
+		require.NotNil(t, provider)
+		require.NotNil(t, provider.ConfigLoader)
+		assert.Equal(t, 8123, provider.ConfigLoader.Get().HTTP.Port)
 		return failingServerRunner{err: errors.New("bind failed")}
 	}
 

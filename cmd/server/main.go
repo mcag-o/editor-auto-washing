@@ -57,6 +57,7 @@ func run() error {
 		selectedStandaloneFallback = true
 	}
 	cfg.HTTP.Port = normalizePrimaryOperatorPort(cfg.HTTP.Port)
+	loader.SetCurrent(cfg)
 
 	var runtimeRepos *service.RuntimeRepos
 	var cleanup func() error
