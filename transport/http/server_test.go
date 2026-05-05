@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"content-hub/domain"
 	"content-hub/infra/config"
 	"content-hub/infra/memory"
@@ -14,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +23,7 @@ import (
 	"time"
 )
 
-func newTestServer(t *testing.T) (*Server, *memory.Provider) {
+func newTestServer(t *testing.T) (*Server, *testWebControlRepos) {
 	t.Helper()
 
 	cfg := config.DefaultConfig()
@@ -29,6 +31,16 @@ func newTestServer(t *testing.T) (*Server, *memory.Provider) {
 	cfg.HTTP.Port = 0
 
 	memProvider := memory.NewProvider()
+	sourceDocumentRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
+	businessConfigRepo := &stubBusinessConfigRepo{}
+	systemControlStateRepo := &stubSystemControlStateRepo{}
+	auditLogRepo := &stubAuditLogRepo{}
+	webRepos := &testWebControlRepos{
+		SourceDocuments: sourceDocumentRepo,
+		AuditLogs:       auditLogRepo,
+		Configs:         businessConfigRepo,
+		ControlStates:   systemControlStateRepo,
+	}
 
 	contentSvc := service.NewContentService(
 		memProvider.ArticleRepo(),
@@ -51,6 +63,14 @@ func newTestServer(t *testing.T) (*Server, *memory.Provider) {
 	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, workspaceinfra.WorkspaceConfigFileName), []byte("name: test\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, workspaceinfra.WorkspaceSecretsFileName), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
 	automationSvc := service.NewAutomationService(service.NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), ingestionSvc, nil, jobSvc)
+	runtimeRepos := &service.RuntimeRepos{
+		SourceDocumentRepo:     sourceDocumentRepo,
+		BusinessConfigRepo:     businessConfigRepo,
+		SystemControlStateRepo: systemControlStateRepo,
+		AuditLogRepo:           auditLogRepo,
+	}
+	webControlRuntime, err := service.BuildWebControlRuntime(runtimeRepos)
+	require.NoError(t, err)
 	loader := config.NewLoader("")
 	loader.SetCurrent(cfg)
 
@@ -64,12 +84,17 @@ func newTestServer(t *testing.T) (*Server, *memory.Provider) {
 		JobSvc:         jobSvc,
 		ReviewSvc:      reviewSvc,
 		PublishSvc:     publishSvc,
+		WebControlRuntime: webControlRuntime,
 		WorkflowEngine: workflowEngine,
 		ConfigLoader:   loader,
+		SourceDocumentRepo: sourceDocumentRepo,
+		RewriteRunRepo: memProvider.RewritePipelineRunRepo(),
+		RewriteStageRepo: memProvider.RewriteStageRunRepo(),
+		AuditLogRepo: auditLogRepo,
 		WorkspaceRoot:  workspaceRoot,
 	}
 
-	return NewServer(cfg, provider), memProvider
+	return NewServer(cfg, provider), webRepos
 }
 
 type testJobExecutor struct {
@@ -390,6 +415,103 @@ func TestConfigEndpoint(t *testing.T) {
 	if _, ok := resp["workflow"]; !ok {
 		t.Error("expected 'workflow' key in config response")
 	}
+}
+
+func TestAPIRoutesAreRegistered(t *testing.T) {
+	s, repos := newTestServer(t)
+
+	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-api")
+	doc.Status = domain.SourceDocumentStatusFailed
+	require.NoError(t, repos.SourceDocuments.Create(t.Context(), doc))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/articles", nil)
+	w := httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), "data")
+
+	req = httptest.NewRequest(http.MethodGet, "/api/articles/"+doc.ID, nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), doc.ID)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/articles/"+doc.ID+"/stages", nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), "stages")
+
+	req = httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/retry", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"default_target_type":"wechat-longform"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = httptest.NewRequest(http.MethodPost, "/api/system/start", strings.NewReader(`{"concurrency_limit":2}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = httptest.NewRequest(http.MethodPost, "/api/system/pause", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = httptest.NewRequest(http.MethodPost, "/api/system/resume", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/system/status", nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), "state")
+
+	req = httptest.NewRequest(http.MethodGet, "/api/audit", nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), "data")
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "audit.md")
+	require.NoError(t, err)
+	_, err = part.Write([]byte("# Audit\n\nBody"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	req = httptest.NewRequest(http.MethodPost, "/api/intake/upload", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	auditLog, err := repos.AuditLogs.List(t.Context(), 10)
+	require.NoError(t, err)
+	require.NotEmpty(t, auditLog)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/audit/"+auditLog[0].ID, nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), auditLog[0].ID)
 }
 
 type failingListener struct{}

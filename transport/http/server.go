@@ -3,6 +3,7 @@ package http
 import (
 	"content-hub/domain"
 	"content-hub/infra/config"
+	"content-hub/pkg/repo"
 	"content-hub/service"
 	"content-hub/transport/http/handlers"
 	"content-hub/transport/http/middleware"
@@ -36,8 +37,13 @@ type Provider struct {
 	PublishSvc          *service.PublishGateService
 	FolderIntakeRuntime *service.FolderIntakeRuntime
 	RewriteRuntime      *service.RewriteRuntime
+	WebControlRuntime   *service.WebControlRuntime
 	WorkflowEngine      *service.WorkflowEngine
 	ConfigLoader        *config.Loader
+	SourceDocumentRepo  repo.SourceDocumentRepo
+	RewriteRunRepo      repo.RewritePipelineRunRepo
+	RewriteStageRepo    repo.RewriteStageRunRepo
+	AuditLogRepo        repo.AuditLogRepo
 	WorkspaceRoot       string
 }
 
@@ -73,6 +79,11 @@ func (s *Server) registerRoutes() {
 	jobHandler := handlers.NewJobHandler(s.provider.JobSvc)
 	reviewHandler := handlers.NewReviewHandler(s.provider.ReviewSvc)
 	publishHandler := handlers.NewPublishHandler(s.provider.PublishSvc)
+	apiIntakeHandler := handlers.NewAPIIntakeHandler(s.provider.WebControlRuntime.Intake)
+	apiArticlesHandler := handlers.NewAPIArticlesHandler(s.provider.WebControlRuntime.Articles, s.provider.RewriteRunRepo, s.provider.RewriteStageRepo, s.provider.SourceDocumentRepo)
+	apiConfigHandler := handlers.NewAPIConfigHandler(s.provider.WebControlRuntime.Config)
+	apiSystemHandler := handlers.NewAPISystemHandler(s.provider.WebControlRuntime.Control)
+	apiAuditHandler := handlers.NewAPIAuditHandler(s.provider.WebControlRuntime.Audit, s.provider.AuditLogRepo)
 	var rewriteRunner interface {
 		Run(context.Context, service.RewriteRunRequest) (*domain.RewritePipelineRun, error)
 	}
@@ -159,6 +170,24 @@ func (s *Server) registerRoutes() {
 	workflows := s.engine.Group("/workflows")
 	{
 		workflows.POST("/execute", s.handleWorkflowExecute)
+	}
+
+	api := s.engine.Group("/api")
+	{
+		api.POST("/intake/upload", apiIntakeHandler.Upload)
+		api.POST("/intake/paste", apiIntakeHandler.Paste)
+		api.GET("/articles", apiArticlesHandler.List)
+		api.GET("/articles/:id", apiArticlesHandler.Get)
+		api.GET("/articles/:id/stages", apiArticlesHandler.Stages)
+		api.POST("/articles/:id/retry", apiArticlesHandler.Retry)
+		api.GET("/config", apiConfigHandler.Get)
+		api.PUT("/config", apiConfigHandler.Update)
+		api.POST("/system/start", apiSystemHandler.Start)
+		api.POST("/system/pause", apiSystemHandler.Pause)
+		api.POST("/system/resume", apiSystemHandler.Resume)
+		api.GET("/system/status", apiSystemHandler.Status)
+		api.GET("/audit", apiAuditHandler.List)
+		api.GET("/audit/:id", apiAuditHandler.Get)
 	}
 }
 
