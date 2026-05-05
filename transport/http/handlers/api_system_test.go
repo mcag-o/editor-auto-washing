@@ -17,7 +17,7 @@ import (
 func TestAPISystemStartPauseResumeAndStatus(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	repo := &stubSystemControlStateRepo{}
-	handler := NewAPISystemHandler(service.NewControlStateService(repo))
+	handler := NewAPISystemHandler(service.NewWebControlPlaneService(service.NewControlStateService(repo), service.NewAuditLogService(&stubAuditLogRepo{}), nil))
 
 	router := gin.New()
 	router.Use(middleware.TraceID())
@@ -60,7 +60,7 @@ func TestAPISystemStartPauseResumeAndStatus(t *testing.T) {
 
 func TestAPISystemStartRejectsInvalidConcurrency(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
-	handler := NewAPISystemHandler(service.NewControlStateService(&stubSystemControlStateRepo{}))
+	handler := NewAPISystemHandler(service.NewWebControlPlaneService(service.NewControlStateService(&stubSystemControlStateRepo{}), service.NewAuditLogService(&stubAuditLogRepo{}), nil))
 	router := gin.New()
 	router.Use(middleware.TraceID())
 	router.POST("/api/system/start", handler.Start)

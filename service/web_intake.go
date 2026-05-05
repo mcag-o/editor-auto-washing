@@ -11,6 +11,14 @@ import (
 	"strings"
 )
 
+const (
+	defaultWebIntakeTargetType            = "wechat-longform"
+	defaultWebIntakeRenderPlatform        = "wechat"
+	defaultWebIntakeRewriteProfileVersion = "v1"
+	defaultWebPasteSourceProfile          = "web-paste"
+	defaultWebUploadSourceProfile         = "web-upload"
+)
+
 type CreatePasteIntakeInput struct {
 	Actor string
 	Title string
@@ -56,6 +64,7 @@ func (s *WebIntakeService) CreateFromPaste(ctx context.Context, input CreatePast
 		Body:  body,
 	}))
 	doc.SourceType = "paste"
+	doc.Metadata = webIntakeMetadata(defaultWebPasteSourceProfile)
 	doc.Status = domain.SourceDocumentStatusPending
 
 	if err := s.repo.Create(ctx, doc); err != nil {
@@ -122,6 +131,9 @@ func (s *WebIntakeService) CreateFromUpload(ctx context.Context, input CreateUpl
 	doc.Metadata = sourceDocumentMetadata(parsed)
 	if doc.Metadata == nil {
 		doc.Metadata = map[string]any{}
+	}
+	for key, value := range webIntakeMetadata(defaultWebUploadSourceProfile) {
+		doc.Metadata[key] = value
 	}
 	if contentType := strings.TrimSpace(input.ContentType); contentType != "" {
 		doc.Metadata["content_type"] = contentType
@@ -191,4 +203,13 @@ func (s *WebIntakeService) recordAudit(ctx context.Context, input AuditLogCreate
 
 func (s *WebIntakeService) logAuditFailure(action, resourceID string, err error) {
 	log.Printf("web intake audit log failure action=%s resource_id=%s err=%v", action, resourceID, err)
+}
+
+func webIntakeMetadata(sourceProfile string) map[string]any {
+	return map[string]any{
+		"target_type":             defaultWebIntakeTargetType,
+		"source_profile":          strings.TrimSpace(sourceProfile),
+		"render_platform":         defaultWebIntakeRenderPlatform,
+		"rewrite_profile_version": defaultWebIntakeRewriteProfileVersion,
+	}
 }

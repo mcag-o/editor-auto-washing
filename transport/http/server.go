@@ -29,6 +29,13 @@ type Server struct {
 	provider *Provider
 }
 
+func (s *Server) Handler() http.Handler {
+	if s == nil {
+		return http.NewServeMux()
+	}
+	return s.engine
+}
+
 type Provider struct {
 	ContentSvc          *service.ContentService
 	TemplateSvc         *service.TemplateService

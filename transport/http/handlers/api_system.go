@@ -8,10 +8,10 @@ import (
 )
 
 type APISystemHandler struct {
-	svc *service.ControlStateService
+	svc *service.WebControlPlaneService
 }
 
-func NewAPISystemHandler(svc *service.ControlStateService) *APISystemHandler {
+func NewAPISystemHandler(svc *service.WebControlPlaneService) *APISystemHandler {
 	return &APISystemHandler{svc: svc}
 }
 
