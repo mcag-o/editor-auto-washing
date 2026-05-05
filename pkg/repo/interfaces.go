@@ -151,6 +151,23 @@ type LLMProfileRepo interface {
 	List(ctx context.Context) ([]domain.LLMProfile, error)
 }
 
+type BusinessConfigRepo interface {
+	Upsert(ctx context.Context, cfg *domain.BusinessConfig) error
+	GetByCategoryAndKey(ctx context.Context, category, key string) (*domain.BusinessConfig, error)
+	ListByCategory(ctx context.Context, category string) ([]domain.BusinessConfig, error)
+}
+
+type SystemControlStateRepo interface {
+	Get(ctx context.Context) (*domain.SystemControlState, error)
+	Upsert(ctx context.Context, state *domain.SystemControlState) error
+}
+
+type AuditLogRepo interface {
+	Create(ctx context.Context, log *domain.AuditLog) error
+	GetByID(ctx context.Context, id string) (*domain.AuditLog, error)
+	List(ctx context.Context, limit int) ([]domain.AuditLog, error)
+}
+
 type BundleImportTx interface {
 	CreateWorkspaceArticle(ctx context.Context, record *domain.ArticleWorkspaceRecord) error
 	RecordIngestion(ctx context.Context, record *domain.IngestionRecord) error
