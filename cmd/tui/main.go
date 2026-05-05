@@ -10,8 +10,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+const defaultAPIURL = "http://localhost:8123"
+
 func main() {
-	apiURL := flag.String("api", "http://localhost:8080", "API base URL")
+	apiURL := flag.String("api", defaultAPIURL, "API base URL")
 	flag.Parse()
 
 	client := tui.NewAPIClient(*apiURL)
