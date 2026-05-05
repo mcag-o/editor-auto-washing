@@ -49,7 +49,7 @@ func (s *ControlStateService) Pause(ctx context.Context, updatedBy string) (*dom
 		return nil, err
 	}
 	now := time.Now().UTC()
-	state.State = domain.SystemStateStopped
+	state.State = domain.SystemStatePaused
 	state.Reason = "paused"
 	state.UpdatedBy = updatedBy
 	state.RequestedAt = &now

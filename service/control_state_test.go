@@ -41,8 +41,10 @@ func TestControlStateServiceStartPauseResume(t *testing.T) {
 
 	paused, err := svc.Pause(t.Context(), "local-admin")
 	require.NoError(t, err)
-	require.Equal(t, domain.SystemStateStopped, paused.State)
+	require.Equal(t, domain.SystemStatePaused, paused.State)
+	require.NotEqual(t, domain.SystemStateStopped, paused.State)
 	require.Equal(t, "paused", paused.Reason)
+	require.Equal(t, domain.SystemStatePaused, repo.state.State)
 
 	resumed, err := svc.Resume(t.Context(), "local-admin")
 	require.NoError(t, err)

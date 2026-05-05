@@ -8,11 +8,13 @@ import (
 
 const (
 	SystemStateStopped = "stopped"
+	SystemStatePaused  = "paused"
 	SystemStateRunning = "running"
 )
 
 var validSystemStates = map[string]struct{}{
 	SystemStateStopped: {},
+	SystemStatePaused:  {},
 	SystemStateRunning: {},
 }
 
