@@ -70,6 +70,22 @@ func TestWebIntakeServiceCreateFromUploadSupportsMarkdown(t *testing.T) {
 	require.Equal(t, doc.ID, audit.logs[0].ResourceID)
 }
 
+func TestWebIntakeServiceCreateFromUploadUsesOriginalFilenameForFallbackTitle(t *testing.T) {
+	repo := &stubSourceDocumentRepo{}
+	audit := &stubAuditLogRepo{}
+	svc := NewWebIntakeService(repo, audit)
+
+	doc, err := svc.CreateFromUpload(t.Context(), CreateUploadIntakeInput{
+		Actor:       "local-admin",
+		Filename:    "notes.txt",
+		ContentType: "text/plain",
+		Content:     bytes.NewBufferString("Body"),
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "notes", doc.Title)
+}
+
 func TestWebIntakeServiceCreateFromUploadRejectsUnsupportedExtension(t *testing.T) {
 	repo := &stubSourceDocumentRepo{}
 	audit := &stubAuditLogRepo{}

@@ -4,9 +4,9 @@ import (
 	"content-hub/domain"
 	"content-hub/pkg/repo"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -153,22 +153,50 @@ func (s *WebIntakeService) CreateFromUpload(ctx context.Context, input CreateUpl
 }
 
 func (s *WebIntakeService) parseUploadedDocument(filename string, content io.Reader) (*ParsedSourceDocument, error) {
-	tmpFile, err := os.CreateTemp("", "web-intake-*"+filepath.Ext(filename))
+	body, err := io.ReadAll(content)
 	if err != nil {
-		return nil, fmt.Errorf("create temp upload file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := io.Copy(tmpFile, content); err != nil {
-		tmpFile.Close()
-		return nil, fmt.Errorf("write temp upload file: %w", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		return nil, fmt.Errorf("close temp upload file: %w", err)
+		return nil, fmt.Errorf("read upload content: %w", err)
 	}
 
-	return ParseSourceDocument(tmpPath)
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".md":
+		text := string(body)
+		return &ParsedSourceDocument{
+			Title: inferMarkdownTitle(text, filename),
+			Body:  text,
+		}, nil
+	case ".txt":
+		text := string(body)
+		return &ParsedSourceDocument{
+			Title: fallbackTitle(filename),
+			Body:  text,
+		}, nil
+	case ".json":
+		var payload struct {
+			Title   string   `json:"title"`
+			Content string   `json:"content"`
+			Summary string   `json:"summary"`
+			Tags    []string `json:"tags"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return nil, domain.NewValidationErr("decode source document json", err)
+		}
+		if strings.TrimSpace(payload.Content) == "" {
+			return nil, domain.NewValidationErr("source document content is required", nil)
+		}
+		title := strings.TrimSpace(payload.Title)
+		if title == "" {
+			title = fallbackTitle(filename)
+		}
+		return &ParsedSourceDocument{
+			Title:   title,
+			Body:    payload.Content,
+			Summary: strings.TrimSpace(payload.Summary),
+			Tags:    normalizeTags(payload.Tags),
+		}, nil
+	default:
+		return nil, domain.NewValidationErr("unsupported source document type", nil)
+	}
 }
 
 func isSupportedWebUploadExtension(filename string) bool {
