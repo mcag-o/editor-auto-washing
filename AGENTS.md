@@ -23,7 +23,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 
 - Assume repo root is the default working project unless the task explicitly points into `Archive/`.
 - Do not treat archived docs as source of truth for current commands, APIs, or architecture.
-- Treat folder intake / source document processing as the supported and only documented active-runtime intake path. Draft + render are the default automated result path. Review/publish are optional later steps, not part of the default automated chain. Do not present legacy RSS/collector/ingestion HTTP or CLI surfaces as current supported entrypoints unless the task explicitly targets historical behavior.
+- Treat the web control plane on port `8123` as the primary documented operator surface for the active root Go runtime. Treat folder intake / source document processing as the supported and only documented active-runtime intake path. Draft + render are the default automated result path. Review/publish are optional later steps, not part of the default automated chain. Do not present legacy RSS/collector/ingestion HTTP or CLI surfaces as current supported entrypoints unless the task explicitly targets historical behavior.
 - Preserve Chinese user-facing documentation where it already exists; bilingual docs are normal here.
 - Prefer minimal, local edits over wide migration-era cleanup unless the task explicitly asks for broader normalization.
 - When touching path-sensitive docs or metadata, check whether the target should reference root runtime code or archived legacy code.
@@ -39,9 +39,9 @@ Run from repository root.
 - Install dependencies: `go mod download`
 - Build server binary: `go build ./cmd/server`
 - Build CLI binary: `go build ./cmd/cli`
-- Run server: `go run ./cmd/server`
+- Run server / web control plane: `go run ./cmd/server`
 - Run CLI: `go run ./cmd/cli`
-- Run TUI: `go run ./cmd/tui --api http://localhost:8080`
+- Run TUI: `go run ./cmd/tui --api http://localhost:8123`
 - Folder/rewrite service verification: `go test ./service -run 'TestSource|TestFolder|TestRewrite'`
 - Folder/rewrite transport verification: `go test ./transport/http/... -run 'TestFolder|TestRewrite'`
 - Folder/rewrite CLI verification: `go test ./cmd/cli -run 'TestCLIFolder|TestCLIRewrite'`
@@ -185,6 +185,7 @@ Match the active area you are editing. Do not normalize root Go code and archive
 - Confirm whether the task targets active root Go code or archived reference material.
 - Read the nearest README, config, and tests for the target area before editing.
 - Make the smallest change that fits the existing architecture.
+- When describing operator workflows, default to the browser-based web control plane on `8123`; describe the CLI as development/debug support unless the task explicitly centers CLI behavior.
 - Re-run the most specific relevant test, then broaden as needed.
 - Mention build or lint results only when that workflow actually exists in the target area.
 - If docs claim migration completeness, operational exposure, or parity, verify the claim against code before editing it.

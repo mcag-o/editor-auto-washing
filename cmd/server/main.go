@@ -16,6 +16,8 @@ type serverRunner interface {
 	Run() error
 }
 
+const webControlPlanePort = 8123
+
 var buildRuntimeReposFn = buildRuntimeRepos
 var buildStandaloneRuntimeReposFn = service.BuildStandaloneRuntimeRepos
 var newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serverRunner {
@@ -54,6 +56,7 @@ func run() error {
 		loader.SetCurrent(cfg)
 		selectedStandaloneFallback = true
 	}
+	cfg.HTTP.Port = normalizePrimaryOperatorPort(cfg.HTTP.Port)
 
 	var runtimeRepos *service.RuntimeRepos
 	var cleanup func() error
@@ -155,6 +158,13 @@ func run() error {
 		return shutdownErr
 	}
 	return err
+}
+
+func normalizePrimaryOperatorPort(port int) int {
+	if port == 0 || port == 8080 {
+		return webControlPlanePort
+	}
+	return port
 }
 
 func workspaceRootFromEnv() string {

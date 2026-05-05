@@ -16,9 +16,9 @@
 - 结构化 draft / render / validate / asset persistence
 - review / publish gate / publish history
 - workflow / jobs / automation
-- HTTP API / CLI / 基础 TUI
+- Web control plane / HTTP API / CLI（开发调试）/ 基础 TUI
 
-这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；当前 active runtime 唯一文档化且默认的 intake 路径是 folder intake / source document workflow，自动处理默认产物会停在 draft + render，review / publish 保持为后续可选人工步骤。旧的 RSS、collector、ingestion surface 不再属于 active runtime 当前能力。
+这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；当前默认操作入口是监听在 `8123` 的 web control plane。当前 active runtime 唯一文档化且默认的 intake 路径是 folder intake / source document workflow，自动处理默认产物会停在 draft + render，review / publish 保持为后续可选人工步骤。旧的 RSS、collector、ingestion surface 不再属于 active runtime 当前能力。
 
 不包含的承诺：
 
@@ -136,23 +136,23 @@
 go mod download
 ```
 
-### 启动服务
+### 启动 Web Control Plane
 
 ```bash
 go run ./cmd/server
 ```
 
-默认监听后可检查：
+默认监听 `http://localhost:8123`，浏览器操作以 web control plane 为主。启动后可检查：
 
 ```bash
-curl http://localhost:8080/health
-curl http://localhost:8080/ready
+curl http://localhost:8123/health
+curl http://localhost:8123/ready
 ```
 
 ### 启动 TUI
 
 ```bash
-go run ./cmd/tui --api http://localhost:8080
+go run ./cmd/tui --api http://localhost:8123
 ```
 
 说明：当前 TUI 是基础监控/浏览入口，不覆盖全部 automation 控制能力。
@@ -163,6 +163,8 @@ go run ./cmd/tui --api http://localhost:8080
 
 CLI 入口：`cmd/cli/main.go`
 
+说明：CLI 不再是默认产品操作面，当前仅保留为开发/调试支持工具。日常操作以浏览器访问 `http://localhost:8123` 的 web control plane 为主。
+
 ### Workspace
 
 ```bash
@@ -172,13 +174,13 @@ go run ./cmd/cli workspace resolve-config --root .
 go run ./cmd/cli workspace doctor --root .
 ```
 
-### Folder Intake
+### Folder Intake / Automation Debug
 
 ```bash
 go run ./cmd/cli automation run-once --root .
 ```
 
-说明：当前运行时的唯一文档化 intake 路径是 folder intake / source document workflow，但它目前通过 `automation` 命令驱动执行；仓库里尚未暴露独立的 folder-intake CLI 子命令。默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。旧的 RSS、`ingestion ...` 与 `collector ...` CLI 入口不再作为当前运行时文档化接口。
+说明：当前运行时的唯一文档化 intake 路径是 folder intake / source document workflow，但默认操作面已经切换为 web control plane；这里的 `automation` 命令仅用于开发/调试支持。仓库里尚未暴露独立的 folder-intake CLI 子命令。默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。旧的 RSS、`ingestion ...` 与 `collector ...` CLI 入口不再作为当前运行时文档化接口。
 
 ### Formatting
 
@@ -204,7 +206,7 @@ go run ./cmd/cli publish run <review-id> --root .
 go run ./cmd/cli publish history <article-id> --root .
 ```
 
-说明：review / publish CLI 仍然保留，但它们不是默认自动化 folder-processing 链的一部分；默认自动处理结果停在 draft + render。
+说明：review / publish CLI 仍然保留用于开发/调试或手工补救，但它们不是默认操作路径，也不是默认自动化 folder-processing 链的一部分；默认自动处理结果停在 draft + render。
 
 ### Automation
 
@@ -224,6 +226,8 @@ go run ./cmd/cli automation stop --root .
 ## HTTP API
 
 核心路由定义在：`transport/http/server.go`
+
+说明：HTTP server 同时承载 web control plane 与 API，当前默认操作入口是根路径 `/` 提供的 browser UI，默认端口为 `8123`。
 
 ### 基础
 
@@ -321,7 +325,7 @@ go test ./...
 ## 当前限制与边界
 
 - Go 版已经可以替代 Python 主链路，但不是历史兼容层逐字复刻
-- folder intake / source document processing 是当前唯一文档化且默认的 intake 路径，但独立的 folder-intake HTTP/CLI surface 目前尚未暴露；对外可调用入口以 automation、rewrite、workspace/review/publish 等现有接口为主
+- web control plane（`http://localhost:8123`）是当前默认主操作面；folder intake / source document processing 仍是当前唯一文档化且默认的 intake 路径，但独立的 folder-intake HTTP/CLI surface 目前尚未暴露；对外可调用入口以 automation、rewrite、workspace/review/publish 等现有接口为主
 - 默认自动化结果停在 draft + render；review / publish 作为后续可选人工步骤保留
 - 归档项目里的采集/ingestion 文档仍保留历史语义，不代表根目录 Go runtime 的当前对外接口
 - automation daemon 目前是单进程内模型，不是外部 supervisor 模型
@@ -372,6 +376,7 @@ go test ./...
 
 - 已完成对 `Archive/ArticleWashing/`（Python 版）的主链路功能等价替代
 - 可以作为当前默认主实现使用
+- 当前默认主操作面是 `8123` 上的 web control plane
 - 根目录 Go runtime 当前以 folder intake 作为默认 intake 主路径
 - 默认自动化链产物为 draft + render，review / publish 不会自动触发
 - 旧的 RSS、collector、ingestion surface 已从 active runtime 对外接口集合中移除

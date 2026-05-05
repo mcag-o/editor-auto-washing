@@ -30,6 +30,19 @@ func TestWorkspaceInitCommandCreatesWorkspace(t *testing.T) {
 	assert.Empty(t, stderr.String())
 }
 
+func TestCLIIsDownscopedFromPrimaryOperatorSurface(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	exitCode := run(nil, stdout, stderr)
+
+	assert.Equal(t, 2, exitCode)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "web control plane")
+	assert.Contains(t, stderr.String(), "http://localhost:8123")
+	assert.Contains(t, stderr.String(), "development/debug")
+}
+
 func TestWorkspaceShowConfigCommandPrintsWorkspaceConfig(t *testing.T) {
 	root := t.TempDir()
 	stdout := &bytes.Buffer{}

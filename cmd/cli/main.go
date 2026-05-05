@@ -159,13 +159,15 @@ var runtimeAutomationServiceFactory = func(root string) (automationCLIService, f
 	return &runtimeAutomationCLIService{root: root, svc: automationSvc}, cleanup, nil
 }
 
+const usageText = "web control plane is the primary operator surface: http://localhost:8123\ncli is retained for development/debug support: workspace <...> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> [--root PATH]"
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: cli workspace <...> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> [--root PATH]")
+		fmt.Fprintln(stderr, usageText)
 		return 2
 	}
 	root, filteredArgs, err := extractGlobalRoot(args)
@@ -174,7 +176,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if len(filteredArgs) == 0 {
-		fmt.Fprintln(stderr, "usage: cli workspace <...> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> [--root PATH]")
+		fmt.Fprintln(stderr, usageText)
 		return 2
 	}
 	if len(filteredArgs) < 2 {
