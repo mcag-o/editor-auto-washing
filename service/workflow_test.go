@@ -42,3 +42,20 @@ func TestBuildDefaultWorkflowEngineDispatchesRetryFailedThroughFolderIntakeAutom
 	require.True(t, ok)
 	assert.Equal(t, "retry-failed", result.Mode)
 }
+
+func TestAutomationDispatchNodeRequiresExplicitCommand(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceConfigFileName), []byte("name: workflow\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceSecretsFileName), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
+	intake := &stubAutomationFolderIntake{runOnceResult: automationFolderRunSummary{ProcessedPending: 1, CompletedDocuments: 1}}
+	automationSvc := newAutomationServiceWithFolderIntakeForTest(root, intake)
+
+	engine := BuildDefaultWorkflowEngine(root, automationSvc)
+	wc := &domain.WorkflowContext{}
+
+	err := engine.Execute(t.Context(), domain.DefaultWorkflowDefinition(), wc)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "automation workflow command is required")
+	assert.Equal(t, 0, intake.runOnceCalls)
+}

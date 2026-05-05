@@ -67,8 +67,9 @@ func TestStopReturnsConflictWhenDaemonNotRunning(t *testing.T) {
 	assert.Contains(t, err.Error(), "automation daemon is not running")
 }
 
-func TestRunOnceUsesFolderIntakeCycleInsteadOfIngestion(t *testing.T) {
+func TestRunOnceUsesIngestionAsPrimaryOperatorPathEvenWhenFolderIntakeIsConfigured(t *testing.T) {
 	root := newAutomationWorkspace(t)
+	provider := memory.NewProvider()
 	intake := &stubAutomationFolderIntake{
 		runOnceResult: automationFolderRunSummary{
 			ScannedFiles:       2,
@@ -80,21 +81,23 @@ func TestRunOnceUsesFolderIntakeCycleInsteadOfIngestion(t *testing.T) {
 			CompletedDocuments: 1,
 		},
 	}
-	service := newAutomationServiceWithFolderIntakeForTest(root, intake)
+	service := newAutomationServiceWithIngestionAndFolderIntakeForTest(root, provider, intake)
+
+	incomingDir := filepath.Join(root, "incoming")
+	require.NoError(t, os.WriteFile(filepath.Join(incomingDir, "bundle-1.json"), []byte(`{"items":[]}`), 0o644))
 
 	result, err := service.RunOnce(context.Background(), root)
 
 	require.NoError(t, err)
-	assert.Equal(t, 1, intake.runOnceCalls)
+	assert.Equal(t, 0, intake.runOnceCalls)
 	assert.Equal(t, 0, intake.retryFailedCalls)
-	assert.Equal(t, 1, result.Summary["processed_pending_documents"])
-	assert.Equal(t, 1, result.Summary["completed_documents"])
 	assert.Equal(t, 1, result.Summary["imported_files"])
-	assert.Equal(t, 2, result.Summary["scanned_files"])
+	assert.Equal(t, 1, result.Summary["scanned_files"])
 }
 
-func TestRetryFailedUsesFolderIntakeRetryInsteadOfIngestion(t *testing.T) {
+func TestRetryFailedUsesIngestionAsPrimaryOperatorPathEvenWhenFolderIntakeIsConfigured(t *testing.T) {
 	root := newAutomationWorkspace(t)
+	provider := memory.NewProvider()
 	intake := &stubAutomationFolderIntake{
 		retryResult: automationFolderRunSummary{
 			ProcessedPending:   0,
@@ -103,15 +106,15 @@ func TestRetryFailedUsesFolderIntakeRetryInsteadOfIngestion(t *testing.T) {
 			FailedDocuments:    0,
 		},
 	}
-	service := newAutomationServiceWithFolderIntakeForTest(root, intake)
+	service := newAutomationServiceWithIngestionAndFolderIntakeForTest(root, provider, intake)
 
 	result, err := service.RetryFailed(context.Background(), root)
 
 	require.NoError(t, err)
 	assert.Equal(t, 0, intake.runOnceCalls)
-	assert.Equal(t, 1, intake.retryFailedCalls)
-	assert.Equal(t, 2, result.Summary["processed_failed_documents"])
-	assert.Equal(t, 2, result.Summary["completed_documents"])
+	assert.Equal(t, 0, intake.retryFailedCalls)
+	assert.Equal(t, 0, result.Summary["failed_files"])
+	assert.Equal(t, 0, result.Summary["total_created_articles"])
 }
 
 func TestRetryFailedReturnsFolderIntakeError(t *testing.T) {
@@ -320,6 +323,13 @@ func newAutomationServiceWithFolderIntakeForTest(root string, intake automationF
 	jobProvider := memory.NewProvider()
 	jobSvc := NewJobService(jobProvider.JobRepo(), jobProvider.JobEventRepo(), NewWorkflowEngine())
 	return NewAutomationService(NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), nil, intake, jobSvc)
+}
+
+func newAutomationServiceWithIngestionAndFolderIntakeForTest(root string, provider *memory.Provider, intake automationFolderIntake) *AutomationService {
+	jobSvc := NewJobService(provider.JobRepo(), provider.JobEventRepo(), NewWorkflowEngine())
+	ingestionSvc := NewIngestionPipelineService(provider.IngestionRepo(), provider.WorkspaceRepo(), provider, workspaceinfra.NewLoader())
+	_ = root
+	return NewAutomationService(NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), ingestionSvc, intake, jobSvc)
 }
 
 type stubAutomationFolderIntake struct {

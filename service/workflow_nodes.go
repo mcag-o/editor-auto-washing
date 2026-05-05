@@ -37,12 +37,15 @@ func (n *automationDispatchNode) Name() string { return "automation_dispatch" }
 
 func (n *automationDispatchNode) Execute(ctx context.Context, wc *domain.WorkflowContext) error {
 	command := workflowCommand(wc)
+	if command == "" {
+		return fmt.Errorf("automation workflow command is required")
+	}
 	var (
 		result *domain.AutomationRunResult
 		err    error
 	)
 	switch command {
-	case "", "run-once":
+	case "run-once":
 		result, err = n.svc.RunOnce(ctx, n.root)
 	case "retry-failed":
 		result, err = n.svc.RetryFailed(ctx, n.root)
@@ -77,16 +80,16 @@ func (n *automationSnapshotNode) Execute(ctx context.Context, wc *domain.Workflo
 
 func workflowCommand(wc *domain.WorkflowContext) string {
 	if wc == nil {
-		return "run-once"
+		return ""
 	}
 	if wc.Command != "" {
 		return wc.Command
 	}
 	if wc.Payload == nil {
-		return "run-once"
+		return ""
 	}
 	if command, ok := wc.Payload["automation_command"].(string); ok {
 		return command
 	}
-	return "run-once"
+	return ""
 }
