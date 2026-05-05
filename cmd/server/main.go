@@ -101,6 +101,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	webControlRuntime, err := service.BuildWebControlRuntime(runtimeRepos)
+	if err != nil {
+		return err
+	}
 
 	workflowEngine := service.BuildDefaultWorkflowEngine(workspaceRoot, automationSvc)
 	jobSvc := service.NewJobService(
@@ -131,8 +135,13 @@ func run() error {
 		PublishSvc:          publishSvc,
 		FolderIntakeRuntime: folderIntakeRuntime,
 		RewriteRuntime:      rewriteRuntime,
+		WebControlRuntime:   webControlRuntime,
 		WorkflowEngine:      workflowEngine,
 		ConfigLoader:        loader,
+		SourceDocumentRepo:  runtimeRepos.SourceDocumentRepo,
+		RewriteRunRepo:      runtimeRepos.RewritePipelineRunRepo,
+		RewriteStageRepo:    runtimeRepos.RewriteStageRunRepo,
+		AuditLogRepo:        runtimeRepos.AuditLogRepo,
 		WorkspaceRoot:       workspaceRoot,
 	}
 

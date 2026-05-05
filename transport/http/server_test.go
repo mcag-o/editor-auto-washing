@@ -514,6 +514,21 @@ func TestAPIRoutesAreRegistered(t *testing.T) {
 	require.Contains(t, w.Body.String(), auditLog[0].ID)
 }
 
+func TestNewServerWithWebControlDependenciesSucceeds(t *testing.T) {
+	s, _ := newTestServer(t)
+	require.NotNil(t, s)
+	require.NotNil(t, s.engine)
+}
+
+func TestNewServerMissingWebControlDependenciesFailsExplicitly(t *testing.T) {
+	cfg := config.DefaultConfig()
+	provider := &Provider{}
+
+	require.PanicsWithValue(t, "http server provider validation failed: missing ConfigLoader, ContentSvc, TemplateSvc, DraftSvc, FormattingSvc, AutomationSvc, WorkspaceSvc, JobSvc, ReviewSvc, PublishSvc, WorkflowEngine, WebControlRuntime, SourceDocumentRepo, RewriteRunRepo, RewriteStageRepo, AuditLogRepo", func() {
+		NewServer(cfg, provider)
+	})
+}
+
 type failingListener struct{}
 
 func (failingListener) Accept() (net.Conn, error) {

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -48,6 +49,10 @@ type Provider struct {
 }
 
 func NewServer(cfg config.Config, provider *Provider) *Server {
+	if err := validateProvider(provider); err != nil {
+		panic(err.Error())
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 
@@ -65,6 +70,81 @@ func NewServer(cfg config.Config, provider *Provider) *Server {
 	s.registerRoutes()
 
 	return s
+}
+
+func validateProvider(provider *Provider) error {
+	if provider == nil {
+		return fmt.Errorf("http server provider validation failed: missing Provider")
+	}
+	missing := []string{}
+	if provider.ConfigLoader == nil {
+		missing = append(missing, "ConfigLoader")
+	}
+	if provider.ContentSvc == nil {
+		missing = append(missing, "ContentSvc")
+	}
+	if provider.TemplateSvc == nil {
+		missing = append(missing, "TemplateSvc")
+	}
+	if provider.DraftSvc == nil {
+		missing = append(missing, "DraftSvc")
+	}
+	if provider.FormattingSvc == nil {
+		missing = append(missing, "FormattingSvc")
+	}
+	if provider.AutomationSvc == nil {
+		missing = append(missing, "AutomationSvc")
+	}
+	if provider.WorkspaceSvc == nil {
+		missing = append(missing, "WorkspaceSvc")
+	}
+	if provider.JobSvc == nil {
+		missing = append(missing, "JobSvc")
+	}
+	if provider.ReviewSvc == nil {
+		missing = append(missing, "ReviewSvc")
+	}
+	if provider.PublishSvc == nil {
+		missing = append(missing, "PublishSvc")
+	}
+	if provider.WorkflowEngine == nil {
+		missing = append(missing, "WorkflowEngine")
+	}
+	if provider.WebControlRuntime == nil {
+		missing = append(missing, "WebControlRuntime")
+	} else {
+		if provider.WebControlRuntime.Intake == nil {
+			missing = append(missing, "WebControlRuntime.Intake")
+		}
+		if provider.WebControlRuntime.Articles == nil {
+			missing = append(missing, "WebControlRuntime.Articles")
+		}
+		if provider.WebControlRuntime.Config == nil {
+			missing = append(missing, "WebControlRuntime.Config")
+		}
+		if provider.WebControlRuntime.Control == nil {
+			missing = append(missing, "WebControlRuntime.Control")
+		}
+		if provider.WebControlRuntime.Audit == nil {
+			missing = append(missing, "WebControlRuntime.Audit")
+		}
+	}
+	if provider.SourceDocumentRepo == nil {
+		missing = append(missing, "SourceDocumentRepo")
+	}
+	if provider.RewriteRunRepo == nil {
+		missing = append(missing, "RewriteRunRepo")
+	}
+	if provider.RewriteStageRepo == nil {
+		missing = append(missing, "RewriteStageRepo")
+	}
+	if provider.AuditLogRepo == nil {
+		missing = append(missing, "AuditLogRepo")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("http server provider validation failed: missing %s", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 func (s *Server) registerRoutes() {
