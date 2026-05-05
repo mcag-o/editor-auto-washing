@@ -2,6 +2,7 @@ package service
 
 import (
 	"content-hub/domain"
+	"content-hub/pkg/repo"
 	"context"
 	"fmt"
 )
@@ -14,14 +15,18 @@ type WebControlRuntime struct {
 	Articles *ArticleQueryService
 }
 
+type webControlProcessingCycleRunner interface {
+	ProcessPending(context.Context, int) error
+}
+
 type WebControlPlaneService struct {
 	control   *ControlStateService
 	audit     *AuditLogService
-	scheduler *SourceProcessingScheduler
+	runner    webControlProcessingCycleRunner
 }
 
-func NewWebControlPlaneService(control *ControlStateService, audit *AuditLogService, scheduler *SourceProcessingScheduler) *WebControlPlaneService {
-	return &WebControlPlaneService{control: control, audit: audit, scheduler: scheduler}
+func NewWebControlPlaneService(control *ControlStateService, audit *AuditLogService, runner webControlProcessingCycleRunner) *WebControlPlaneService {
+	return &WebControlPlaneService{control: control, audit: audit, runner: runner}
 }
 
 func (s *WebControlPlaneService) Get(ctx context.Context) (*domain.SystemControlState, error) {
@@ -39,20 +44,37 @@ func (s *WebControlPlaneService) Start(ctx context.Context, updatedBy string, co
 	if err != nil {
 		return nil, err
 	}
+	limit := concurrencyLimit
+	if state != nil {
+		if value, ok := state.Metadata["concurrency_limit"].(int); ok && value > 0 {
+			limit = value
+		}
+	}
+	if s.runner != nil {
+		if err := s.runner.ProcessPending(ctx, limit); err != nil {
+			wrapped := fmt.Errorf("process pending source documents: %w", err)
+			if auditErr := s.recordAudit(ctx, AuditLogCreateInput{
+				Actor:    updatedBy,
+				Action:   "control_plane.started",
+				Resource: "system_control_state",
+				Result:   "failure",
+				Message:  wrapped.Error(),
+				Metadata: map[string]any{"concurrency_limit": limit},
+			}); auditErr != nil {
+				return nil, auditErr
+			}
+			return nil, wrapped
+		}
+	}
 	if err := s.recordAudit(ctx, AuditLogCreateInput{
 		Actor:    updatedBy,
 		Action:   "control_plane.started",
 		Resource: "system_control_state",
 		Result:   "success",
 		Message:  "started web control plane processing",
-		Metadata: map[string]any{"concurrency_limit": concurrencyLimit},
+		Metadata: map[string]any{"concurrency_limit": limit},
 	}); err != nil {
 		return nil, err
-	}
-	if s.scheduler != nil {
-		if _, err := s.scheduler.ProcessPending(ctx); err != nil {
-			return nil, fmt.Errorf("process pending source documents: %w", err)
-		}
 	}
 	return state, nil
 }
@@ -78,6 +100,22 @@ func (s *WebControlPlaneService) recordAudit(ctx context.Context, input AuditLog
 	return nil
 }
 
+type sourceProcessingSchedulerCycleRunner struct {
+	repo   repo.SourceDocumentRepo
+	worker sourceProcessingSchedulerWorker
+	owner  string
+}
+
+func newSourceProcessingSchedulerCycleRunner(repo repo.SourceDocumentRepo, worker sourceProcessingSchedulerWorker, owner string) *sourceProcessingSchedulerCycleRunner {
+	return &sourceProcessingSchedulerCycleRunner{repo: repo, worker: worker, owner: owner}
+}
+
+func (r *sourceProcessingSchedulerCycleRunner) ProcessPending(ctx context.Context, concurrencyLimit int) error {
+	scheduler := NewSourceProcessingScheduler(r.repo, r.worker, concurrencyLimit, r.owner)
+	_, err := scheduler.ProcessPending(ctx)
+	return err
+}
+
 func BuildWebControlRuntime(repos *RuntimeRepos) (*WebControlRuntime, error) {
 	if repos == nil {
 		return nil, domain.NewInternalErr("web control runtime repos are required", nil)
@@ -91,11 +129,11 @@ func BuildWebControlRuntime(repos *RuntimeRepos) (*WebControlRuntime, error) {
 	rewriteRunner := NewArticleIntakeSourceProcessingRewriteRunner(articleIntake)
 	renderRunner := NewFormattingPipelineSourceProcessingRenderRunner(renderer, "")
 	worker := NewSourceProcessingWorker(repos.SourceDocumentRepo, rewriteRunner, renderRunner)
-	scheduler := NewSourceProcessingScheduler(repos.SourceDocumentRepo, worker, 1, "web-control-runtime")
+	runner := newSourceProcessingSchedulerCycleRunner(repos.SourceDocumentRepo, worker, "web-control-runtime")
 
 	return &WebControlRuntime{
 		Config:   NewBusinessConfigService(repos.BusinessConfigRepo),
-		Control:  NewWebControlPlaneService(control, audit, scheduler),
+		Control:  NewWebControlPlaneService(control, audit, runner),
 		Audit:    audit,
 		Intake:   NewWebIntakeService(repos.SourceDocumentRepo, repos.AuditLogRepo),
 		Articles: NewArticleQueryService(repos.SourceDocumentRepo),
