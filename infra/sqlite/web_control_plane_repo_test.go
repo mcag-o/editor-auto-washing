@@ -85,11 +85,13 @@ func TestAuditLogRepoCreateAndList(t *testing.T) {
 func TestSystemControlStateRepoGetAndUpsertSingletonBehavior(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	requestedAt := time.Now().UTC().Add(-2 * time.Minute).Truncate(time.Second)
+	firstUpdatedAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
 	first := domain.NewSystemControlState("local-admin")
 	first.State = domain.SystemStateRunning
 	first.Reason = "resume pipeline"
 	first.RequestedAt = &requestedAt
 	first.Metadata = map[string]any{"source": "ui"}
+	first.UpdatedAt = firstUpdatedAt
 
 	require.NoError(t, provider.SystemControlStateRepo().Upsert(t.Context(), first))
 
@@ -100,8 +102,9 @@ func TestSystemControlStateRepoGetAndUpsertSingletonBehavior(t *testing.T) {
 	require.Equal(t, "ui", stored.Metadata["source"])
 	require.NotNil(t, stored.RequestedAt)
 	require.True(t, stored.RequestedAt.Equal(requestedAt))
+	require.True(t, stored.UpdatedAt.Equal(firstUpdatedAt))
 
-	updatedAt := time.Now().UTC().Truncate(time.Second)
+	updatedAt := time.Now().UTC().Add(time.Minute).Truncate(time.Second)
 	replacement := domain.NewSystemControlState("ops-user")
 	replacement.State = domain.SystemStateStopped
 	replacement.Reason = "maintenance window"
@@ -118,6 +121,8 @@ func TestSystemControlStateRepoGetAndUpsertSingletonBehavior(t *testing.T) {
 	require.Equal(t, "ops-user", stored.UpdatedBy)
 	require.Equal(t, "scheduler", stored.Metadata["source"])
 	require.Nil(t, stored.RequestedAt)
+	require.True(t, stored.UpdatedAt.Equal(updatedAt))
+	require.True(t, stored.UpdatedAt.After(firstUpdatedAt))
 
 	var count int
 	require.NoError(t, provider.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM system_control_state`).Scan(&count))

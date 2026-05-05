@@ -32,7 +32,7 @@ func (r *controlStateRepo) Upsert(ctx context.Context, state *domain.SystemContr
 	if err := state.Validate(); err != nil {
 		return err
 	}
-	existingID, existingUpdatedAt, err := r.lookupIdentity(ctx)
+	existingID, err := r.lookupIdentity(ctx)
 	if err != nil {
 		return err
 	}
@@ -46,10 +46,6 @@ func (r *controlStateRepo) Upsert(ctx context.Context, state *domain.SystemContr
 	if err != nil {
 		return fmt.Errorf("marshal system control state metadata: %w", err)
 	}
-	createdUpdatedAt := state.UpdatedAt
-	if !existingUpdatedAt.IsZero() {
-		createdUpdatedAt = existingUpdatedAt
-	}
 	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO system_control_state (singleton_key, id, state, reason, metadata_json, updated_by, requested_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -61,29 +57,23 @@ func (r *controlStateRepo) Upsert(ctx context.Context, state *domain.SystemContr
 			updated_by = excluded.updated_by,
 			requested_at = excluded.requested_at,
 			updated_at = excluded.updated_at
-	`, controlStateSingletonKey, state.ID, state.State, state.Reason, string(metadataJSON), state.UpdatedBy, nullableTimeNano(state.RequestedAt), createdUpdatedAt.Format(time.RFC3339Nano))
+	`, controlStateSingletonKey, state.ID, state.State, state.Reason, string(metadataJSON), state.UpdatedBy, nullableTimeNano(state.RequestedAt), state.UpdatedAt.Format(time.RFC3339Nano))
 	if err != nil {
 		return fmt.Errorf("upsert system control state: %w", err)
 	}
-	state.UpdatedAt = createdUpdatedAt
 	return nil
 }
 
-func (r *controlStateRepo) lookupIdentity(ctx context.Context) (string, time.Time, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, updated_at FROM system_control_state WHERE singleton_key = ?`, controlStateSingletonKey)
+func (r *controlStateRepo) lookupIdentity(ctx context.Context) (string, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT id FROM system_control_state WHERE singleton_key = ?`, controlStateSingletonKey)
 	var id string
-	var updatedAt string
-	if err := row.Scan(&id, &updatedAt); err != nil {
+	if err := row.Scan(&id); err != nil {
 		if err == sql.ErrNoRows {
-			return "", time.Time{}, nil
+			return "", nil
 		}
-		return "", time.Time{}, fmt.Errorf("lookup system control state identity: %w", err)
+		return "", fmt.Errorf("lookup system control state identity: %w", err)
 	}
-	parsedUpdatedAt, err := time.Parse(time.RFC3339Nano, updatedAt)
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("decode system control state updated_at: %w", err)
-	}
-	return id, parsedUpdatedAt, nil
+	return id, nil
 }
 
 type controlStateScanner interface{ Scan(dest ...any) error }
