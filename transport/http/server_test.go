@@ -480,6 +480,14 @@ func TestAPIRoutesAreRegistered(t *testing.T) {
 	s.engine.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
+	require.NoError(t, repos.ControlStates.Upsert(t.Context(), domain.NewSystemControlState("local-admin")))
+	state, err := repos.ControlStates.Get(t.Context())
+	require.NoError(t, err)
+	state.State = domain.SystemStateRunning
+	state.Reason = "started"
+	state.Metadata = map[string]any{"concurrency_limit": 2}
+	require.NoError(t, repos.ControlStates.Upsert(t.Context(), state))
+
 	req = httptest.NewRequest(http.MethodPost, "/api/system/pause", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()

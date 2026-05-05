@@ -1,6 +1,6 @@
 # content-hub
 
-> 当前默认主实现（Go 版，仓库根目录），已覆盖工作区配置、folder intake、rewrite/draft/render、审核发布能力、作业与自动化主链路。
+> 当前默认主实现（Go 版，仓库根目录），已覆盖 web control plane、浏览器上传/粘贴 intake、rewrite/draft/render、审核发布能力、作业与自动化主链路。
 
 ---
 
@@ -10,15 +10,15 @@
 
 当前已经完成的主链路替代范围：
 
-- workspace 驱动配置
-- folder intake / source document processing
+- DB-backed business config / workspace runtime config
+- browser upload / paste intake
 - article workspace 生命周期
 - 结构化 draft / render / validate / asset persistence
 - review / publish gate / publish history
 - workflow / jobs / automation
 - Web control plane / HTTP API / CLI（开发调试）/ 基础 TUI
 
-这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；当前默认操作入口是监听在 `8123` 的 web control plane。当前 active runtime 唯一文档化且默认的 intake 路径是 folder intake / source document workflow，自动处理默认产物会停在 draft + render，review / publish 保持为后续可选人工步骤。旧的 RSS、collector、ingestion surface 不再属于 active runtime 当前能力。
+这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；当前默认操作入口是监听在 `8123` 的 web control plane。当前 active runtime 唯一文档化且默认的 intake 路径是浏览器中的 upload / paste workflow，业务配置以数据库中的 runtime state 为准，自动处理默认产物会停在 draft + render，review / publish 保持为后续可选人工步骤。旧的 RSS、collector、ingestion surface 不再属于 active runtime 当前能力。
 
 不包含的承诺：
 
@@ -33,6 +33,7 @@
 ### 1. 工作区与配置
 
 - workspace 初始化、加载、解析、校验、doctor 检查
+- business config 通过数据库中的 runtime state 持久化并由 web control plane 管理
 - provider/article/publish profile
 - secret 引用与环境变量解析
 - incoming/processed/failed/rendered 等路径解析
@@ -43,10 +44,10 @@
 - `infra/workspace/loader.go`
 - `infra/workspace/validator.go`
 
-### 2. Folder Intake 与文章工作区
+### 2. Web Intake 与文章工作区
 
-- folder intake / source document processing 是当前 active runtime 默认 intake 主路径
-- 目录扫描、认领、rewrite、draft materialize、render 会组成默认自动化处理链
+- 浏览器 upload / paste workflow 是当前 active runtime 默认 intake 主路径
+- 上传或粘贴 source document 后会进入 intake、rewrite、draft materialize、render 组成的默认自动化处理链
 - 默认自动化链在 render 结束；review / publish 保持可选，由后续人工或显式调用触发
 - article workspace record 与状态流转仍由当前 Go runtime 持久化
 
@@ -60,7 +61,7 @@
 - `infra/sqlite/source_document_repo.go`
 - `infra/sqlite/article_workspace_repo.go`
 
-说明：旧的 RSS 与 collector / ingestion 相关实现仅作为迁移参考或历史上下文保留；当前文档中的唯一 active/default intake 叙述是 folder intake / source document workflow。
+说明：旧的 RSS 与 collector / ingestion 相关实现仅作为迁移参考或历史上下文保留；当前文档中的唯一 active/default intake 叙述是 browser upload / paste workflow。
 
 ### 2.6. AI Rewrite Pipeline
 
@@ -142,7 +143,7 @@ go mod download
 go run ./cmd/server
 ```
 
-默认监听 `http://localhost:8123`，浏览器操作以 web control plane 为主。启动后可检查：
+默认监听 `http://localhost:8123`，浏览器操作以 web control plane 为主。业务配置在运行时由数据库持久化，日常 intake 通过浏览器上传或粘贴进入。启动后可检查：
 
 ```bash
 curl http://localhost:8123/health
@@ -174,13 +175,13 @@ go run ./cmd/cli workspace resolve-config --root .
 go run ./cmd/cli workspace doctor --root .
 ```
 
-### Folder Intake / Automation Debug
+### Intake / Automation Debug
 
 ```bash
 go run ./cmd/cli automation run-once --root .
 ```
 
-说明：当前运行时的唯一文档化 intake 路径是 folder intake / source document workflow，但默认操作面已经切换为 web control plane；这里的 `automation` 命令仅用于开发/调试支持。仓库里尚未暴露独立的 folder-intake CLI 子命令。默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。旧的 RSS、`ingestion ...` 与 `collector ...` CLI 入口不再作为当前运行时文档化接口。
+说明：当前运行时的唯一文档化 intake 路径是 web control plane 中的 browser upload / paste workflow；这里的 `automation` 命令仅用于开发/调试支持，不是默认操作面。默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。旧的 RSS、`ingestion ...` 与 `collector ...` CLI 入口不再作为当前运行时文档化接口。
 
 ### Formatting
 
@@ -195,7 +196,7 @@ go run ./cmd/cli formatting validate <draft-id> --platform wechat --template dai
 go run ./cmd/cli rewrite run <workspace-article-id> --target wechat-longform --source sspai --root .
 ```
 
-说明：rewrite CLI 会读取 workspace article 元数据，并按 `target + source + version` 解析 rewrite profile；当前 CLI 不提供 `--version` 参数，版本选择走运行时默认值。默认 intake 路径仍是 folder intake / source document workflow，rewrite 编排衔接其导入结果继续执行。
+说明：rewrite CLI 会读取 workspace article 元数据，并按 `target + source + version` 解析 rewrite profile；当前 CLI 不提供 `--version` 参数，版本选择走运行时默认值。默认 intake 路径仍是 browser upload / paste workflow，rewrite 编排衔接其导入结果继续执行。
 
 ### Review / Publish
 
@@ -206,7 +207,7 @@ go run ./cmd/cli publish run <review-id> --root .
 go run ./cmd/cli publish history <article-id> --root .
 ```
 
-说明：review / publish CLI 仍然保留用于开发/调试或手工补救，但它们不是默认操作路径，也不是默认自动化 folder-processing 链的一部分；默认自动处理结果停在 draft + render。
+说明：review / publish CLI 仍然保留用于开发/调试或手工补救，但它们不是默认操作路径，也不是默认自动化主链的一部分；默认自动处理结果停在 draft + render。
 
 ### Automation
 
@@ -278,13 +279,13 @@ go run ./cmd/cli automation stop --root .
 - `GET /automation/health`
 - `POST /automation/stop`
 
-说明：folder intake / source document workflow 是当前 active runtime 唯一文档化且默认的 intake 路径，但当前 HTTP 暴露的是 automation、rewrite、workspace article、review/publish 等可调用 surface；仓库里尚未注册独立的 folder-intake 或 source-document HTTP endpoint。review 与 publish API 仍可单独调用，但不会由默认自动化链自动进入。旧的 `/ingestion/*` 与 `/collector/*` 路径不再作为支持中的运行时入口。
+说明：browser upload / paste workflow 是当前 active runtime 唯一文档化且默认的 intake 路径；当前 HTTP server 通过 web control plane 承载该主操作面，并继续暴露 automation、rewrite、workspace article、review/publish 等可调用 API。review 与 publish API 仍可单独调用，但不会由默认自动化链自动进入。旧的 `/ingestion/*` 与 `/collector/*` 路径不再作为支持中的运行时入口。
 
 ---
 
 ## 存储与运行时
 
-当前默认主路径是 SQLite，而不是纯内存实现。
+当前默认主路径是 SQLite，而不是纯内存实现；业务配置与运行时状态以数据库持久化结果为准。
 
 - SQLite provider：`infra/sqlite/provider.go`
 - runtime repos：`service/runtime_repos.go`
@@ -296,20 +297,19 @@ go run ./cmd/cli automation stop --root .
 
 ## 验证状态
 
-当前仓库已经在 Go 主项目上通过完整测试：
+当前仓库的最终验证矩阵如下：
 
 ```bash
-go test ./service -run 'TestSource|TestFolder|TestRewrite'
-go test ./transport/http/... -run 'TestFolder|TestRewrite'
-go test ./cmd/cli -run 'TestCLIFolder|TestCLIRewrite'
-go test ./integration -run 'TestFolderIntakeMainlineCreatesRenderedOutput|TestRewritePipelineMainlineMaterializesDraft'
+go test ./service -run 'TestSource|TestFolder|TestRewrite|TestBuildWebControlRuntime'
+go test ./transport/http/... -run 'TestAPI|TestAdminFrontend|TestRewrite'
+go test ./integration -run 'TestWebControlPlanePasteToRenderedResult|TestRewritePipelineMainlineMaterializesDraft'
 go test ./...
 ```
 
 覆盖范围包括：
 
 - workspace/config
-- folder intake/source document processing
+- browser upload/paste intake
 - rewrite orchestrator/stage execution/draft materialization
 - article intake/workspace
 - formatting/render/validate/assets
@@ -325,7 +325,7 @@ go test ./...
 ## 当前限制与边界
 
 - Go 版已经可以替代 Python 主链路，但不是历史兼容层逐字复刻
-- web control plane（`http://localhost:8123`）是当前默认主操作面；folder intake / source document processing 仍是当前唯一文档化且默认的 intake 路径，但独立的 folder-intake HTTP/CLI surface 目前尚未暴露；对外可调用入口以 automation、rewrite、workspace/review/publish 等现有接口为主
+- web control plane（`http://localhost:8123`）是当前默认主操作面；browser upload / paste workflow 是当前唯一文档化且默认的 intake 路径；CLI 仅作为开发/调试支持保留，对外可调用入口以该 browser UI 与现有 automation、rewrite、workspace/review/publish 接口为主
 - 默认自动化结果停在 draft + render；review / publish 作为后续可选人工步骤保留
 - 归档项目里的采集/ingestion 文档仍保留历史语义，不代表根目录 Go runtime 的当前对外接口
 - automation daemon 目前是单进程内模型，不是外部 supervisor 模型
@@ -377,6 +377,7 @@ go test ./...
 - 已完成对 `Archive/ArticleWashing/`（Python 版）的主链路功能等价替代
 - 可以作为当前默认主实现使用
 - 当前默认主操作面是 `8123` 上的 web control plane
-- 根目录 Go runtime 当前以 folder intake 作为默认 intake 主路径
+- 根目录 Go runtime 当前以 browser upload / paste 作为默认 intake 主路径
+- 业务配置以数据库中的 runtime state 为准
 - 默认自动化链产物为 draft + render，review / publish 不会自动触发
 - 旧的 RSS、collector、ingestion surface 已从 active runtime 对外接口集合中移除
