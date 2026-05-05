@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"path/filepath"
 	"strings"
 )
@@ -38,13 +39,13 @@ func (s *WebIntakeService) CreateFromPaste(ctx context.Context, input CreatePast
 	}
 
 	title := strings.TrimSpace(input.Title)
-	body := strings.TrimSpace(input.Body)
+	body := input.Body
 	if title == "" {
 		err := domain.NewValidationErr("title is required", nil)
 		s.recordFailureAudit(ctx, input.Actor, "web_intake.create_from_paste", err.Error(), map[string]any{"title": title})
 		return nil, err
 	}
-	if body == "" {
+	if strings.TrimSpace(body) == "" {
 		err := domain.NewValidationErr("body is required", nil)
 		s.recordFailureAudit(ctx, input.Actor, "web_intake.create_from_paste", err.Error(), map[string]any{"title": title})
 		return nil, err
@@ -74,7 +75,7 @@ func (s *WebIntakeService) CreateFromPaste(ctx context.Context, input CreatePast
 			"title": title,
 		},
 	}); err != nil {
-		return nil, err
+		s.logAuditFailure("web_intake.create_from_paste", doc.ID, err)
 	}
 
 	return doc, nil
@@ -145,7 +146,7 @@ func (s *WebIntakeService) CreateFromUpload(ctx context.Context, input CreateUpl
 			"file_type": doc.FileType,
 		},
 	}); err != nil {
-		return nil, err
+		s.logAuditFailure("web_intake.create_from_upload", doc.ID, err)
 	}
 
 	return doc, nil
@@ -186,4 +187,8 @@ func (s *WebIntakeService) recordAudit(ctx context.Context, input AuditLogCreate
 		return fmt.Errorf("write audit log: %w", err)
 	}
 	return nil
+}
+
+func (s *WebIntakeService) logAuditFailure(action, resourceID string, err error) {
+	log.Printf("web intake audit log failure action=%s resource_id=%s err=%v", action, resourceID, err)
 }

@@ -2,13 +2,50 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"content-hub/domain"
 
 	"github.com/stretchr/testify/require"
 )
+
+type stubAuditLogRepoWithCreateError struct {
+	err  error
+	logs []*domain.AuditLog
+}
+
+func (r *stubAuditLogRepoWithCreateError) Create(_ context.Context, log *domain.AuditLog) error {
+	if err := log.Validate(); err != nil {
+		return err
+	}
+	copyLog := *log
+	r.logs = append(r.logs, &copyLog)
+	return r.err
+}
+
+func (r *stubAuditLogRepoWithCreateError) GetByID(_ context.Context, id string) (*domain.AuditLog, error) {
+	for _, log := range r.logs {
+		if log.ID == id {
+			copyLog := *log
+			return &copyLog, nil
+		}
+	}
+	return nil, domain.NewNotFoundErr("audit_log", id)
+}
+
+func (r *stubAuditLogRepoWithCreateError) List(_ context.Context, limit int) ([]domain.AuditLog, error) {
+	if limit <= 0 || limit > len(r.logs) {
+		limit = len(r.logs)
+	}
+	out := make([]domain.AuditLog, 0, limit)
+	for i := 0; i < limit; i++ {
+		out = append(out, *r.logs[i])
+	}
+	return out, nil
+}
 
 func TestWebIntakeServiceCreateFromPastePersistsPendingSourceDocument(t *testing.T) {
 	repo := &stubSourceDocumentRepo{}
@@ -42,6 +79,40 @@ func TestWebIntakeServiceCreateFromPastePersistsPendingSourceDocument(t *testing
 	require.Equal(t, "success", audit.logs[0].Result)
 }
 
+func TestWebIntakeServiceCreateFromPastePreservesOriginalBodyText(t *testing.T) {
+	repo := &stubSourceDocumentRepo{}
+	audit := &stubAuditLogRepo{}
+	svc := NewWebIntakeService(repo, audit)
+
+	originalBody := "  Body with preserved edges\n"
+	doc, err := svc.CreateFromPaste(t.Context(), CreatePasteIntakeInput{
+		Actor: "local-admin",
+		Title: "Title",
+		Body:  originalBody,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, originalBody, doc.Body)
+	require.Equal(t, originalBody, repo.created[0].Body)
+}
+
+func TestWebIntakeServiceCreateFromPasteRejectsEffectivelyEmptyBody(t *testing.T) {
+	repo := &stubSourceDocumentRepo{}
+	audit := &stubAuditLogRepo{}
+	svc := NewWebIntakeService(repo, audit)
+
+	doc, err := svc.CreateFromPaste(t.Context(), CreatePasteIntakeInput{
+		Actor: "local-admin",
+		Title: "Title",
+		Body:  "   \n\t  ",
+	})
+
+	require.Nil(t, doc)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "body is required")
+	require.Empty(t, repo.created)
+}
+
 func TestWebIntakeServiceCreateFromUploadSupportsMarkdown(t *testing.T) {
 	repo := &stubSourceDocumentRepo{}
 	audit := &stubAuditLogRepo{}
@@ -68,6 +139,26 @@ func TestWebIntakeServiceCreateFromUploadSupportsMarkdown(t *testing.T) {
 	require.Equal(t, "web_intake.create_from_upload", audit.logs[0].Action)
 	require.Equal(t, "success", audit.logs[0].Result)
 	require.Equal(t, doc.ID, audit.logs[0].ResourceID)
+}
+
+func TestWebIntakeServiceCreateFromUploadSucceedsWhenSuccessAuditWriteFails(t *testing.T) {
+	repo := &stubSourceDocumentRepo{}
+	audit := &stubAuditLogRepoWithCreateError{err: fmt.Errorf("audit down")}
+	svc := NewWebIntakeService(repo, audit)
+
+	doc, err := svc.CreateFromUpload(t.Context(), CreateUploadIntakeInput{
+		Actor:       "local-admin",
+		Filename:    "article.md",
+		ContentType: "text/markdown",
+		Content:     bytes.NewBufferString("# Title\n\nBody"),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, doc)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, doc.ID, repo.created[0].ID)
+	require.Len(t, audit.logs, 1)
+	require.Equal(t, "success", audit.logs[0].Result)
 }
 
 func TestWebIntakeServiceCreateFromUploadUsesOriginalFilenameForFallbackTitle(t *testing.T) {
