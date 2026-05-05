@@ -57,7 +57,7 @@ func (s *AutomationService) SetFolderIntake(folderIntake automationFolderIntake)
 }
 
 func (s *AutomationService) RunOnce(ctx context.Context, root string) (*domain.AutomationRunResult, error) {
-	if s.ingestion == nil && s.folderIntake != nil {
+	if s.folderIntake != nil {
 		return s.runAndPersist(ctx, root, "run-once", func(runCtx context.Context) (map[string]any, error) {
 			result, err := s.folderIntake.RunOnce(runCtx, root)
 			if err != nil {
@@ -76,7 +76,7 @@ func (s *AutomationService) RunOnce(ctx context.Context, root string) (*domain.A
 }
 
 func (s *AutomationService) RetryFailed(ctx context.Context, root string) (*domain.AutomationRunResult, error) {
-	if s.ingestion == nil && s.folderIntake != nil {
+	if s.folderIntake != nil {
 		return s.runAndPersist(ctx, root, "retry-failed", func(runCtx context.Context) (map[string]any, error) {
 			result, err := s.folderIntake.RetryFailed(runCtx, root)
 			if err != nil {

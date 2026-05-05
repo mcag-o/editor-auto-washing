@@ -67,7 +67,7 @@ func TestStopReturnsConflictWhenDaemonNotRunning(t *testing.T) {
 	assert.Contains(t, err.Error(), "automation daemon is not running")
 }
 
-func TestRunOnceUsesIngestionAsPrimaryOperatorPathEvenWhenFolderIntakeIsConfigured(t *testing.T) {
+func TestRunOnceUsesFolderSourceProcessingWhenConfiguredAlongsideIngestion(t *testing.T) {
 	root := newAutomationWorkspace(t)
 	provider := memory.NewProvider()
 	intake := &stubAutomationFolderIntake{
@@ -89,13 +89,15 @@ func TestRunOnceUsesIngestionAsPrimaryOperatorPathEvenWhenFolderIntakeIsConfigur
 	result, err := service.RunOnce(context.Background(), root)
 
 	require.NoError(t, err)
-	assert.Equal(t, 0, intake.runOnceCalls)
+	assert.Equal(t, 1, intake.runOnceCalls)
 	assert.Equal(t, 0, intake.retryFailedCalls)
 	assert.Equal(t, 1, result.Summary["imported_files"])
-	assert.Equal(t, 1, result.Summary["scanned_files"])
+	assert.Equal(t, 2, result.Summary["scanned_files"])
+	assert.Equal(t, 1, result.Summary["processed_pending_documents"])
+	assert.Equal(t, 1, result.Summary["completed_documents"])
 }
 
-func TestRetryFailedUsesIngestionAsPrimaryOperatorPathEvenWhenFolderIntakeIsConfigured(t *testing.T) {
+func TestRetryFailedUsesFolderSourceProcessingWhenConfiguredAlongsideIngestion(t *testing.T) {
 	root := newAutomationWorkspace(t)
 	provider := memory.NewProvider()
 	intake := &stubAutomationFolderIntake{
@@ -112,9 +114,9 @@ func TestRetryFailedUsesIngestionAsPrimaryOperatorPathEvenWhenFolderIntakeIsConf
 
 	require.NoError(t, err)
 	assert.Equal(t, 0, intake.runOnceCalls)
-	assert.Equal(t, 0, intake.retryFailedCalls)
-	assert.Equal(t, 0, result.Summary["failed_files"])
-	assert.Equal(t, 0, result.Summary["total_created_articles"])
+	assert.Equal(t, 1, intake.retryFailedCalls)
+	assert.Equal(t, 2, result.Summary["processed_failed_documents"])
+	assert.Equal(t, 2, result.Summary["completed_documents"])
 }
 
 func TestRetryFailedReturnsFolderIntakeError(t *testing.T) {
