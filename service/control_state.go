@@ -16,14 +16,14 @@ func NewControlStateService(r repo.SystemControlStateRepo) *ControlStateService 
 }
 
 func (s *ControlStateService) Get(ctx context.Context) (*domain.SystemControlState, error) {
-	return s.repo.Get(ctx)
+	return s.loadOrDefault(ctx, "")
 }
 
 func (s *ControlStateService) Start(ctx context.Context, updatedBy string, concurrencyLimit int) (*domain.SystemControlState, error) {
 	if concurrencyLimit <= 0 {
 		return nil, domain.NewValidationErr("concurrency limit must be greater than zero", nil)
 	}
-	state, err := s.loadOrCreate(ctx, updatedBy)
+	state, err := s.loadOrDefault(ctx, updatedBy)
 	if err != nil {
 		return nil, err
 	}
@@ -44,9 +44,12 @@ func (s *ControlStateService) Start(ctx context.Context, updatedBy string, concu
 }
 
 func (s *ControlStateService) Pause(ctx context.Context, updatedBy string) (*domain.SystemControlState, error) {
-	state, err := s.loadOrCreate(ctx, updatedBy)
+	state, err := s.repo.Get(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if state.State != domain.SystemStateRunning {
+		return nil, domain.NewConflictErr("system control state can only pause from running")
 	}
 	now := time.Now().UTC()
 	state.State = domain.SystemStatePaused
@@ -61,9 +64,12 @@ func (s *ControlStateService) Pause(ctx context.Context, updatedBy string) (*dom
 }
 
 func (s *ControlStateService) Resume(ctx context.Context, updatedBy string) (*domain.SystemControlState, error) {
-	state, err := s.loadOrCreate(ctx, updatedBy)
+	state, err := s.repo.Get(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if state.State != domain.SystemStatePaused {
+		return nil, domain.NewConflictErr("system control state can only resume from paused")
 	}
 	now := time.Now().UTC()
 	state.State = domain.SystemStateRunning
@@ -71,13 +77,16 @@ func (s *ControlStateService) Resume(ctx context.Context, updatedBy string) (*do
 	state.UpdatedBy = updatedBy
 	state.RequestedAt = &now
 	state.UpdatedAt = now
+	if _, ok := state.Metadata["concurrency_limit"]; !ok {
+		return nil, domain.NewConflictErr("system control state cannot resume without concurrency limit")
+	}
 	if err := s.repo.Upsert(ctx, state); err != nil {
 		return nil, err
 	}
 	return s.repo.Get(ctx)
 }
 
-func (s *ControlStateService) loadOrCreate(ctx context.Context, updatedBy string) (*domain.SystemControlState, error) {
+func (s *ControlStateService) loadOrDefault(ctx context.Context, updatedBy string) (*domain.SystemControlState, error) {
 	state, err := s.repo.Get(ctx)
 	if err == nil {
 		return state, nil
