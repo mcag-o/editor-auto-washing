@@ -61,5 +61,58 @@ function testReconcilesCreatedWorkflowReplacingTemporaryTemplate() {
   assert(!result.templates.some((template) => template.id === 'workflow-local-1'), 'temporary workflow should be removed after create');
 }
 
+function testWorkflowMapperPreservesConfiguredEntryNodeAndPriorityOrder() {
+  const api = mapWorkflowFormToApi({
+    id: 'wf-entry',
+    name: 'Entry Workflow',
+    description: 'verifies entry node and edge ordering',
+    version: 'v1',
+    enabled: true,
+    updatedBy: 'tester',
+    updatedAt: '2026-05-07T00:00:00Z',
+    entryNodeId: 'node-2',
+    nodeCount: 2,
+    nodes: [
+      {
+        id: 'node-1',
+        type: 'default',
+        position: { x: 10, y: 20 },
+        data: {
+          label: 'Input',
+          type: 'input',
+          rawType: 'input',
+          template: '',
+          model: '',
+          context: '',
+          isEntry: false,
+        },
+      },
+      {
+        id: 'node-2',
+        type: 'default',
+        position: { x: 30, y: 40 },
+        data: {
+          label: 'Rewrite',
+          type: 'rewrite',
+          rawType: 'rewrite',
+          template: 'rewrite.standard',
+          model: 'gpt-4.1-mini',
+          context: 'keep structure',
+          isEntry: true,
+        },
+      },
+    ],
+    edges: [
+      { id: 'edge-b', source: 'node-2', target: 'node-1' },
+      { id: 'edge-a', source: 'node-1', target: 'node-2' },
+    ],
+  });
+
+  assert(api.entry_node_id === 'node-2', 'selected entry node should be preserved in API payload');
+  assert(api.edges[0]?.priority === 0, 'first edge should receive priority 0');
+  assert(api.edges[1]?.priority === 1, 'second edge should receive priority 1');
+}
+
 testPreservesUnknownWorkflowNodeTypes();
 testReconcilesCreatedWorkflowReplacingTemporaryTemplate();
+testWorkflowMapperPreservesConfiguredEntryNodeAndPriorityOrder();

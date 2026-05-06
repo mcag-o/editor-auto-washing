@@ -239,7 +239,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
       <Stack spacing={3}>
         <PageToolbar
           title="文章列表"
-          description="使用现有 /api/articles、阶段查询与重试/停止/恢复/删除接口承接真实文章队列。"
+          description="使用现有文章列表、阶段查询与队列控制接口承接真实文章队列。"
           leading={<StatusChip status="active" label="实时队列视图" />}
           actions={
             <>
@@ -299,7 +299,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
                 </Button>
               </Stack>
               <Typography variant="body2" color="text.secondary">
-                顶部快速过滤固定包含未处理、处理中、已暂停、已处理、失败，操作区调用真实文章控制接口。
+                顶部快速过滤固定包含未处理、处理中、已暂停、已处理、失败，操作区按后端允许状态发起请求。
               </Typography>
             </Stack>
           }
@@ -350,25 +350,25 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
                           event.stopPropagation();
                           openActionDialog('retry', row);
                         }}>
-                          再处理
+                          重新入队
                         </Button>
                         <Button size="small" variant="outlined" color="warning" startIcon={<PauseCircleOutlineRoundedIcon />} disabled={!canStop(row.status)} onClick={(event) => {
                           event.stopPropagation();
                           openActionDialog('stop', row);
                         }}>
-                          停止
+                          请求暂停
                         </Button>
                         <Button size="small" variant="outlined" startIcon={<PlayArrowRoundedIcon />} disabled={!canResume(row.status)} onClick={(event) => {
                           event.stopPropagation();
                           openActionDialog('resume', row);
                         }}>
-                          恢复
+                          尝试恢复
                         </Button>
                         <Button size="small" variant="outlined" color="error" startIcon={<DeleteOutlineRoundedIcon />} disabled={!canDelete(row.status)} onClick={(event) => {
                           event.stopPropagation();
                           openActionDialog('delete', row);
                         }}>
-                          删除
+                           删除记录
                         </Button>
                       </Stack>
                     </TableCell>
@@ -450,10 +450,16 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
 
       <ConfirmDialog
         open={Boolean(pendingAction)}
-        title={pendingAction ? `确认${pendingAction.action === 'retry' ? '再处理' : pendingAction.action === 'stop' ? '停止' : pendingAction.action === 'resume' ? '恢复' : '删除'}文章` : '操作确认'}
+        title={pendingAction ? `确认${pendingAction.action === 'retry' ? '重新入队' : pendingAction.action === 'stop' ? '请求暂停' : pendingAction.action === 'resume' ? '尝试恢复' : '删除记录'}文章` : '操作确认'}
         description={
           pendingAction
-            ? `将对《${pendingAction.row.title || pendingAction.row.original_filename || pendingAction.row.id}》执行真实“${pendingAction.action}”操作。`
+            ? pendingAction.action === 'retry'
+              ? `将把《${pendingAction.row.title || pendingAction.row.original_filename || pendingAction.row.id}》重新放回待处理队列。`
+              : pendingAction.action === 'stop'
+                ? `将为《${pendingAction.row.title || pendingAction.row.original_filename || pendingAction.row.id}》提交协作暂停请求，不会强制中断正在执行的处理。`
+                : pendingAction.action === 'resume'
+                  ? `将尝试恢复《${pendingAction.row.title || pendingAction.row.original_filename || pendingAction.row.id}》。仅当后端确认状态安全时才会重新入队。`
+                  : `将删除《${pendingAction.row.title || pendingAction.row.original_filename || pendingAction.row.id}》及允许清理的相关运行记录。`
             : ''
         }
         confirmText={actionLoading ? '处理中...' : '确认执行'}

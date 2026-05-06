@@ -38,7 +38,7 @@ export default function WorkflowListPanel({
   return (
     <PageCard
       title="模板列表"
-      description="左侧保留模板集合与切换入口，后续再接真实 API。"
+      description="左侧展示工作流模板集合与切换入口。"
       action={
         <Button size="small" variant="outlined" startIcon={<AddCircleOutlineRoundedIcon />} onClick={onCreateTemplate}>
           新建模板
@@ -49,11 +49,11 @@ export default function WorkflowListPanel({
         <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: 'background.default', border: '1px solid', borderColor: 'divider' }}>
           <Stack direction="row" spacing={1} alignItems="center">
             <AccountTreeRoundedIcon color="primary" fontSize="small" />
-            <Typography variant="subtitle2">工作流模板壳层</Typography>
+            <Typography variant="subtitle2">工作流模板列表</Typography>
           </Stack>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-            phase-one 编辑体验保持不变，但模板列表与保存/删除已接入真实 API。
-            </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+            模板列表、保存与删除都直接对应后端工作流定义接口。
+          </Typography>
           </Box>
 
           <Divider />

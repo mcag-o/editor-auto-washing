@@ -505,7 +505,7 @@ export default function WorkflowTemplatesPage() {
     <Stack spacing={3}>
       <PageToolbar
         title="工作流模板"
-        description="基于 React Flow 的模板图编辑器，现已接入真实工作流列表与保存/删除接口。"
+        description="基于 React Flow 的工作流图编辑器，现已接入真实工作流列表与保存/删除接口。"
         leading={<StatusChip status="active" label="React Flow 编辑器" />}
         actions={
           <>
@@ -521,7 +521,7 @@ export default function WorkflowTemplatesPage() {
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ xs: 'flex-start', md: 'center' }}>
             <StatusChip status="completed" label="支持新增/删除节点" />
             <StatusChip status="completed" label="支持连接/断开连线" />
-            <StatusChip status="completed" label="已接入真实 API" />
+            <StatusChip status="completed" label="已接入真实接口" />
             <Typography variant="body2" color="text.secondary">
               当前选中模板：{selectedTemplate?.name ?? '未选择'}
             </Typography>

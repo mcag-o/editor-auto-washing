@@ -226,7 +226,7 @@ export default function TemplatesPage() {
           </Stack>
         }
         title="模板管理"
-        description="保留现有 Drawer 编辑体验，并接入真实模板列表、创建、更新和删除接口。"
+        description="保留现有 Drawer 编辑体验，并接入真实模板列表、创建、更新与删除接口。"
         actions={
           <>
             <StatusChip status={selectedTemplate?.enabled ? 'active' : 'disabled'} label={selectedTemplate?.enabled ? '已启用' : '已停用'} />
@@ -240,7 +240,7 @@ export default function TemplatesPage() {
             <Stack direction="row" spacing={1} alignItems="center">
               <AutorenewRoundedIcon color="primary" fontSize="small" />
               <Typography variant="body2" color="text.secondary">
-                当前模板列表已接入后端 API。
+                当前模板列表已接入后端接口。
               </Typography>
             </Stack>
             <Stack direction="row" spacing={1} alignItems="center">

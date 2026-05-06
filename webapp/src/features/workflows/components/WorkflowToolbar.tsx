@@ -34,9 +34,9 @@ export default function WorkflowToolbar({
       sx={{ p: 1.5, borderRadius: 4, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}
     >
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
-        <StatusChip status="active" label="本地模板编辑" />
+        <StatusChip status="active" label="工作流编辑" />
         <Typography variant="body2" color="text.secondary">
-          当前画布共 {nodeCount} 个节点、{edgeCount} 条连线，仅保留本地交互。
+          当前画布共 {nodeCount} 个节点、{edgeCount} 条连线，保存后会整体覆盖后端中的当前工作流定义。
         </Typography>
       </Stack>
 

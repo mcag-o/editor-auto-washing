@@ -58,7 +58,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
         chipStatus: 'active' as const,
         chipLabel: '主链路运行中',
         headline: '自动改写主链路正在运行',
-        description: '当前状态来自 /api/system/status，控制按钮将直接操作后端运行态。',
+        description: '当前状态来自系统控制接口，页面仅提交启动、暂停请求与恢复请求。',
       };
     }
 
@@ -67,7 +67,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
         chipStatus: 'pending' as const,
         chipLabel: '主链路已暂停',
         headline: '系统处于暂停观察态',
-        description: '当前运行已暂停，可在此恢复主链路执行。',
+        description: '当前运行已进入暂停态，满足后端条件时才可恢复进入队列。',
       };
     }
 
@@ -75,7 +75,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
       chipStatus: 'disabled' as const,
       chipLabel: '主链路未启动',
       headline: '系统等待启动',
-      description: '系统当前未运行，可设置并发数后启动主链路。',
+        description: '系统当前未运行，可设置并发上限后请求启动主链路。',
     };
   }, [runtimeState]);
 
@@ -99,7 +99,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
     try {
       const nextState = await startSystem({ concurrency_limit: Math.max(1, Number(concurrencyLimit) || 1) });
       setSystemState(nextState);
-      setSuccessMessage('系统已启动。');
+      setSuccessMessage('已提交启动请求。');
     } catch (apiError) {
       setError(apiError instanceof ApiError ? apiError.message : '启动流程失败');
     } finally {
@@ -115,7 +115,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
     try {
       const nextState = await pauseSystem();
       setSystemState(nextState);
-      setSuccessMessage('系统已暂停。');
+      setSuccessMessage('已提交暂停请求，运行中的任务会协作进入暂停态。');
     } catch (apiError) {
       setError(apiError instanceof ApiError ? apiError.message : '暂停流程失败');
     } finally {
@@ -131,7 +131,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
     try {
       const nextState = await resumeSystem();
       setSystemState(nextState);
-      setSuccessMessage('系统已恢复。');
+      setSuccessMessage('已提交恢复请求。');
     } catch (apiError) {
       setError(apiError instanceof ApiError ? apiError.message : '恢复流程失败');
     } finally {
@@ -149,7 +149,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
     <Stack spacing={3}>
       <PageToolbar
         title="流程控制"
-        description="面向运营值守的工作流控制页，现已接入系统状态、启动/暂停/恢复按钮与队列摘要。"
+        description="面向运营值守的控制页，展示系统状态、启动/暂停/恢复请求入口与队列摘要。"
         leading={<StatusChip status={stateSummary.chipStatus} label={stateSummary.chipLabel} />}
         actions={
           <>
@@ -193,21 +193,21 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
                 value={concurrencyLimit}
                 onChange={(event) => setConcurrencyLimit(event.target.value)}
                 disabled={runtimeState === 'running' || actionLoading}
-                helperText={`当前系统记录并发上限：${activeConcurrency || '未设置'}`}
+                helperText={`当前系统记录并发上限：${activeConcurrency || '未设置'}，仅在发起启动请求时提交。`}
               />
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
                 <Button variant="contained" startIcon={<PlayArrowRoundedIcon />} disabled={runtimeState === 'running' || actionLoading} onClick={() => void handleStart()}>
-                  启动流程
+                  请求启动
                 </Button>
                 <Button variant="outlined" color="warning" startIcon={<PauseCircleOutlineRoundedIcon />} disabled={runtimeState !== 'running' || actionLoading} onClick={() => void handlePause()}>
-                  暂停流程
+                  请求暂停
                 </Button>
                 <Button variant="outlined" startIcon={<RestartAltRoundedIcon />} disabled={runtimeState !== 'paused' || actionLoading} onClick={() => void handleResume()}>
-                  恢复流程
+                  尝试恢复
                 </Button>
               </Stack>
               <Typography variant="body2" color="text.secondary">
-                操作人固定为后端的 `local-admin`，页面仅负责调用现有系统控制接口并展示结果。
+                操作人固定为后端的 `local-admin`，页面仅负责调用现有系统控制接口并展示返回状态。
               </Typography>
             </Stack>
           </PageCard>

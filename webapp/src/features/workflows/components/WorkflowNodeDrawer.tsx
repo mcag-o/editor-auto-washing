@@ -39,7 +39,7 @@ export default function WorkflowNodeDrawer({
   return (
     <PageCard
       title="节点配置"
-      description="右侧面板仅维护本地表单状态，后续再对接模板定义与模型配置接口。"
+      description="右侧面板用于编辑节点配置，保存时会写入工作流定义中的节点配置 JSON。"
       action={
         <Typography variant="caption" color="text.secondary">
           {entryNodeLabel ? `入口节点：${entryNodeLabel}` : '尚未设置入口节点'}

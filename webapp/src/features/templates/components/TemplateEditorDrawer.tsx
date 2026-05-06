@@ -44,9 +44,9 @@ export default function TemplateEditorDrawer({
         <Stack direction="row" spacing={1.5} alignItems="flex-start" justifyContent="space-between">
           <Box>
             <Typography variant="h5">{editingTemplate ? '编辑模板' : '新建模板'}</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              保留 phase-one 的简化编辑器，但保存动作已经接入真实模板接口。
-            </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+               保留当前简化编辑器，保存时会按后端模板定义结构提交。
+              </Typography>
           </Box>
           <Button variant="text" onClick={onClose} startIcon={<CloseRoundedIcon />}>
             关闭
@@ -87,16 +87,12 @@ export default function TemplateEditorDrawer({
           />
 
           <TextField
-            select
             label="模板类型"
             value={draft.type}
             onChange={(event) => onChange('type', event.target.value)}
+            helperText="按后端原样保存类型标识，例如 prompt、rewrite、review、stage。"
             fullWidth
-          >
-            <MenuItem value="prompt">prompt</MenuItem>
-            <MenuItem value="rewrite">rewrite</MenuItem>
-            <MenuItem value="review">review</MenuItem>
-          </TextField>
+          />
 
           <TextField
             label="主提示词"
@@ -125,7 +121,7 @@ export default function TemplateEditorDrawer({
             取消
           </Button>
           <Button variant="contained" startIcon={<SaveRoundedIcon />} onClick={onSave} disabled={saving}>
-            {saving ? '保存中...' : '保存到后端'}
+              {saving ? '保存中...' : '保存模板'}
           </Button>
         </Stack>
       </Stack>

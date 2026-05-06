@@ -122,7 +122,7 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
     <Stack spacing={3}>
       <PageToolbar
         title="文章导入"
-        description="当前仅保留浏览器文件上传与文本粘贴入口，贴合后续默认自动改写主链路。"
+        description="当前仅保留浏览器文件上传与文本粘贴入口，导入后写入文章队列并进入后续处理链路。"
         leading={<StatusChip status="active" label="浏览器导入" />}
         actions={
           <>
@@ -137,9 +137,9 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
         filters={
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'flex-start', md: 'center' }}>
             <StatusChip status="completed" label="支持 .txt / .md / .json" />
-            <StatusChip status="disabled" label="不提供 URL 导入" />
+            <StatusChip status="disabled" label="仅支持浏览器上传与粘贴" />
             <Typography variant="body2" color="text.secondary">
-              当前页面已接入真实 intake API，导入成功后会写入文章队列。
+              当前页面已接入真实导入接口，成功后会新增文章记录。
             </Typography>
           </Stack>
         }
@@ -154,7 +154,7 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
       >
         <PageCard
           title="文件上传"
-          description="适用于批量导入已有原文文件，提交后直接调用 intake upload API。"
+          description="适用于批量导入已有原文文件，提交后直接调用后端上传接口。"
           action={<StatusChip status={uploading ? 'active' : selectedFiles.length > 0 ? 'pending' : 'disabled'} label={uploading ? '上传中' : selectedFiles.length > 0 ? '待提交' : '待选择'} />}
         >
           <Stack spacing={2}>
@@ -173,7 +173,7 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
                 <FileUploadRoundedIcon color="primary" sx={{ fontSize: 36 }} />
                 <Typography variant="h4">选择文件导入</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  通过文件选择器导入内容，当前仅接受 {allowedTypesLabel} 文件，不展示 URL 导入表单。
+                  通过文件选择器导入内容，当前仅接受 {allowedTypesLabel} 文件。
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
                   <Button variant="contained" onClick={handleChooseFiles} disabled={uploading}>
@@ -223,7 +223,7 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
 
         <PageCard
           title="文本粘贴"
-          description="适合临时导入单篇原文，提交后直接调用 intake paste API。"
+          description="适合临时导入单篇原文，提交后直接调用后端粘贴接口。"
           action={<StatusChip status={submittingPaste ? 'active' : pasteValue.trim() ? 'pending' : 'disabled'} label={submittingPaste ? '提交中' : pasteValue.trim() ? '待提交' : '待输入'} />}
         >
           <Stack spacing={2}>
