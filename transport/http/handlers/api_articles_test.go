@@ -349,6 +349,8 @@ func TestAPIArticlesStopReturnsAccepted(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	require.Equal(t, "paused", resp["status"])
+	require.Equal(t, true, resp["requested_pause"])
+	require.Contains(t, resp["message"], "pause requested")
 	stored, err := sourceRepo.GetByID(t.Context(), doc.ID)
 	require.NoError(t, err)
 	require.Equal(t, "paused", stored.Status)
@@ -395,8 +397,9 @@ func TestAPIArticlesResumeReturnsAccepted(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domain.SourceDocumentStatusPending, stored.Status)
 	require.Equal(t, doc.RewriteRunID, stored.RewriteRunID)
-	require.Equal(t, doc.ClaimedBy, stored.ClaimedBy)
-	require.NotNil(t, stored.ProcessingStartedAt)
+	require.Empty(t, stored.ClaimedBy)
+	require.Nil(t, stored.ClaimedAt)
+	require.Nil(t, stored.ProcessingStartedAt)
 }
 
 func TestAPIArticlesDeleteRejectsProcessingArticle(t *testing.T) {

@@ -40,6 +40,10 @@ func (r *stubSourceProcessingSchedulerRepo) Update(_ context.Context, doc *domai
 	return nil
 }
 
+func (r *stubSourceProcessingSchedulerRepo) Delete(context.Context, string) error {
+	return nil
+}
+
 func (r *stubSourceProcessingSchedulerRepo) GetByID(_ context.Context, id string) (*domain.SourceDocument, error) {
 	if r.getErr != nil {
 		return nil, r.getErr

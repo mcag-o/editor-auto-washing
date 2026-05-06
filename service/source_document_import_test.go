@@ -39,6 +39,10 @@ func (r *stubSourceDocumentRepo) Update(_ context.Context, doc *domain.SourceDoc
 	return nil
 }
 
+func (r *stubSourceDocumentRepo) Delete(context.Context, string) error {
+	return nil
+}
+
 func (r *stubSourceDocumentRepo) GetByID(context.Context, string) (*domain.SourceDocument, error) {
 	return nil, domain.NewNotFoundErr("source_document", "missing")
 }

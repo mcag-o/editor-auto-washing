@@ -33,6 +33,10 @@ func (r *stubSourceProcessingRepo) Update(_ context.Context, doc *domain.SourceD
 	return nil
 }
 
+func (r *stubSourceProcessingRepo) Delete(context.Context, string) error {
+	return nil
+}
+
 func (r *stubSourceProcessingRepo) GetByID(_ context.Context, id string) (*domain.SourceDocument, error) {
 	if r.getErr != nil {
 		return nil, r.getErr

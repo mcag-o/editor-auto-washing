@@ -154,9 +154,10 @@ func (h *APIArticlesHandler) Stop(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{
-		"status":  domain.SourceDocumentStatusPaused,
-		"message": "article paused",
-		"article": item,
+		"status":          domain.SourceDocumentStatusPaused,
+		"requested_pause": true,
+		"message":         "pause requested; the current worker step is not synchronously interrupted",
+		"article":         item,
 	})
 }
 
@@ -172,6 +173,9 @@ func (h *APIArticlesHandler) Resume(c *gin.Context) {
 	}
 
 	item.Status = domain.SourceDocumentStatusPending
+	item.ClaimedBy = ""
+	item.ClaimedAt = nil
+	item.ProcessingStartedAt = nil
 	if err := h.source.Update(c.Request.Context(), item); err != nil {
 		HandleError(c, err)
 		return
