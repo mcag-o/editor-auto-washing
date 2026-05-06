@@ -74,6 +74,15 @@ func (sourceDocumentRepoCompileStub) Create(context.Context, *domain.SourceDocum
 func (sourceDocumentRepoCompileStub) Update(context.Context, *domain.SourceDocument) error {
 	return nil
 }
+func (sourceDocumentRepoCompileStub) UpdateIfStatus(context.Context, *domain.SourceDocument, ...string) error {
+	return nil
+}
+func (sourceDocumentRepoCompileStub) Delete(context.Context, string) error {
+	return nil
+}
+func (sourceDocumentRepoCompileStub) DeleteIfStatus(context.Context, string, ...string) error {
+	return nil
+}
 func (sourceDocumentRepoCompileStub) GetByID(context.Context, string) (*domain.SourceDocument, error) {
 	return nil, nil
 }

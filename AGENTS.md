@@ -5,6 +5,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 ## Repository Shape
 
 - Active project: repo root Go module `content-hub`
+- Active documented operator surface: browser-based web control plane on `8123` in the root Go runtime
 - Active documented intake path: browser upload / paste workflow in the root Go runtime
 - Archived reference projects:
   - `Archive/ArticleWashing/` - legacy Python content-hub implementation
@@ -23,7 +24,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 
 - Assume repo root is the default working project unless the task explicitly points into `Archive/`.
 - Do not treat archived docs as source of truth for current commands, APIs, or architecture.
-- Treat the web control plane on port `8123` as the primary documented operator surface for the active root Go runtime. Treat browser upload / paste as the supported and documented active-runtime intake path, and present workflow/template management as browser-first behavior on that same surface. Treat business configuration as DB-backed runtime state, not file-first operator setup. Draft + render are the default automated result path. Review/publish are optional later steps, not part of the default automated chain. Folder-intake remains backend/internal compatibility only unless a task explicitly targets it. Do not present legacy RSS/collector/ingestion HTTP or CLI surfaces as current supported entrypoints unless the task explicitly targets historical behavior.
+- Treat the web control plane on port `8123` as the only active documented operator surface for the root Go runtime, and describe its operator UI as Chinese-first unless a task explicitly targets localization details. Treat browser upload / paste as the only supported and documented active-runtime intake path, and present workflow/template management as browser-first behavior on that same surface. Treat business configuration as DB-backed runtime state, not file-first operator setup. Draft + render are the default automated result path. Review/publish are optional later steps, not part of the default automated chain. Folder-intake remains backend/internal compatibility only unless a task explicitly targets it. Do not present legacy RSS/collector/ingestion HTTP or CLI surfaces as current supported entrypoints unless the task explicitly targets historical behavior.
 - Preserve Chinese user-facing documentation where it already exists; bilingual docs are normal here.
 - Prefer minimal, local edits over wide migration-era cleanup unless the task explicitly asks for broader normalization.
 - When touching path-sensitive docs or metadata, check whether the target should reference root runtime code or archived legacy code.
@@ -42,9 +43,9 @@ Run from repository root.
 - Run server / web control plane: `go run ./cmd/server`
 - Run CLI: `go run ./cmd/cli`
 - Run TUI: `go run ./cmd/tui --api http://localhost:8123`
-- Web control plane service verification: `go test ./service -run 'TestSource|TestFolder|TestRewrite|TestBuildWebControlRuntime'`
+- Web control plane service verification: `go test ./service -run 'TestSource|TestFolder|TestRewrite|TestBuildWebControlRuntime|TestWorkflowTemplate|TestTemplateDefinition|TestWebControlPlaneService'`
 - Web control plane transport verification: `go test ./transport/http/... -run 'TestAPI|TestAdminFrontend|TestRewrite'`
-- Web control plane integration verification: `go test ./integration -run 'TestWebControlPlanePasteToRenderedResult|TestRewritePipelineMainlineMaterializesDraft'`
+- Web control plane integration verification: `go test ./integration -run 'TestWebControlPlanePasteToRenderedResult|TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate|TestRewritePipelineMainlineMaterializesDraft'`
 - Run all tests: `go test ./...`
 - Run all tests with race and coverage: `make test`
 - Run one package: `go test ./service`
@@ -166,7 +167,7 @@ Match the active area you are editing. Do not normalize root Go code and archive
 - When fixing a bug, update the nearest existing test or add a close regression test instead of creating a disconnected test file.
 - Prefer fixture-driven tests for collector parsing, normalization, and migration-reference behavior.
 - Prefer `go test ./service -run TestRewrite...` for rewrite service verification before broader `go test ./...` runs.
-- Prefer `go test ./integration -run 'TestWebControlPlanePasteToRenderedResult|TestRewritePipelineMainlineMaterializesDraft'` when validating the default automated mainline.
+- Prefer `go test ./integration -run 'TestWebControlPlanePasteToRenderedResult|TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate|TestRewritePipelineMainlineMaterializesDraft'` when validating the default automated mainline.
 - Start with a package-level or exact-test run before `go test ./...`.
 - Archived Python tests use `unittest.TestCase` under `Archive/ArticleWashing/tests/content_hub/`.
 - Archived Node tests use Vitest under `Archive/DataCollection/test/`.
@@ -184,7 +185,7 @@ Match the active area you are editing. Do not normalize root Go code and archive
 - Confirm whether the task targets active root Go code or archived reference material.
 - Read the nearest README, config, and tests for the target area before editing.
 - Make the smallest change that fits the existing architecture.
-- When describing operator workflows, default to the browser-based web control plane on `8123`; describe the CLI as development/debug support unless the task explicitly centers CLI behavior.
+- When describing operator workflows, default to the browser-based Chinese web control plane on `8123`; describe the CLI as development/debug support unless the task explicitly centers CLI behavior.
 - Re-run the most specific relevant test, then broaden as needed.
 - Mention build or lint results only when that workflow actually exists in the target area.
 - If docs claim migration completeness, operational exposure, or parity, verify the claim against code before editing it.

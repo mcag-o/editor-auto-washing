@@ -29,9 +29,38 @@ func (r *stubSourceDocumentRepo) Update(_ context.Context, doc *domain.SourceDoc
 	return nil
 }
 
+func (r *stubSourceDocumentRepo) UpdateIfStatus(_ context.Context, doc *domain.SourceDocument, expectedStatuses ...string) error {
+	stored, ok := r.storedByID[doc.ID]
+	if !ok {
+		return domain.NewNotFoundErr("source_document", doc.ID)
+	}
+	for _, status := range expectedStatuses {
+		if stored.Status == status {
+			copyValue := *doc
+			r.storedByID[doc.ID] = &copyValue
+			return nil
+		}
+	}
+	return domain.NewConflictErr("source document state changed")
+}
+
 func (r *stubSourceDocumentRepo) Delete(_ context.Context, id string) error {
 	delete(r.storedByID, id)
 	return nil
+}
+
+func (r *stubSourceDocumentRepo) DeleteIfStatus(_ context.Context, id string, expectedStatuses ...string) error {
+	stored, ok := r.storedByID[id]
+	if !ok {
+		return domain.NewNotFoundErr("source_document", id)
+	}
+	for _, status := range expectedStatuses {
+		if stored.Status == status {
+			delete(r.storedByID, id)
+			return nil
+		}
+	}
+	return domain.NewConflictErr("source document state changed")
 }
 
 func (r *stubSourceDocumentRepo) GetByID(_ context.Context, id string) (*domain.SourceDocument, error) {
