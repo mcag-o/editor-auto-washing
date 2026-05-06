@@ -598,6 +598,22 @@ func TestNewServerWithWebControlDependenciesSucceeds(t *testing.T) {
 	require.NotNil(t, s.engine)
 }
 
+func TestAPIDeleteRoutesAreRegisteredForWorkflowsAndTemplates(t *testing.T) {
+	s, _ := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/workflows/nonexistent", nil)
+	w := httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
+	require.NotEqual(t, http.StatusMethodNotAllowed, w.Code)
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/templates/nonexistent", nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
+	require.NotEqual(t, http.StatusMethodNotAllowed, w.Code)
+}
+
 func TestNewServerMissingWebControlDependenciesFailsExplicitly(t *testing.T) {
 	cfg := config.DefaultConfig()
 	provider := &Provider{}

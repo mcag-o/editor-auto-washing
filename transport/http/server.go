@@ -319,10 +319,12 @@ func (s *Server) registerRoutes() {
 		api.GET("/workflows", apiWorkflowsHandler.List)
 		api.GET("/workflows/:id", apiWorkflowsHandler.Get)
 		api.PUT("/workflows/:id", apiWorkflowsHandler.Update)
+		api.DELETE("/workflows/:id", apiWorkflowsHandler.Delete)
 		api.POST("/templates", apiTemplatesHandler.Create)
 		api.GET("/templates", apiTemplatesHandler.List)
 		api.GET("/templates/:id", apiTemplatesHandler.Get)
 		api.PUT("/templates/:id", apiTemplatesHandler.Update)
+		api.DELETE("/templates/:id", apiTemplatesHandler.Delete)
 	}
 }
 

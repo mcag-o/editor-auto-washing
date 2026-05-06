@@ -75,6 +75,21 @@ func (r *templateDefinitionRepo) List(ctx context.Context, limit int) ([]domain.
 	return items, rows.Err()
 }
 
+func (r *templateDefinitionRepo) Delete(ctx context.Context, id string) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM template_definitions WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete template definition: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete template definition rows affected: %w", err)
+	}
+	if affected == 0 {
+		return domain.NewNotFoundErr("template_definition", id)
+	}
+	return nil
+}
+
 type templateDefinitionScanner interface{ Scan(dest ...any) error }
 
 func scanTemplateDefinition(row templateDefinitionScanner) (*domain.TemplateDefinition, error) {

@@ -25,3 +25,7 @@ func (s *WorkflowTemplateService) GetByID(ctx context.Context, id string) (*doma
 func (s *WorkflowTemplateService) List(ctx context.Context, limit int) ([]domain.WorkflowDefinition, error) {
 	return s.repo.List(ctx, limit)
 }
+
+func (s *WorkflowTemplateService) Delete(ctx context.Context, id string) error {
+	return s.repo.Delete(ctx, id)
+}

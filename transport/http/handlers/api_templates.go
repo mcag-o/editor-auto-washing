@@ -73,6 +73,14 @@ func (h *APITemplatesHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, template)
 }
 
+func (h *APITemplatesHandler) Delete(c *gin.Context) {
+	if err := h.svc.Delete(c.Request.Context(), c.Param("id")); err != nil {
+		HandleError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func decodeTemplateDefinitionPayload(c *gin.Context) (*domain.TemplateDefinition, error) {
 	var payload apiTemplatePayload
 	if err := c.ShouldBindJSON(&payload); err != nil {

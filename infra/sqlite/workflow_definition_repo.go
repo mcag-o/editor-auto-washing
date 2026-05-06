@@ -79,6 +79,21 @@ func (r *workflowDefinitionRepo) List(ctx context.Context, limit int) ([]domain.
 	return items, rows.Err()
 }
 
+func (r *workflowDefinitionRepo) Delete(ctx context.Context, id string) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM workflow_definitions WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete workflow definition: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete workflow definition rows affected: %w", err)
+	}
+	if affected == 0 {
+		return domain.NewNotFoundErr("workflow_definition", id)
+	}
+	return nil
+}
+
 type workflowDefinitionScanner interface{ Scan(dest ...any) error }
 
 func scanWorkflowDefinition(row workflowDefinitionScanner) (*domain.WorkflowDefinition, error) {

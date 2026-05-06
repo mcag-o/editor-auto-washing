@@ -158,12 +158,14 @@ type WorkflowDefinitionRepo interface {
 	Upsert(ctx context.Context, workflow *domain.WorkflowDefinition) error
 	GetByID(ctx context.Context, id string) (*domain.WorkflowDefinition, error)
 	List(ctx context.Context, limit int) ([]domain.WorkflowDefinition, error)
+	Delete(ctx context.Context, id string) error
 }
 
 type TemplateDefinitionRepo interface {
 	Upsert(ctx context.Context, template *domain.TemplateDefinition) error
 	GetByID(ctx context.Context, id string) (*domain.TemplateDefinition, error)
 	List(ctx context.Context, limit int) ([]domain.TemplateDefinition, error)
+	Delete(ctx context.Context, id string) error
 }
 
 type BusinessConfigRepo interface {

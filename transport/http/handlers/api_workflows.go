@@ -60,3 +60,11 @@ func (h *APIWorkflowsHandler) Update(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, workflow)
 }
+
+func (h *APIWorkflowsHandler) Delete(c *gin.Context) {
+	if err := h.svc.Delete(c.Request.Context(), c.Param("id")); err != nil {
+		HandleError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}

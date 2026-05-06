@@ -25,3 +25,7 @@ func (s *TemplateDefinitionService) GetByID(ctx context.Context, id string) (*do
 func (s *TemplateDefinitionService) List(ctx context.Context, limit int) ([]domain.TemplateDefinition, error) {
 	return s.repo.List(ctx, limit)
 }
+
+func (s *TemplateDefinitionService) Delete(ctx context.Context, id string) error {
+	return s.repo.Delete(ctx, id)
+}

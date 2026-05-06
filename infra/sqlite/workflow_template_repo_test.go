@@ -61,14 +61,14 @@ func TestWorkflowDefinitionRepoListOrdersLatestUpdateFirst(t *testing.T) {
 		Name:        "旧流程",
 		Version:     "v1",
 		EntryNodeID: "start-old",
-		Nodes: []domain.WorkflowNode{{ID: "start-old", Type: "start", Name: "开始"}},
+		Nodes:       []domain.WorkflowNode{{ID: "start-old", Type: "start", Name: "开始"}},
 	}
 	newer := &domain.WorkflowDefinition{
 		ID:          id.New(),
 		Name:        "新流程",
 		Version:     "v2",
 		EntryNodeID: "start-new",
-		Nodes: []domain.WorkflowNode{{ID: "start-new", Type: "start", Name: "开始"}},
+		Nodes:       []domain.WorkflowNode{{ID: "start-new", Type: "start", Name: "开始"}},
 	}
 
 	require.NoError(t, provider.WorkflowDefinitionRepo().Upsert(t.Context(), older))
@@ -79,6 +79,30 @@ func TestWorkflowDefinitionRepoListOrdersLatestUpdateFirst(t *testing.T) {
 	require.Len(t, list, 2)
 	require.Equal(t, newer.ID, list[0].ID)
 	require.Equal(t, older.ID, list[1].ID)
+}
+
+func TestWorkflowDefinitionRepoDeleteRemovesStoredDefinition(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	wf := &domain.WorkflowDefinition{
+		ID:          id.New(),
+		Name:        "待删除流程",
+		Version:     "v1",
+		EntryNodeID: "start-1",
+		Nodes:       []domain.WorkflowNode{{ID: "start-1", Type: "start", Name: "开始"}},
+	}
+
+	require.NoError(t, provider.WorkflowDefinitionRepo().Upsert(t.Context(), wf))
+	require.NoError(t, provider.WorkflowDefinitionRepo().Delete(t.Context(), wf.ID))
+
+	_, err := provider.WorkflowDefinitionRepo().GetByID(t.Context(), wf.ID)
+	require.Error(t, err)
+	appErr, ok := err.(*domain.AppError)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrNotFound, appErr.Code)
+
+	list, err := provider.WorkflowDefinitionRepo().List(t.Context(), 10)
+	require.NoError(t, err)
+	require.Empty(t, list)
 }
 
 func TestTemplateDefinitionRepoUpsertRejectsInvalidVariablesJSON(t *testing.T) {
@@ -144,4 +168,30 @@ func TestTemplateDefinitionRepoNormalizesEmptyVariablesJSON(t *testing.T) {
 	stored, err := provider.TemplateDefinitionRepo().GetByID(t.Context(), tpl.ID)
 	require.NoError(t, err)
 	require.Equal(t, []byte(`{}`), stored.VariablesJSON)
+}
+
+func TestTemplateDefinitionRepoDeleteRemovesStoredDefinition(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	tpl := &domain.TemplateDefinition{
+		ID:            id.New(),
+		Name:          "待删除模板",
+		Type:          "prompt",
+		Version:       "v1",
+		Enabled:       true,
+		Content:       "正文：{{body}}",
+		VariablesJSON: []byte(`{"body":"string"}`),
+	}
+
+	require.NoError(t, provider.TemplateDefinitionRepo().Upsert(t.Context(), tpl))
+	require.NoError(t, provider.TemplateDefinitionRepo().Delete(t.Context(), tpl.ID))
+
+	_, err := provider.TemplateDefinitionRepo().GetByID(t.Context(), tpl.ID)
+	require.Error(t, err)
+	appErr, ok := err.(*domain.AppError)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrNotFound, appErr.Code)
+
+	list, err := provider.TemplateDefinitionRepo().List(t.Context(), 10)
+	require.NoError(t, err)
+	require.Empty(t, list)
 }
