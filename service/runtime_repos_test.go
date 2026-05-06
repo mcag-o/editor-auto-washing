@@ -93,3 +93,23 @@ func TestBuildRuntimeReposExposesWebControlPlaneRepos(t *testing.T) {
 		t.Fatal("expected AuditLogRepo to be wired")
 	}
 }
+
+func TestBuildRuntimeReposExposesWorkflowTemplateRepos(t *testing.T) {
+	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
+	if cleanup != nil {
+		defer func() {
+			if closeErr := cleanup(); closeErr != nil {
+				t.Fatalf("cleanup returned error: %v", closeErr)
+			}
+		}()
+	}
+	if err != nil {
+		t.Fatalf("BuildRuntimeRepos returned error: %v", err)
+	}
+	if repos.WorkflowDefinitionRepo == nil {
+		t.Fatal("expected WorkflowDefinitionRepo to be wired")
+	}
+	if repos.TemplateDefinitionRepo == nil {
+		t.Fatal("expected TemplateDefinitionRepo to be wired")
+	}
+}

@@ -42,6 +42,8 @@ type RuntimeRepos struct {
 	SourceDocumentRepo         repo.SourceDocumentRepo
 	ImportRunRepo              repo.ImportRunRepo
 	PromptTemplateRepo         repo.PromptTemplateRepo
+	WorkflowDefinitionRepo     repo.WorkflowDefinitionRepo
+	TemplateDefinitionRepo     repo.TemplateDefinitionRepo
 	LLMProfileRepo             repo.LLMProfileRepo
 	BusinessConfigRepo         repo.BusinessConfigRepo
 	SystemControlStateRepo     repo.SystemControlStateRepo
@@ -115,6 +117,8 @@ func buildRuntimeReposFromResolved(runtimeCfg config.Config, renderedDir string,
 		SourceDocumentRepo:         sqliteProvider.SourceDocumentRepo(),
 		ImportRunRepo:              sqliteProvider.ImportRunRepo(),
 		PromptTemplateRepo:         sqliteProvider.PromptTemplateRepo(),
+		WorkflowDefinitionRepo:     sqliteProvider.WorkflowDefinitionRepo(),
+		TemplateDefinitionRepo:     sqliteProvider.TemplateDefinitionRepo(),
 		LLMProfileRepo:             sqliteProvider.LLMProfileRepo(),
 		BusinessConfigRepo:         sqliteProvider.BusinessConfigRepo(),
 		SystemControlStateRepo:     sqliteProvider.SystemControlStateRepo(),
