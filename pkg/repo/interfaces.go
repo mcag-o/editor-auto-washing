@@ -152,6 +152,18 @@ type LLMProfileRepo interface {
 	List(ctx context.Context) ([]domain.LLMProfile, error)
 }
 
+type WorkflowDefinitionRepo interface {
+	Upsert(ctx context.Context, workflow *domain.WorkflowDefinition) error
+	GetByID(ctx context.Context, id string) (*domain.WorkflowDefinition, error)
+	List(ctx context.Context, limit int) ([]domain.WorkflowDefinition, error)
+}
+
+type TemplateDefinitionRepo interface {
+	Upsert(ctx context.Context, template *domain.TemplateDefinition) error
+	GetByID(ctx context.Context, id string) (*domain.TemplateDefinition, error)
+	List(ctx context.Context, limit int) ([]domain.TemplateDefinition, error)
+}
+
 type BusinessConfigRepo interface {
 	Upsert(ctx context.Context, cfg *domain.BusinessConfig) error
 	GetByCategoryAndKey(ctx context.Context, category, key string) (*domain.BusinessConfig, error)

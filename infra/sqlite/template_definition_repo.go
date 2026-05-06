@@ -1,0 +1,88 @@
+package sqlite
+
+import (
+	"content-hub/domain"
+	"content-hub/pkg/repo"
+	"context"
+	"database/sql"
+	"fmt"
+	"time"
+)
+
+var _ repo.TemplateDefinitionRepo = (*templateDefinitionRepo)(nil)
+
+type templateDefinitionRepo struct{ db *sql.DB }
+
+func (r *templateDefinitionRepo) Upsert(ctx context.Context, template *domain.TemplateDefinition) error {
+	if err := template.Validate(); err != nil {
+		return err
+	}
+	template.UpdatedAt = time.Now().UTC()
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO template_definitions (id, name, type, version, enabled, content, variables_json, updated_by, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			name = excluded.name,
+			type = excluded.type,
+			version = excluded.version,
+			enabled = excluded.enabled,
+			content = excluded.content,
+			variables_json = excluded.variables_json,
+			updated_by = excluded.updated_by,
+			updated_at = excluded.updated_at
+	`, template.ID, template.Name, template.Type, template.Version, boolToInt(template.Enabled), template.Content, template.VariablesJSON, template.UpdatedBy, template.UpdatedAt.Format(time.RFC3339Nano))
+	if err != nil {
+		return fmt.Errorf("upsert template definition: %w", err)
+	}
+	return nil
+}
+
+func (r *templateDefinitionRepo) GetByID(ctx context.Context, id string) (*domain.TemplateDefinition, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT id, name, type, version, enabled, content, variables_json, updated_by, updated_at FROM template_definitions WHERE id = ?`, id)
+	template, err := scanTemplateDefinition(row)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, domain.NewNotFoundErr("template_definition", id)
+		}
+		return nil, err
+	}
+	return template, nil
+}
+
+func (r *templateDefinitionRepo) List(ctx context.Context, limit int) ([]domain.TemplateDefinition, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name, type, version, enabled, content, variables_json, updated_by, updated_at FROM template_definitions ORDER BY updated_at DESC, id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query template definitions: %w", err)
+	}
+	defer rows.Close()
+	items := []domain.TemplateDefinition{}
+	for rows.Next() {
+		template, err := scanTemplateDefinition(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *template)
+	}
+	return items, rows.Err()
+}
+
+type templateDefinitionScanner interface{ Scan(dest ...any) error }
+
+func scanTemplateDefinition(row templateDefinitionScanner) (*domain.TemplateDefinition, error) {
+	var template domain.TemplateDefinition
+	var enabled int
+	var updatedAt string
+	if err := row.Scan(&template.ID, &template.Name, &template.Type, &template.Version, &enabled, &template.Content, &template.VariablesJSON, &template.UpdatedBy, &updatedAt); err != nil {
+		return nil, err
+	}
+	template.Enabled = enabled == 1
+	parsedUpdatedAt, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("decode template definition updated_at: %w", err)
+	}
+	template.UpdatedAt = parsedUpdatedAt
+	return &template, nil
+}
