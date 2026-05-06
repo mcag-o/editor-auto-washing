@@ -176,6 +176,9 @@ func (s *ArticleIntakeService) buildRewriteMetadata(ctx context.Context, article
 	if err != nil {
 		return nil, fmt.Errorf("load workflow template %s: %w", workflowID, err)
 	}
+	if !workflow.Enabled {
+		return nil, domain.NewValidationErr(fmt.Sprintf("workflow template %s is disabled", workflowID), nil)
+	}
 	overrides, err := deriveWorkflowStageOverrides(workflow)
 	if err != nil {
 		return nil, fmt.Errorf("derive workflow template %s execution config: %w", workflowID, err)

@@ -20,6 +20,25 @@ type sequentialLLMClient struct {
 	callCount int
 }
 
+type multiPromptRegistry struct {
+	prompts    map[string]*domain.PromptTemplate
+	gotKey     string
+	gotVersion string
+}
+
+func (r *multiPromptRegistry) Get(_ context.Context, key, version string) (*domain.PromptTemplate, error) {
+	r.gotKey = key
+	r.gotVersion = version
+	if r.prompts == nil {
+		return nil, domain.NewNotFoundErr("prompt template", key+"@"+version)
+	}
+	prompt, ok := r.prompts[key+"@"+version]
+	if !ok {
+		return nil, domain.NewNotFoundErr("prompt template", key+"@"+version)
+	}
+	return prompt, nil
+}
+
 func (c *sequentialLLMClient) Generate(_ context.Context, req llminfra.GenerateRequest) (*llminfra.GenerateResponse, error) {
 	c.gotReqs = append(c.gotReqs, req)
 	idx := c.callCount
@@ -446,6 +465,97 @@ func TestRewriteOrchestratorRoutesToRepairStageAndContinues(t *testing.T) {
 	require.NoError(t, draftErr)
 	require.Equal(t, "Repaired Title", draft.Headline["title"])
 	require.Equal(t, []string{"This repaired body is long enough."}, draft.Headline["body"])
+}
+
+func TestRewriteOrchestratorAppliesWorkflowOverridesToRepairStage(t *testing.T) {
+	provider := memory.NewProvider()
+	workspace := domain.NewArticleWorkspaceRecord("article-repair-workflow", "Title", "Summary", domain.ArticleWorkspaceSource{SourceType: "collector"}, nil)
+	require.NoError(t, provider.WorkspaceRepo().Create(t.Context(), workspace))
+
+	promptRepo := &multiPromptRegistry{prompts: map[string]*domain.PromptTemplate{
+		"rewrite_stage@v1": {
+			Key:            "rewrite_stage",
+			Version:        "v1",
+			SystemTemplate: "sys",
+			UserTemplate:   "Title: {{title}}",
+		},
+		"repair_prompt_alt@v2": {
+			Key:            "repair_prompt_alt",
+			Version:        "v2",
+			SystemTemplate: "repair sys {{workflow_template_id}} {{workflow_marker}}",
+			UserTemplate:   "repair user {{title}} {{workflow_node_repair_draft}}",
+		},
+	}}
+	profileRepo := &stubRewritePipelineProfileRepo{profile: &domain.RewritePipelineProfile{
+		ID:            "profile-repair-workflow",
+		TargetType:    "wechat-longform",
+		SourceProfile: "sspai",
+		Version:       "v1",
+		Enabled:       true,
+		Stages: []domain.RewriteStageDefinition{
+			{
+				Name:      "generate_draft",
+				Type:      "generate_draft",
+				PromptRef: "rewrite_stage@v1",
+				Enabled:   true,
+				OnFailure: domain.RewriteFailurePolicy{Action: QualityDecisionRepair, RepairStage: "repair_draft"},
+			},
+			{
+				Name:      "repair_draft",
+				Type:      "repair_draft",
+				PromptRef: "rewrite_stage@v1",
+				Enabled:   true,
+			},
+		},
+	}}
+	client := &sequentialLLMClient{responses: []*llminfra.GenerateResponse{
+		{Response: &domain.LLMResponse{Content: `{"title":"Draft Title","body":["needs repair"],"template":"daily-intelligence"}`, Model: "mock-1"}},
+		{Response: &domain.LLMResponse{Content: `{"title":"Repaired Title","body":"This repaired body is long enough.","template":"daily-intelligence"}`, Model: "mock-1"}},
+	}}
+	executor := NewRewriteStageExecutor(promptRepo, client, NewQualityGateEngine())
+	orchestrator := NewRewriteOrchestrator(
+		NewRewriteProfileRegistry(profileRepo),
+		provider.RewritePipelineRunRepo(),
+		provider.RewriteStageRunRepo(),
+		provider.WorkspaceRepo(),
+		executor,
+		NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo()),
+	)
+
+	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
+		WorkspaceArticleID: workspace.ID,
+		CollectorArticleID: "collector-1",
+		Title:              "Source",
+		TargetType:         "wechat-longform",
+		SourceProfile:      "sspai",
+		Version:            "v1",
+		Metadata: map[string]any{
+			"workflow_template_id": "workflow-repair",
+			workflowStageOverridesMetadataKey: map[string]workflowStageOverride{
+				"repair_draft": {
+					NodeID:    "node-repair-draft",
+					PromptRef: "repair_prompt_alt@v2",
+					Vars: map[string]any{
+						"workflow_marker": "repair-path",
+					},
+				},
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, domain.RewriteRunSucceeded, run.Status)
+	require.Len(t, client.gotReqs, 2)
+	require.Equal(t, "repair_prompt_alt@v2", client.gotReqs[1].Metadata["prompt_ref"])
+	require.Equal(t, "repair sys workflow-repair repair-path", client.gotReqs[1].Messages[0].Content)
+	require.Equal(t, "repair user Draft Title node-repair-draft", client.gotReqs[1].Messages[1].Content)
+
+	stageRuns, stageErr := provider.RewriteStageRunRepo().ListByPipelineRunID(t.Context(), run.ID)
+	require.NoError(t, stageErr)
+	require.Len(t, stageRuns, 2)
+	require.Equal(t, "repair_prompt_alt@v2", stageRuns[1].PromptRef)
+	require.Contains(t, stageRuns[1].InputJSON, "repair-path")
+	require.Contains(t, stageRuns[1].InputJSON, "node-repair-draft")
 }
 
 func TestRewriteOrchestratorResumeReusesExistingRunAndContinuesFromSavedState(t *testing.T) {

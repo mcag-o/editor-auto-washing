@@ -242,3 +242,38 @@ func TestArticleIntakeServiceCarriesWorkflowSelectionMetadataIntoRewriteRequest(
 	require.Equal(t, "node-generate-draft", rewrite.lastReq.Metadata["workflow_node_generate_draft"])
 	require.Contains(t, rewrite.lastReq.Metadata, workflowStageOverridesMetadataKey)
 }
+
+func TestArticleIntakeServiceRejectsDisabledWorkflowReference(t *testing.T) {
+	workspaceRepo := &stubArticleIntakeWorkspaceRepo{}
+	rewrite := &stubArticleIntakeRewriteRunner{}
+	workflows := &stubArticleIntakeWorkflowRepo{workflow: &domain.WorkflowDefinition{
+		ID:          "workflow-disabled",
+		Name:        "Disabled workflow",
+		Version:     "v1",
+		Enabled:     false,
+		EntryNodeID: "node-generate-draft",
+		Nodes:       []domain.WorkflowNode{{ID: "node-generate-draft", Type: "rewrite_stage", Name: "generate_draft"}},
+	}}
+	svc := NewArticleIntakeServiceWithWorkflows(workspaceRepo, rewrite, workflows)
+	article := domain.IntakeArticle{
+		ExternalID:            "guid-1",
+		SourceType:            "rss",
+		SubscriptionID:        "sub-1",
+		Title:                 "Title",
+		Body:                  "Body",
+		Summary:               "Summary",
+		OriginalURL:           "https://example.com/a",
+		TargetType:            "wechat-longform",
+		SourceProfile:         "sspai",
+		RewriteProfileVersion: "latest",
+		Metadata: map[string]any{
+			"workflow_template_id": "workflow-disabled",
+		},
+	}
+
+	_, err := svc.Intake(t.Context(), article)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "disabled")
+	require.False(t, rewrite.called)
+}

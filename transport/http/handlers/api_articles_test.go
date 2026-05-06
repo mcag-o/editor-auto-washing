@@ -532,6 +532,48 @@ func TestAPIArticlesDeleteRemovesPausedArticle(t *testing.T) {
 	require.Equal(t, domain.ErrNotFound, appErr.Code)
 }
 
+func TestAPIArticlesAssignWorkflowTemplateRejectsDisabledWorkflow(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	sourceRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
+	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-1")
+	doc.Status = domain.SourceDocumentStatusPending
+	require.NoError(t, sourceRepo.Create(t.Context(), doc))
+	workflowRepo := &stubWorkflowDefinitionRepo{stored: &domain.WorkflowDefinition{
+		ID:          "wf-disabled",
+		Name:        "Disabled workflow",
+		Version:     "v1",
+		Enabled:     false,
+		EntryNodeID: "generate_draft",
+		Nodes:       []domain.WorkflowNode{{ID: "generate_draft", Type: "rewrite_stage", Name: "generate_draft"}},
+	}}
+
+	handler := NewAPIArticlesHandler(
+		service.NewArticleQueryService(sourceRepo),
+		&stubRewritePipelineRunRepo{},
+		&stubRewriteStageRunRepo{},
+		sourceRepo,
+		workflowRepo,
+		&stubAuditLogRepo{},
+		&stubSystemControlStateRepo{},
+	)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/articles/:id/workflow-template", handler.AssignWorkflowTemplate)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/workflow-template", bytes.NewBufferString(`{"workflow_template_id":"wf-disabled"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "disabled")
+	stored, err := sourceRepo.GetByID(t.Context(), doc.ID)
+	require.NoError(t, err)
+	_, exists := stored.Metadata["workflow_template_id"]
+	require.False(t, exists)
+}
+
 func startedControlState(updatedBy, state, reason string, limit int) *domain.SystemControlState {
 	control := domain.NewSystemControlState(updatedBy)
 	control.State = state

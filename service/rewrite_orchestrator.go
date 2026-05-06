@@ -192,9 +192,13 @@ func (o *RewriteOrchestrator) executeRun(ctx context.Context, run *domain.Rewrit
 
 			repairStage = applyProfileDefaultsToStage(profile, repairStage)
 			repairInputVars := mergeStageVars(vars, repairStage.InputBindings)
+			for key, value := range run.Metadata {
+				repairInputVars[key] = value
+			}
 			for key, value := range result.StructuredOutput {
 				repairInputVars[key] = value
 			}
+			repairStage = applyWorkflowOverride(repairStage, run.Metadata, repairInputVars)
 
 			run.CurrentStage = repairStage.Name
 			if err := o.runs.Update(ctx, run); err != nil {

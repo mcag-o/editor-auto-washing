@@ -5,6 +5,7 @@ import (
 	"content-hub/pkg/repo"
 	"content-hub/service"
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -261,6 +262,10 @@ func (h *APIArticlesHandler) AssignWorkflowTemplate(c *gin.Context) {
 	workflow, err := h.workflows.GetByID(c.Request.Context(), strings.TrimSpace(req.WorkflowTemplateID))
 	if err != nil {
 		HandleError(c, err)
+		return
+	}
+	if !workflow.Enabled {
+		HandleError(c, domain.NewValidationErr(fmt.Sprintf("workflow template %s is disabled", workflow.ID), nil))
 		return
 	}
 	if item.Metadata == nil {
