@@ -6,7 +6,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 
 - Active project: repo root Go module `content-hub`
 - Active documented operator surface: browser-based React + Vite web control plane on `8123` in the root Go runtime
-- Active documented intake path: browser upload / paste workflow in the root Go runtime
+- Active documented operator intake path: browser upload / paste workflow in the root Go runtime
 - Archived reference projects:
   - `Archive/ArticleWashing/` - legacy Python content-hub implementation
   - `Archive/DataCollection/` - legacy Node.js collector implementation
@@ -24,7 +24,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 
 - Assume repo root is the default working project unless the task explicitly points into `Archive/`.
 - Do not treat archived docs as source of truth for current commands, APIs, or architecture.
-- Treat the React + Vite web control plane on port `8123` as the only active documented operator surface for the root Go runtime, and describe its operator UI as Chinese-first unless a task explicitly targets localization details. Treat browser upload / paste as the only supported and documented active-runtime intake path, and present workflow/template management as browser-first, componentized behavior on that same surface. Treat Material UI and React Flow as the chosen frontend foundations when describing or extending that UI unless the task explicitly changes frontend architecture. Treat business configuration as DB-backed runtime state, not file-first operator setup. Draft + render are the default automated result path. Review/publish are optional later steps, not part of the default automated chain. Folder-intake remains backend/internal compatibility only unless a task explicitly targets it. Do not present legacy static shell, RSS/collector/ingestion HTTP, or CLI surfaces as current supported operator entrypoints unless the task explicitly targets historical behavior or development/debug support.
+- Treat the React + Vite web control plane on port `8123` as the only active documented operator surface for the root Go runtime, and describe its operator UI as Chinese-first unless a task explicitly targets localization details. Treat browser upload / paste as the only supported, documented, and operator-facing active-runtime intake path, and present workflow/template management as browser-first, componentized behavior on that same surface. Treat Material UI and React Flow as the chosen frontend foundations when describing or extending that UI unless the task explicitly changes frontend architecture. Treat business configuration as DB-backed runtime state, not file-first operator setup. Draft + render are the default automated result path. Review/publish are optional later steps, not part of the default automated chain. Folder-intake remains backend/internal compatibility only unless a task explicitly targets it. Do not present legacy static shell, RSS/collector/ingestion HTTP, or CLI surfaces as current supported operator entrypoints unless the task explicitly targets historical behavior or development/debug support.
 - Preserve Chinese user-facing documentation where it already exists; bilingual docs are normal here.
 - Prefer minimal, local edits over wide migration-era cleanup unless the task explicitly asks for broader normalization.
 - When touching path-sensitive docs or metadata, check whether the target should reference root runtime code or archived legacy code.

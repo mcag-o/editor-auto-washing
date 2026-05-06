@@ -33,9 +33,11 @@ func TestStartupMessageCentersWebControlPlaneBrowserIntake(t *testing.T) {
 
 	assert.Contains(t, message, "http://localhost:8123")
 	assert.Contains(t, message, "web control plane")
+	assert.Contains(t, message, "only active operator intake")
 	assert.Contains(t, message, "browser upload/paste")
 	assert.Contains(t, message, "development/debug")
 	assert.Contains(t, message, "backend/internal compatibility")
+	assert.NotContains(t, message, "static shell")
 }
 
 func TestRunPropagatesServerStartupFailure(t *testing.T) {

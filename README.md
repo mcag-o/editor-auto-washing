@@ -16,9 +16,9 @@
 - 结构化 draft / render / validate / asset persistence
 - review / publish gate / publish history
 - workflow / jobs / automation
-- React + Vite web control plane（Material UI + React Flow）/ HTTP API / CLI（开发调试）/ 基础 TUI
+- React + Vite web control plane（Material UI + React Flow）/ HTTP API / CLI（开发调试支持）/ 基础 TUI
 
-这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；当前唯一 active operator surface 是监听在 `8123` 的 React + Vite web control plane，且操作 UI 以中文为主。当前 active runtime 唯一文档化且默认的 intake 路径是浏览器中的 upload / paste workflow，业务配置以数据库中的 runtime state 为准，workflow/template 管理也通过该浏览器 UI 以组件化方式完成，前端基础设施以 Material UI 与 React Flow 为主，自动处理默认产物会停在 draft + render，review / publish 保持为后续可选人工步骤。旧的静态 shell、folder-intake、RSS、collector、ingestion surface 不再作为 active runtime 面向操作人员的入口。
+这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；当前唯一 active operator surface 是监听在 `8123` 的 React + Vite web control plane，且操作 UI 以中文为主。当前 active runtime 唯一文档化、默认且面向操作人员的 intake 路径是浏览器中的 upload / paste workflow，业务配置以数据库中的 runtime state 为准，workflow/template 管理也通过该浏览器 UI 以组件化方式完成，前端基础设施以 Material UI 与 React Flow 为主，自动处理默认产物会停在 draft + render，review / publish 保持为后续可选人工步骤。旧的静态 shell、folder-intake、RSS、collector、ingestion surface 不再作为 active runtime 面向操作人员的入口。
 
 不包含的承诺：
 
@@ -62,7 +62,7 @@
 - `infra/sqlite/source_document_repo.go`
 - `infra/sqlite/article_workspace_repo.go`
 
-说明：folder-intake、RSS 与 collector / ingestion 相关实现仍保留为后端/内部兼容、作业编排和迁移参考；当前文档中的唯一 active/default intake 叙述是 browser upload / paste workflow。旧的 plain static shell 不再作为当前操作面表述。
+说明：folder-intake、RSS 与 collector / ingestion 相关实现仍保留为后端/内部兼容、作业编排和迁移参考；当前文档中的唯一 active/default/operator-facing intake 叙述是 browser upload / paste workflow。旧的 plain static shell 不再作为当前操作面表述。
 
 ### 2.6. AI Rewrite Pipeline
 
@@ -144,7 +144,7 @@ go mod download
 go run ./cmd/server
 ```
 
-默认监听 `http://localhost:8123`，浏览器操作以 React + Vite web control plane 为主，且当前操作 UI 为中文。业务配置、workflow/template 管理与日常 intake 都通过该浏览器 UI 完成，其中 workflow/template 管理采用组件化界面并建立在 Material UI 与 React Flow 之上；CLI 仅用于开发/调试支持，folder-intake 仅保留为后端/内部兼容能力。启动后可检查：
+默认监听 `http://localhost:8123`，浏览器操作以 React + Vite web control plane 为主，且当前操作 UI 为中文。业务配置、workflow/template 管理与日常 intake 都通过该浏览器 UI 完成，其中 workflow/template 管理采用组件化界面并建立在 Material UI 与 React Flow 之上；browser upload / paste 是当前唯一面向操作人员的 active intake 路径；CLI 仅用于开发/调试支持，folder-intake 仅保留为后端/内部兼容能力。启动后可检查：
 
 ```bash
 curl http://localhost:8123/health
@@ -182,7 +182,7 @@ go run ./cmd/cli workspace doctor --root .
 go run ./cmd/cli automation run-once --root .
 ```
 
-说明：当前运行时的唯一文档化 intake 路径是 React web control plane 中的 browser upload / paste workflow；这里的 `automation` 命令仅用于开发/调试支持，不是默认操作面。默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。folder-intake 与旧的 RSS、`ingestion ...`、`collector ...` CLI 入口不再作为当前运行时的操作人员工作流指引。
+说明：当前运行时唯一文档化、默认且面向操作人员的 intake 路径是 React web control plane 中的 browser upload / paste workflow；这里的 `automation` 命令仅用于开发/调试支持，不是默认操作面。默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。folder-intake 与旧的 RSS、`ingestion ...`、`collector ...` CLI 入口不再作为当前运行时的操作人员工作流指引。
 
 ### Formatting
 
@@ -197,7 +197,7 @@ go run ./cmd/cli formatting validate <draft-id> --platform wechat --template dai
 go run ./cmd/cli rewrite run <workspace-article-id> --target wechat-longform --source sspai --root .
 ```
 
-说明：rewrite CLI 会读取 workspace article 元数据，并按 `target + source + version` 解析 rewrite profile；当前 CLI 不提供 `--version` 参数，版本选择走运行时默认值。默认 intake 路径仍是 browser upload / paste workflow，rewrite 编排衔接其导入结果继续执行。
+说明：rewrite CLI 会读取 workspace article 元数据，并按 `target + source + version` 解析 rewrite profile；当前 CLI 不提供 `--version` 参数，版本选择走运行时默认值。默认且唯一面向操作人员的 intake 路径仍是 browser upload / paste workflow，rewrite 编排衔接其导入结果继续执行。
 
 ### Review / Publish
 
@@ -280,7 +280,7 @@ go run ./cmd/cli automation stop --root .
 - `GET /automation/health`
 - `POST /automation/stop`
 
-说明：browser upload / paste workflow 是当前 active runtime 唯一文档化且默认的 intake 路径；当前 HTTP server 通过 React web control plane 承载该主操作面，并继续暴露 automation、rewrite、workspace article、review/publish 等可调用 API。review 与 publish API 仍可单独调用，但不会由默认自动化链自动进入。folder-intake 与旧的 `/ingestion/*`、`/collector/*` 路径仅保留为后端/内部兼容或历史参考，不再作为支持中的操作人员入口。
+说明：browser upload / paste workflow 是当前 active runtime 唯一文档化、默认且面向操作人员的 intake 路径；当前 HTTP server 通过 React web control plane 承载该主操作面，并继续暴露 automation、rewrite、workspace article、review/publish 等可调用 API。review 与 publish API 仍可单独调用，但不会由默认自动化链自动进入。folder-intake 与旧的 `/ingestion/*`、`/collector/*` 路径仅保留为后端/内部兼容或历史参考，不再作为支持中的操作人员入口。
 
 ---
 
@@ -328,7 +328,7 @@ go test ./...
 ## 当前限制与边界
 
 - Go 版已经可以替代 Python 主链路，但不是历史兼容层逐字复刻
-- React + Vite web control plane（`http://localhost:8123`）是当前唯一 active operator surface，且当前操作 UI 为中文；browser upload / paste workflow 是当前唯一文档化且默认的 intake 路径；workflow/template 管理也以该 browser UI 的组件化界面为主，前端基础设施采用 Material UI 与 React Flow；CLI 仅作为开发/调试支持保留，对外可调用入口以该 browser UI 与现有 automation、rewrite、workspace/review/publish 接口为主
+- React + Vite web control plane（`http://localhost:8123`）是当前唯一 active operator surface，且当前操作 UI 为中文；browser upload / paste workflow 是当前唯一文档化、默认且面向操作人员的 intake 路径；workflow/template 管理也以该 browser UI 的组件化界面为主，前端基础设施采用 Material UI 与 React Flow；CLI 仅作为开发/调试支持保留，对外可调用入口以该 browser UI 与现有 automation、rewrite、workspace/review/publish 接口为主
 - 默认自动化结果停在 draft + render；review / publish 作为后续可选人工步骤保留
 - 归档项目里的采集/ingestion 文档仍保留历史语义，不代表根目录 Go runtime 的当前对外接口
 - automation daemon 目前是单进程内模型，不是外部 supervisor 模型
@@ -380,7 +380,7 @@ go test ./...
 - 已完成对 `Archive/ArticleWashing/`（Python 版）的主链路功能等价替代
 - 可以作为当前默认主实现使用
 - 当前唯一 active operator surface 是 `8123` 上的 React + Vite web control plane，且其操作 UI 以中文为主
-- 根目录 Go runtime 当前以 browser upload / paste 作为默认 intake 主路径
+- 根目录 Go runtime 当前以 browser upload / paste 作为默认且唯一面向操作人员的 intake 主路径
 - workflow/template 管理以浏览器中的组件化界面为主，前端基础设施采用 Material UI 与 React Flow
 - 业务配置以数据库中的 runtime state 为准
 - 默认自动化链产物为 draft + render，review / publish 不会自动触发

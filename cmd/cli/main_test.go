@@ -40,10 +40,12 @@ func TestCLIIsDownscopedFromPrimaryOperatorSurface(t *testing.T) {
 	assert.Empty(t, stdout.String())
 	assert.Contains(t, stderr.String(), "web control plane")
 	assert.Contains(t, stderr.String(), "http://localhost:8123")
+	assert.Contains(t, stderr.String(), "only active operator intake")
 	assert.Contains(t, stderr.String(), "browser upload/paste")
 	assert.Contains(t, stderr.String(), "workflow/template")
 	assert.Contains(t, stderr.String(), "development/debug")
-	assert.NotContains(t, stderr.String(), "folder intake")
+	assert.Contains(t, stderr.String(), "folder-intake remains backend/internal compatibility only")
+	assert.NotContains(t, stderr.String(), "static shell")
 }
 
 func TestWorkspaceShowConfigCommandPrintsWorkspaceConfig(t *testing.T) {

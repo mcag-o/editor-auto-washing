@@ -33,7 +33,7 @@ func main() {
 }
 
 func startupMessage() string {
-	return fmt.Sprintf("content-hub server starting: React web control plane on http://localhost:%d as the primary operator surface; browser upload/paste is the only active operator intake; CLI remains development/debug support and folder-intake is backend/internal compatibility only", webControlPlanePort)
+	return fmt.Sprintf("content-hub server starting: React web control plane on http://localhost:%d as the primary operator surface; browser upload/paste is the only active operator intake; workflow/template management stays in the browser UI; CLI remains development/debug support and folder-intake is backend/internal compatibility only", webControlPlanePort)
 }
 
 func run() error {
