@@ -33,7 +33,15 @@ func (r *stubSourceProcessingRepo) Update(_ context.Context, doc *domain.SourceD
 	return nil
 }
 
+func (r *stubSourceProcessingRepo) UpdateIfStatus(ctx context.Context, doc *domain.SourceDocument, _ ...string) error {
+	return r.Update(ctx, doc)
+}
+
 func (r *stubSourceProcessingRepo) Delete(context.Context, string) error {
+	return nil
+}
+
+func (r *stubSourceProcessingRepo) DeleteIfStatus(context.Context, string, ...string) error {
 	return nil
 }
 

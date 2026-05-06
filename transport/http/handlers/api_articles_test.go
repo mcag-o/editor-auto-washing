@@ -1124,6 +1124,57 @@ func TestAPIArticlesDeleteKeepsWorkflowRecordsWhenSourceDeleteFails(t *testing.T
 	require.Len(t, storedStages, 1)
 }
 
+func TestAPIArticlesDeleteWorkflowCleanupFailureRecordsAuditContext(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	sourceRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
+	runRepo := &stubRewritePipelineRunRepo{}
+	stageRepo := &stubRewriteStageRunRepo{deleteErr: domain.NewInternalErr("workflow cleanup failed", nil)}
+	auditRepo := &stubAuditLogRepo{}
+	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-1")
+	now := time.Now().UTC()
+	doc.Status = domain.SourceDocumentStatusPaused
+	doc.RewriteRunID = "run-1"
+	doc.ClaimedBy = "worker-1"
+	doc.ClaimedAt = &now
+	doc.ProcessingStartedAt = &now
+	require.NoError(t, sourceRepo.Create(t.Context(), doc))
+	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", doc.ID, "wechat-longform", "sspai")
+	run.ID = doc.RewriteRunID
+	require.NoError(t, runRepo.Create(t.Context(), run))
+
+	handler := NewAPIArticlesHandler(
+		service.NewArticleQueryService(sourceRepo),
+		runRepo,
+		stageRepo,
+		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		auditRepo,
+		&stubSystemControlStateRepo{},
+	)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.DELETE("/api/articles/:id", handler.Delete)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/articles/"+doc.ID, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	_, err := sourceRepo.GetByID(t.Context(), doc.ID)
+	require.Error(t, err)
+	storedRun, err := runRepo.GetByID(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Equal(t, run.ID, storedRun.ID)
+	require.Len(t, auditRepo.logs, 1)
+	require.Equal(t, "web_control.article.delete", auditRepo.logs[0].Action)
+	require.Equal(t, "failure", auditRepo.logs[0].Result)
+	require.Equal(t, "source deletion succeeded but workflow cleanup failed", auditRepo.logs[0].Message)
+	require.Equal(t, true, auditRepo.logs[0].Metadata["source_deleted"])
+	require.Equal(t, true, auditRepo.logs[0].Metadata["workflow_cleanup_failed"])
+	require.Equal(t, "run-1", auditRepo.logs[0].Metadata["workflow_run_id"])
+}
+
 func TestAPIArticlesAssignWorkflowTemplateRejectsDisabledWorkflow(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	sourceRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}

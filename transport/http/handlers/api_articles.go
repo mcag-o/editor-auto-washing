@@ -282,6 +282,12 @@ func (h *APIArticlesHandler) Delete(c *gin.Context) {
 	}
 	if runID != "" {
 		if err := h.deleteWorkflowExecution(c.Request.Context(), runID); err != nil {
+			h.recordArticleAuditBestEffort(c.Request.Context(), item, "delete", "failure", "source deletion succeeded but workflow cleanup failed", map[string]any{
+				"workflow_records_deleted": false,
+				"source_deleted":           true,
+				"workflow_cleanup_failed":  true,
+				"workflow_run_id":          runID,
+			})
 			HandleError(c, err)
 			return
 		}

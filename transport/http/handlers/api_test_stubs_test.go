@@ -411,7 +411,8 @@ func (r *stubRewritePipelineRunRepo) List(_ context.Context, limit int) ([]domai
 }
 
 type stubRewriteStageRunRepo struct {
-	stages map[string][]*domain.RewriteStageRun
+	stages    map[string][]*domain.RewriteStageRun
+	deleteErr error
 }
 
 func (r *stubRewriteStageRunRepo) Create(_ context.Context, run *domain.RewriteStageRun) error {
@@ -432,6 +433,9 @@ func (r *stubRewriteStageRunRepo) ListByPipelineRunID(_ context.Context, pipelin
 }
 
 func (r *stubRewriteStageRunRepo) DeleteByPipelineRunID(_ context.Context, pipelineRunID string) error {
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
 	if r.stages == nil {
 		return nil
 	}

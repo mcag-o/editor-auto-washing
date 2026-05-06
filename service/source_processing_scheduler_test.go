@@ -40,7 +40,15 @@ func (r *stubSourceProcessingSchedulerRepo) Update(_ context.Context, doc *domai
 	return nil
 }
 
+func (r *stubSourceProcessingSchedulerRepo) UpdateIfStatus(ctx context.Context, doc *domain.SourceDocument, _ ...string) error {
+	return r.Update(ctx, doc)
+}
+
 func (r *stubSourceProcessingSchedulerRepo) Delete(context.Context, string) error {
+	return nil
+}
+
+func (r *stubSourceProcessingSchedulerRepo) DeleteIfStatus(context.Context, string, ...string) error {
 	return nil
 }
 
