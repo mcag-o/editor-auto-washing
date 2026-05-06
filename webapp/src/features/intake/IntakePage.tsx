@@ -111,9 +111,9 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
             >
               <Stack spacing={1.5} alignItems={{ xs: 'flex-start', md: 'center' }} textAlign={{ xs: 'left', md: 'center' }}>
                 <FileUploadRoundedIcon color="primary" sx={{ fontSize: 36 }} />
-                <Typography variant="h4">拖拽或选择文件导入</Typography>
+                <Typography variant="h4">选择文件导入</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  仅接受 {allowedTypesLabel} 文件，不展示 URL 导入表单。
+                  通过文件选择器导入内容，当前仅接受 {allowedTypesLabel} 文件，不展示 URL 导入表单。
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
                   <Button variant="contained" onClick={handleChooseFiles}>

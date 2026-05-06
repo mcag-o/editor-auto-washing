@@ -27,7 +27,7 @@ import { useTheme } from '@mui/material/styles';
 
 const drawerWidth = 248;
 
-export type AppPage = 'dashboard' | 'intake' | 'articles';
+export type AppPage = 'dashboard' | 'intake' | 'articles' | 'workflows' | 'audit' | 'settings';
 
 const navigationItems = [
   { key: 'dashboard' as const, label: '控制台总览', icon: <AppsRoundedIcon fontSize="small" /> },
@@ -87,7 +87,14 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
             key={item.key}
             selected={item.key === currentPage}
             onClick={() => {
-              if (item.key === 'dashboard' || item.key === 'intake' || item.key === 'articles') {
+              if (
+                item.key === 'dashboard' ||
+                item.key === 'intake' ||
+                item.key === 'articles' ||
+                item.key === 'workflows' ||
+                item.key === 'audit' ||
+                item.key === 'settings'
+              ) {
                 onNavigate(item.key);
               }
               handleCloseMobileNav();

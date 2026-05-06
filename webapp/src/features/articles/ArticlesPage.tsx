@@ -5,6 +5,7 @@ import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
+import InputAdornment from '@mui/material/InputAdornment';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -130,7 +131,13 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
                     setKeyword(event.target.value);
                     setPage(0);
                   }}
-                  InputProps={{ startAdornment: <SearchRoundedIcon fontSize="small" color="action" sx={{ mr: 1 }} /> }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchRoundedIcon fontSize="small" color="action" />
+                      </InputAdornment>
+                    ),
+                  }}
                   sx={{ minWidth: { md: 280 } }}
                 />
               </Stack>
