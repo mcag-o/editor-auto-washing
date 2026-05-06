@@ -155,6 +155,7 @@ type LLMProfileRepo interface {
 }
 
 type WorkflowDefinitionRepo interface {
+	Create(ctx context.Context, workflow *domain.WorkflowDefinition) error
 	Upsert(ctx context.Context, workflow *domain.WorkflowDefinition) error
 	GetByID(ctx context.Context, id string) (*domain.WorkflowDefinition, error)
 	List(ctx context.Context, limit int) ([]domain.WorkflowDefinition, error)
@@ -162,6 +163,7 @@ type WorkflowDefinitionRepo interface {
 }
 
 type TemplateDefinitionRepo interface {
+	Create(ctx context.Context, template *domain.TemplateDefinition) error
 	Upsert(ctx context.Context, template *domain.TemplateDefinition) error
 	GetByID(ctx context.Context, id string) (*domain.TemplateDefinition, error)
 	List(ctx context.Context, limit int) ([]domain.TemplateDefinition, error)

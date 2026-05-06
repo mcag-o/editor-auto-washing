@@ -6,7 +6,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -14,7 +16,15 @@ var _ repo.WorkflowDefinitionRepo = (*workflowDefinitionRepo)(nil)
 
 type workflowDefinitionRepo struct{ db *sql.DB }
 
+func (r *workflowDefinitionRepo) Create(ctx context.Context, workflow *domain.WorkflowDefinition) error {
+	return r.write(ctx, workflow, false)
+}
+
 func (r *workflowDefinitionRepo) Upsert(ctx context.Context, workflow *domain.WorkflowDefinition) error {
+	return r.write(ctx, workflow, true)
+}
+
+func (r *workflowDefinitionRepo) write(ctx context.Context, workflow *domain.WorkflowDefinition, upsert bool) error {
 	if err := workflow.Validate(); err != nil {
 		return err
 	}
@@ -27,9 +37,11 @@ func (r *workflowDefinitionRepo) Upsert(ctx context.Context, workflow *domain.Wo
 	if err != nil {
 		return fmt.Errorf("marshal workflow definition edges: %w", err)
 	}
-	_, err = r.db.ExecContext(ctx, `
+	query := `
 		INSERT INTO workflow_definitions (id, name, description, version, enabled, entry_node_id, nodes_json, edges_json, updated_by, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	if upsert {
+		query += `
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
 			description = excluded.description,
@@ -39,12 +51,31 @@ func (r *workflowDefinitionRepo) Upsert(ctx context.Context, workflow *domain.Wo
 			nodes_json = excluded.nodes_json,
 			edges_json = excluded.edges_json,
 			updated_by = excluded.updated_by,
-			updated_at = excluded.updated_at
-	`, workflow.ID, workflow.Name, workflow.Description, workflow.Version, boolToInt(workflow.Enabled), workflow.EntryNodeID, string(nodesJSON), string(edgesJSON), workflow.UpdatedBy, workflow.UpdatedAt.Format(time.RFC3339Nano))
+			updated_at = excluded.updated_at`
+	}
+	_, err = r.db.ExecContext(ctx, query,
+		workflow.ID, workflow.Name, workflow.Description, workflow.Version, boolToInt(workflow.Enabled), workflow.EntryNodeID, string(nodesJSON), string(edgesJSON), workflow.UpdatedBy, workflow.UpdatedAt.Format(time.RFC3339Nano))
 	if err != nil {
-		return fmt.Errorf("upsert workflow definition: %w", err)
+		if !upsert && isSQLitePrimaryKeyConflict(err) {
+			return domain.NewConflictErr("workflow definition already exists")
+		}
+		if upsert {
+			return fmt.Errorf("upsert workflow definition: %w", err)
+		}
+		return fmt.Errorf("create workflow definition: %w", err)
 	}
 	return nil
+}
+
+func isSQLitePrimaryKeyConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	var sqliteErr interface{ Error() string }
+	if errors.As(err, &sqliteErr) && strings.Contains(strings.ToLower(sqliteErr.Error()), "unique constraint failed") {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "unique constraint failed")
 }
 
 func (r *workflowDefinitionRepo) GetByID(ctx context.Context, id string) (*domain.WorkflowDefinition, error) {

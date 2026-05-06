@@ -14,6 +14,10 @@ func NewTemplateDefinitionService(r repo.TemplateDefinitionRepo) *TemplateDefini
 	return &TemplateDefinitionService{repo: r}
 }
 
+func (s *TemplateDefinitionService) Create(ctx context.Context, template *domain.TemplateDefinition) error {
+	return s.repo.Create(ctx, template)
+}
+
 func (s *TemplateDefinitionService) Upsert(ctx context.Context, template *domain.TemplateDefinition) error {
 	return s.repo.Upsert(ctx, template)
 }

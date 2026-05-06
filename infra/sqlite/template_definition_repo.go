@@ -14,7 +14,15 @@ var _ repo.TemplateDefinitionRepo = (*templateDefinitionRepo)(nil)
 
 type templateDefinitionRepo struct{ db *sql.DB }
 
+func (r *templateDefinitionRepo) Create(ctx context.Context, template *domain.TemplateDefinition) error {
+	return r.write(ctx, template, false)
+}
+
 func (r *templateDefinitionRepo) Upsert(ctx context.Context, template *domain.TemplateDefinition) error {
+	return r.write(ctx, template, true)
+}
+
+func (r *templateDefinitionRepo) write(ctx context.Context, template *domain.TemplateDefinition, upsert bool) error {
 	if err := template.Validate(); err != nil {
 		return err
 	}
@@ -24,9 +32,11 @@ func (r *templateDefinitionRepo) Upsert(ctx context.Context, template *domain.Te
 	}
 	template.VariablesJSON = variablesJSON
 	template.UpdatedAt = time.Now().UTC()
-	_, err = r.db.ExecContext(ctx, `
+	query := `
 		INSERT INTO template_definitions (id, name, type, version, enabled, content, variables_json, updated_by, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	if upsert {
+		query += `
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
 			type = excluded.type,
@@ -35,10 +45,18 @@ func (r *templateDefinitionRepo) Upsert(ctx context.Context, template *domain.Te
 			content = excluded.content,
 			variables_json = excluded.variables_json,
 			updated_by = excluded.updated_by,
-			updated_at = excluded.updated_at
-	`, template.ID, template.Name, template.Type, template.Version, boolToInt(template.Enabled), template.Content, template.VariablesJSON, template.UpdatedBy, template.UpdatedAt.Format(time.RFC3339Nano))
+			updated_at = excluded.updated_at`
+	}
+	_, err = r.db.ExecContext(ctx, query,
+		template.ID, template.Name, template.Type, template.Version, boolToInt(template.Enabled), template.Content, template.VariablesJSON, template.UpdatedBy, template.UpdatedAt.Format(time.RFC3339Nano))
 	if err != nil {
-		return fmt.Errorf("upsert template definition: %w", err)
+		if !upsert && isSQLitePrimaryKeyConflict(err) {
+			return domain.NewConflictErr("template definition already exists")
+		}
+		if upsert {
+			return fmt.Errorf("upsert template definition: %w", err)
+		}
+		return fmt.Errorf("create template definition: %w", err)
 	}
 	return nil
 }

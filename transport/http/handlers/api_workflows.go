@@ -4,7 +4,6 @@ import (
 	"content-hub/domain"
 	"content-hub/pkg/id"
 	"content-hub/service"
-	"errors"
 	"net/http"
 	"strings"
 
@@ -27,19 +26,8 @@ func (h *APIWorkflowsHandler) Create(c *gin.Context) {
 	}
 	if strings.TrimSpace(workflow.ID) == "" {
 		workflow.ID = id.New()
-	} else {
-		if _, err := h.svc.GetByID(c.Request.Context(), workflow.ID); err == nil {
-			HandleError(c, domain.NewConflictErr("workflow definition already exists"))
-			return
-		} else {
-			var appErr *domain.AppError
-			if !errors.As(err, &appErr) || appErr.Code != domain.ErrNotFound {
-				HandleError(c, err)
-				return
-			}
-		}
 	}
-	if err := h.svc.Upsert(c.Request.Context(), &workflow); err != nil {
+	if err := h.svc.Create(c.Request.Context(), &workflow); err != nil {
 		HandleError(c, err)
 		return
 	}

@@ -14,6 +14,10 @@ func NewWorkflowTemplateService(r repo.WorkflowDefinitionRepo) *WorkflowTemplate
 	return &WorkflowTemplateService{repo: r}
 }
 
+func (s *WorkflowTemplateService) Create(ctx context.Context, workflow *domain.WorkflowDefinition) error {
+	return s.repo.Create(ctx, workflow)
+}
+
 func (s *WorkflowTemplateService) Upsert(ctx context.Context, workflow *domain.WorkflowDefinition) error {
 	return s.repo.Upsert(ctx, workflow)
 }

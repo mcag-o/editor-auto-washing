@@ -18,10 +18,34 @@ import (
 type workflowDefinitionRepoStub struct {
 	stored    *domain.WorkflowDefinition
 	list      []domain.WorkflowDefinition
+	created   *domain.WorkflowDefinition
+	createErr error
 	upsertErr error
 	getErr    error
 	listErr   error
 	deleteErr error
+}
+
+func (r *workflowDefinitionRepoStub) Create(_ context.Context, workflow *domain.WorkflowDefinition) error {
+	r.created = workflow
+	if r.createErr != nil {
+		return r.createErr
+	}
+	r.stored = workflow
+	if workflow != nil {
+		replaced := false
+		for i := range r.list {
+			if r.list[i].ID == workflow.ID {
+				r.list[i] = *workflow
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			r.list = append(r.list, *workflow)
+		}
+	}
+	return nil
 }
 
 func (r *workflowDefinitionRepoStub) Upsert(_ context.Context, workflow *domain.WorkflowDefinition) error {
@@ -145,21 +169,7 @@ func TestAPIWorkflowsCreateWithoutIDGeneratesNonEmptyID(t *testing.T) {
 
 func TestAPIWorkflowsCreateWithExistingExplicitIDReturnsConflict(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
-	repo := &workflowDefinitionRepoStub{}
-	require.NoError(t, repo.Upsert(t.Context(), &domain.WorkflowDefinition{
-		ID:          "wf-1",
-		Name:        "Existing workflow",
-		Description: "Mainline graph",
-		Version:     "v1",
-		Enabled:     true,
-		EntryNodeID: "start-1",
-		Nodes: []domain.WorkflowNode{{
-			ID:         "start-1",
-			Type:       "start",
-			Name:       "Start",
-			ConfigJSON: `{}`,
-		}},
-	}))
+	repo := &workflowDefinitionRepoStub{createErr: domain.NewConflictErr("workflow definition already exists")}
 	svc := service.NewWorkflowTemplateService(repo)
 	handler := NewAPIWorkflowsHandler(svc)
 
@@ -175,8 +185,10 @@ func TestAPIWorkflowsCreateWithExistingExplicitIDReturnsConflict(t *testing.T) {
 
 	require.Equal(t, http.StatusConflict, w.Code)
 	require.Contains(t, w.Body.String(), domain.ErrConflict)
-	require.Equal(t, "Existing workflow", repo.stored.Name)
-	require.Len(t, repo.list, 1)
+	require.NotNil(t, repo.created)
+	require.Equal(t, "wf-1", repo.created.ID)
+	require.Nil(t, repo.stored)
+	require.Empty(t, repo.list)
 }
 
 func TestAPIWorkflowsCreateWithExplicitNewIDStillSucceeds(t *testing.T) {

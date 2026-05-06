@@ -39,7 +39,7 @@ func TestWorkflowDefinitionRepoCreateAndGet(t *testing.T) {
 		UpdatedBy: "tester",
 	}
 
-	require.NoError(t, provider.WorkflowDefinitionRepo().Upsert(t.Context(), wf))
+	require.NoError(t, provider.WorkflowDefinitionRepo().Create(t.Context(), wf))
 
 	stored, err := provider.WorkflowDefinitionRepo().GetByID(t.Context(), wf.ID)
 	require.NoError(t, err)
@@ -52,6 +52,24 @@ func TestWorkflowDefinitionRepoCreateAndGet(t *testing.T) {
 	require.Equal(t, wf.Edges[0].Condition, stored.Edges[0].Condition)
 	require.Equal(t, wf.UpdatedBy, stored.UpdatedBy)
 	require.False(t, stored.UpdatedAt.IsZero())
+}
+
+func TestWorkflowDefinitionRepoCreateReturnsConflictOnDuplicateID(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	wf := &domain.WorkflowDefinition{
+		ID:          id.New(),
+		Name:        "默认流程",
+		Version:     "v1",
+		EntryNodeID: "start-1",
+		Nodes:       []domain.WorkflowNode{{ID: "start-1", Type: "start", Name: "开始"}},
+	}
+
+	require.NoError(t, provider.WorkflowDefinitionRepo().Create(t.Context(), wf))
+	err := provider.WorkflowDefinitionRepo().Create(t.Context(), wf)
+	require.Error(t, err)
+	appErr, ok := err.(*domain.AppError)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrConflict, appErr.Code)
 }
 
 func TestWorkflowDefinitionRepoListOrdersLatestUpdateFirst(t *testing.T) {
@@ -135,7 +153,7 @@ func TestTemplateDefinitionRepoRoundTripsValidVariablesJSON(t *testing.T) {
 		UpdatedBy:     "tester",
 	}
 
-	require.NoError(t, provider.TemplateDefinitionRepo().Upsert(t.Context(), tpl))
+	require.NoError(t, provider.TemplateDefinitionRepo().Create(t.Context(), tpl))
 
 	stored, err := provider.TemplateDefinitionRepo().GetByID(t.Context(), tpl.ID)
 	require.NoError(t, err)
@@ -148,6 +166,26 @@ func TestTemplateDefinitionRepoRoundTripsValidVariablesJSON(t *testing.T) {
 	require.Len(t, list, 1)
 	require.Equal(t, tpl.ID, list[0].ID)
 	require.Equal(t, tpl.Name, list[0].Name)
+}
+
+func TestTemplateDefinitionRepoCreateReturnsConflictOnDuplicateID(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	tpl := &domain.TemplateDefinition{
+		ID:            id.New(),
+		Name:          "标题模板",
+		Type:          "prompt",
+		Version:       "v1",
+		Enabled:       true,
+		Content:       "标题：{{title}}",
+		VariablesJSON: []byte(`{"title":"string"}`),
+	}
+
+	require.NoError(t, provider.TemplateDefinitionRepo().Create(t.Context(), tpl))
+	err := provider.TemplateDefinitionRepo().Create(t.Context(), tpl)
+	require.Error(t, err)
+	appErr, ok := err.(*domain.AppError)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrConflict, appErr.Code)
 }
 
 func TestTemplateDefinitionRepoNormalizesEmptyVariablesJSON(t *testing.T) {

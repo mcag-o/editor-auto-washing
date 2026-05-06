@@ -12,7 +12,9 @@ import (
 type stubWorkflowDefinitionRepo struct {
 	stored    *domain.WorkflowDefinition
 	list      []domain.WorkflowDefinition
+	created   *domain.WorkflowDefinition
 	upsert    *domain.WorkflowDefinition
+	createErr error
 	deleteErr error
 	upsertErr error
 	getErr    error
@@ -20,6 +22,18 @@ type stubWorkflowDefinitionRepo struct {
 	deletedID string
 	gotID     string
 	gotLimit  int
+}
+
+func (r *stubWorkflowDefinitionRepo) Create(_ context.Context, workflow *domain.WorkflowDefinition) error {
+	r.created = workflow
+	if r.createErr != nil {
+		return r.createErr
+	}
+	r.stored = workflow
+	if workflow != nil {
+		r.list = []domain.WorkflowDefinition{*workflow}
+	}
+	return nil
 }
 
 func (r *stubWorkflowDefinitionRepo) Upsert(_ context.Context, workflow *domain.WorkflowDefinition) error {
@@ -73,11 +87,11 @@ func TestWorkflowTemplateServiceCreateAndList(t *testing.T) {
 	svc := NewWorkflowTemplateService(repo)
 	wf := &domain.WorkflowDefinition{ID: "wf-1", Name: "默认流程", Version: "v1", EntryNodeID: "start-1", Nodes: []domain.WorkflowNode{{ID: "start-1", Type: "start", Name: "开始"}}}
 
-	require.NoError(t, svc.Upsert(t.Context(), wf))
+	require.NoError(t, svc.Create(t.Context(), wf))
 	list, err := svc.List(t.Context(), 10)
 	require.NoError(t, err)
 	require.Len(t, list, 1)
-	require.Same(t, wf, repo.upsert)
+	require.Same(t, wf, repo.created)
 	require.Equal(t, 10, repo.gotLimit)
 	require.Equal(t, wf.ID, list[0].ID)
 }
@@ -106,6 +120,7 @@ func TestWorkflowTemplateServiceDelete(t *testing.T) {
 
 func TestWorkflowTemplateServicePropagatesRepoErrors(t *testing.T) {
 	repo := &stubWorkflowDefinitionRepo{
+		createErr: errors.New("create failed"),
 		upsertErr: errors.New("upsert failed"),
 		deleteErr: errors.New("delete failed"),
 		getErr:    errors.New("get failed"),
@@ -114,6 +129,7 @@ func TestWorkflowTemplateServicePropagatesRepoErrors(t *testing.T) {
 	svc := NewWorkflowTemplateService(repo)
 	wf := &domain.WorkflowDefinition{ID: "wf-1", Name: "默认流程", Version: "v1", EntryNodeID: "start-1", Nodes: []domain.WorkflowNode{{ID: "start-1", Type: "start", Name: "开始"}}}
 
+	require.ErrorIs(t, svc.Create(t.Context(), wf), repo.createErr)
 	require.ErrorIs(t, svc.Upsert(t.Context(), wf), repo.upsertErr)
 	require.ErrorIs(t, svc.Delete(t.Context(), wf.ID), repo.deleteErr)
 	_, err := svc.GetByID(t.Context(), wf.ID)

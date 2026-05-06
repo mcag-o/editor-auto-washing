@@ -18,10 +18,34 @@ import (
 type templateDefinitionRepoStub struct {
 	stored    *domain.TemplateDefinition
 	list      []domain.TemplateDefinition
+	created   *domain.TemplateDefinition
+	createErr error
 	upsertErr error
 	getErr    error
 	listErr   error
 	deleteErr error
+}
+
+func (r *templateDefinitionRepoStub) Create(_ context.Context, template *domain.TemplateDefinition) error {
+	r.created = template
+	if r.createErr != nil {
+		return r.createErr
+	}
+	r.stored = template
+	if template != nil {
+		replaced := false
+		for i := range r.list {
+			if r.list[i].ID == template.ID {
+				r.list[i] = *template
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			r.list = append(r.list, *template)
+		}
+	}
+	return nil
 }
 
 func (r *templateDefinitionRepoStub) Upsert(_ context.Context, template *domain.TemplateDefinition) error {
@@ -146,16 +170,7 @@ func TestAPITemplatesCreateWithoutIDGeneratesNonEmptyID(t *testing.T) {
 
 func TestAPITemplatesCreateWithExistingExplicitIDReturnsConflict(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
-	repo := &templateDefinitionRepoStub{}
-	require.NoError(t, repo.Upsert(t.Context(), &domain.TemplateDefinition{
-		ID:            "tpl-1",
-		Name:          "Existing template",
-		Type:          "prompt",
-		Version:       "v1",
-		Enabled:       true,
-		Content:       "Write a draft for {{title}}",
-		VariablesJSON: []byte(`{"title":"string"}`),
-	}))
+	repo := &templateDefinitionRepoStub{createErr: domain.NewConflictErr("template definition already exists")}
 	svc := service.NewTemplateDefinitionService(repo)
 	handler := NewAPITemplatesHandler(svc)
 
@@ -171,8 +186,10 @@ func TestAPITemplatesCreateWithExistingExplicitIDReturnsConflict(t *testing.T) {
 
 	require.Equal(t, http.StatusConflict, w.Code)
 	require.Contains(t, w.Body.String(), domain.ErrConflict)
-	require.Equal(t, "Existing template", repo.stored.Name)
-	require.Len(t, repo.list, 1)
+	require.NotNil(t, repo.created)
+	require.Equal(t, "tpl-1", repo.created.ID)
+	require.Nil(t, repo.stored)
+	require.Empty(t, repo.list)
 }
 
 func TestAPITemplatesCreateWithExplicitNewIDStillSucceeds(t *testing.T) {
