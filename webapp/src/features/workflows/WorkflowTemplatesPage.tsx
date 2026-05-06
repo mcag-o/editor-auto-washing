@@ -31,7 +31,7 @@ import StatusChip from '../../components/StatusChip';
 import WorkflowEdgePanel, { type WorkflowEdgeSummary } from './components/WorkflowEdgePanel';
 import WorkflowGraphPanel, { type WorkflowCanvasNodeData } from './components/WorkflowGraphPanel';
 import WorkflowListPanel, { type WorkflowTemplateSummary } from './components/WorkflowListPanel';
-import WorkflowNodeDrawer, { type WorkflowNodeFormValue, type WorkflowNodeType } from './components/WorkflowNodeDrawer';
+import WorkflowNodeDrawer, { commonWorkflowNodeTypes, type WorkflowNodeFormValue, type WorkflowNodeType } from './components/WorkflowNodeDrawer';
 import WorkflowToolbar from './components/WorkflowToolbar';
 
 type WorkflowTemplate = WorkflowFormTemplate & { updatedAtLabel: string };
@@ -125,8 +125,8 @@ function renderNodes(nodes: Array<Node<WorkflowCanvasNodeData>>, entryNodeId: st
 }
 
 function workflowNodeType(type: string): WorkflowNodeType {
-  if (type === 'input' || type === 'rewrite' || type === 'review' || type === 'render') {
-    return type;
+  if (commonWorkflowNodeTypes.includes(type as WorkflowNodeType)) {
+    return type as WorkflowNodeType;
   }
   return 'rewrite';
 }
@@ -200,12 +200,13 @@ export default function WorkflowTemplatesPage() {
   const selectedEdge = selectedTemplate?.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
 
   const selectedNodeFormValue: WorkflowNodeFormValue | null = selectedNode
-    ? {
-        label: selectedNode.data.label,
-        type: selectedNode.data.type,
-        template: selectedNode.data.template,
-        model: selectedNode.data.model,
-        context: selectedNode.data.context,
+      ? {
+          label: selectedNode.data.label,
+          type: selectedNode.data.type,
+          rawType: selectedNode.data.rawType || selectedNode.data.type,
+          template: selectedNode.data.template,
+          model: selectedNode.data.model,
+          context: selectedNode.data.context,
       }
     : null;
 
@@ -342,14 +343,31 @@ export default function WorkflowTemplatesPage() {
               ...node,
               data: {
                 ...node.data,
-                [field]: value,
-                rawType: field === 'type' ? value : node.data.rawType,
+                ...mapNodeFieldChange(node.data, field, value),
               } as WorkflowCanvasNodeData,
             }
           : node,
       ),
     }));
   };
+
+  function mapNodeFieldChange<K extends keyof WorkflowNodeFormValue>(
+    current: WorkflowCanvasNodeData,
+    field: K,
+    value: WorkflowNodeFormValue[K],
+  ): Partial<WorkflowCanvasNodeData> {
+    if (field === 'rawType') {
+      const rawType = String(value).trim();
+      return {
+        rawType,
+        type: workflowNodeType(rawType),
+      };
+    }
+
+    return {
+      [field]: value,
+    } as Partial<WorkflowCanvasNodeData>;
+  }
 
   const graphNodes = useMemo(
     () =>

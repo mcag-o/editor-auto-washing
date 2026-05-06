@@ -1,16 +1,18 @@
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
-import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import PageCard from '../../../components/PageCard';
 
-export type WorkflowNodeType = 'input' | 'rewrite' | 'review' | 'render';
+export const commonWorkflowNodeTypes = ['input', 'rewrite', 'review', 'render'] as const;
+
+export type WorkflowNodeType = (typeof commonWorkflowNodeTypes)[number];
 
 export type WorkflowNodeFormValue = {
   label: string;
   type: WorkflowNodeType;
+  rawType: string;
   template: string;
   model: string;
   context: string;
@@ -23,12 +25,12 @@ type WorkflowNodeDrawerProps = {
   onChange: <K extends keyof WorkflowNodeFormValue>(field: K, nextValue: WorkflowNodeFormValue[K]) => void;
 };
 
-const nodeTypeOptions: Array<{ value: WorkflowNodeType; label: string }> = [
-  { value: 'input', label: '导入节点' },
-  { value: 'rewrite', label: '改写节点' },
-  { value: 'review', label: '审核节点' },
-  { value: 'render', label: '渲染节点' },
-];
+const nodeTypeLabels: Record<WorkflowNodeType, string> = {
+  input: '导入节点',
+  rewrite: '改写节点',
+  review: '审核节点',
+  render: '渲染节点',
+};
 
 export default function WorkflowNodeDrawer({
   entryNodeLabel,
@@ -59,13 +61,22 @@ export default function WorkflowNodeDrawer({
 
           <TextField label="节点名称" value={value.label} onChange={(event) => onChange('label', event.target.value)} fullWidth />
 
-          <TextField select label="节点类型" value={value.type} onChange={(event) => onChange('type', event.target.value as WorkflowNodeType)} fullWidth>
-            {nodeTypeOptions.map((option) => (
-              <MenuItem key={option.value} value={option.value}>
-                {option.label}
-              </MenuItem>
+          <TextField
+            label="节点类型"
+            value={value.rawType}
+            onChange={(event) => onChange('rawType', event.target.value)}
+            helperText={commonWorkflowNodeTypes.includes(value.rawType as WorkflowNodeType) ? '常用类型可直接输入或从浏览器自动补全中选择。' : '保留当前后端类型值，保存时将原样写回。'}
+            placeholder="例如：rewrite、review、moderate"
+            inputProps={{ list: 'workflow-node-type-options' }}
+            fullWidth
+          />
+          <datalist id="workflow-node-type-options">
+            {commonWorkflowNodeTypes.map((type) => (
+              <option key={type} value={type}>
+                {nodeTypeLabels[type]}
+              </option>
             ))}
-          </TextField>
+          </datalist>
 
           <TextField
             label="模板标识"
