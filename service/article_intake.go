@@ -26,6 +26,11 @@ type ArticleIntakeResult struct {
 type ArticleIntakeService struct {
 	workspaces workspaceArticleWriter
 	rewrite    rewriteRunner
+	workflows  workflowDefinitionReader
+}
+
+type workflowDefinitionReader interface {
+	GetByID(context.Context, string) (*domain.WorkflowDefinition, error)
 }
 
 type workspaceArticleWriter interface {
@@ -34,6 +39,10 @@ type workspaceArticleWriter interface {
 
 func NewArticleIntakeService(workspaces workspaceArticleWriter, rewrite rewriteRunner) *ArticleIntakeService {
 	return &ArticleIntakeService{workspaces: workspaces, rewrite: rewrite}
+}
+
+func NewArticleIntakeServiceWithWorkflows(workspaces workspaceArticleWriter, rewrite rewriteRunner, workflows workflowDefinitionReader) *ArticleIntakeService {
+	return &ArticleIntakeService{workspaces: workspaces, rewrite: rewrite, workflows: workflows}
 }
 
 func (s *ArticleIntakeService) Intake(ctx context.Context, article domain.IntakeArticle) (*domain.ArticleWorkspaceRecord, error) {
@@ -127,6 +136,11 @@ func (s *ArticleIntakeService) intake(ctx context.Context, workspaceArticleID st
 		}
 	}
 
+	rewriteMetadata, err := s.buildRewriteMetadata(ctx, article)
+	if err != nil {
+		return nil, err
+	}
+
 	run, err := s.rewrite.Run(ctx, RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
 		CollectorArticleID: article.ExternalID,
@@ -134,7 +148,7 @@ func (s *ArticleIntakeService) intake(ctx context.Context, workspaceArticleID st
 		TargetType:         article.TargetType,
 		SourceProfile:      article.SourceProfile,
 		Version:            normalizeRewriteProfileVersion(article.RewriteProfileVersion),
-		Metadata:           buildIntakeRewriteMetadata(article),
+		Metadata:           rewriteMetadata,
 	})
 	result := &ArticleIntakeResult{WorkspaceArticle: workspace}
 	if run != nil {
@@ -146,6 +160,41 @@ func (s *ArticleIntakeService) intake(ctx context.Context, workspaceArticleID st
 	}
 
 	return result, nil
+}
+
+func (s *ArticleIntakeService) buildRewriteMetadata(ctx context.Context, article domain.IntakeArticle) (map[string]any, error) {
+	metadata := buildIntakeRewriteMetadata(article)
+	if len(metadata) == 0 {
+		return nil, nil
+	}
+	workflowID, _ := metadata["workflow_template_id"].(string)
+	workflowID = strings.TrimSpace(workflowID)
+	if workflowID == "" || s.workflows == nil {
+		return metadata, nil
+	}
+	workflow, err := s.workflows.GetByID(ctx, workflowID)
+	if err != nil {
+		return nil, fmt.Errorf("load workflow template %s: %w", workflowID, err)
+	}
+	overrides, err := deriveWorkflowStageOverrides(workflow)
+	if err != nil {
+		return nil, fmt.Errorf("derive workflow template %s execution config: %w", workflowID, err)
+	}
+	if len(overrides) == 0 {
+		return metadata, nil
+	}
+	metadata[workflowStageOverridesMetadataKey] = overrides
+	for stageName, override := range overrides {
+		if strings.TrimSpace(override.NodeID) != "" {
+			metadata["workflow_node_"+stageName] = override.NodeID
+		}
+		if strings.TrimSpace(override.PromptRef) != "" {
+			if _, exists := metadata[workflowPromptRefMetadataKey]; !exists {
+				metadata[workflowPromptRefMetadataKey] = override.PromptRef
+			}
+		}
+	}
+	return metadata, nil
 }
 
 func buildIntakeRewriteMetadata(article domain.IntakeArticle) map[string]any {

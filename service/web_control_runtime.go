@@ -152,7 +152,7 @@ func BuildWebControlRuntime(repos *RuntimeRepos) (*WebControlRuntime, error) {
 	audit := NewAuditLogService(repos.AuditLogRepo)
 	control := NewControlStateService(repos.SystemControlStateRepo)
 	rewriteAssembly := buildRewriteAssembly(repos)
-	articleIntake := NewArticleIntakeService(repos.WorkspaceRepo, rewriteAssembly.orchestrator)
+	articleIntake := NewArticleIntakeServiceWithWorkflows(repos.WorkspaceRepo, rewriteAssembly.orchestrator, repos.WorkflowDefinitionRepo)
 	renderer := NewFormattingPipelineService(repos.DraftRepo, repos.AssetRepo, repos.WorkspaceRepo, repos.Formatter).WithRenderedDir(repos.RenderedDir)
 	rewriteRunner := NewArticleIntakeSourceProcessingRewriteRunner(articleIntake)
 	renderRunner := NewFormattingPipelineSourceProcessingRenderRunner(renderer, "")

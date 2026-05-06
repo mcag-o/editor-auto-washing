@@ -163,6 +163,10 @@ func (o *RewriteOrchestrator) executeRun(ctx context.Context, run *domain.Rewrit
 		}
 
 		inputVars := mergeStageVars(vars, stage.InputBindings)
+		for key, value := range run.Metadata {
+			inputVars[key] = value
+		}
+		stage = applyWorkflowOverride(stage, run.Metadata, inputVars)
 		result, err := o.executor.Execute(ctx, stage, StageExecutionInput{Vars: inputVars})
 		if err != nil {
 			return o.failRun(ctx, run, stage, inputVars, err)

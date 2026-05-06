@@ -49,6 +49,23 @@ type stubArticleIntakeRewriteRunner struct {
 	err     error
 }
 
+type stubArticleIntakeWorkflowRepo struct {
+	workflow *domain.WorkflowDefinition
+	err      error
+	gotID    string
+}
+
+func (r *stubArticleIntakeWorkflowRepo) GetByID(_ context.Context, id string) (*domain.WorkflowDefinition, error) {
+	r.gotID = id
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.workflow == nil {
+		return nil, domain.NewNotFoundErr("workflow_definition", id)
+	}
+	return r.workflow, nil
+}
+
 func (r *stubArticleIntakeRewriteRunner) Run(_ context.Context, req RewriteRunRequest) (*domain.RewritePipelineRun, error) {
 	r.called = true
 	r.lastReq = req
@@ -178,4 +195,50 @@ func TestArticleIntakeServiceReturnsExplicitRewriteResult(t *testing.T) {
 	require.NotNil(t, result.RewriteRun)
 	require.Equal(t, "run-1", result.RewriteRun.ID)
 	require.Equal(t, result.RewriteRun.FinalDraftID, result.DraftID)
+}
+
+func TestArticleIntakeServiceCarriesWorkflowSelectionMetadataIntoRewriteRequest(t *testing.T) {
+	workspaceRepo := &stubArticleIntakeWorkspaceRepo{}
+	rewrite := &stubArticleIntakeRewriteRunner{}
+	workflows := &stubArticleIntakeWorkflowRepo{workflow: &domain.WorkflowDefinition{
+		ID:          "workflow-a",
+		Name:        "Workflow A",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "node-generate-draft",
+		Nodes: []domain.WorkflowNode{{
+			ID:         "node-generate-draft",
+			Type:       "rewrite_stage",
+			Name:       "generate_draft",
+			ConfigJSON: `{"stage_name":"generate_draft","prompt_ref":"generate_draft_alt@v2","vars":{"workflow_marker":"workflow-a"}}`,
+		}},
+	}}
+	svc := NewArticleIntakeServiceWithWorkflows(workspaceRepo, rewrite, workflows)
+	article := domain.IntakeArticle{
+		ExternalID:            "guid-1",
+		SourceType:            "rss",
+		SubscriptionID:        "sub-1",
+		Title:                 "Title",
+		Body:                  "Body",
+		Summary:               "Summary",
+		OriginalURL:           "https://example.com/a",
+		TargetType:            "wechat-longform",
+		SourceProfile:         "sspai",
+		RewriteProfileVersion: "latest",
+		Metadata: map[string]any{
+			"workflow_template_id":      "workflow-a",
+			"workflow_prompt_ref":       "generate_draft_alt@v2",
+			"workflow_node_generate_draft": "node-generate-draft",
+		},
+	}
+
+	_, err := svc.Intake(t.Context(), article)
+
+	require.NoError(t, err)
+	require.True(t, rewrite.called)
+	require.Equal(t, "workflow-a", workflows.gotID)
+	require.Equal(t, "workflow-a", rewrite.lastReq.Metadata["workflow_template_id"])
+	require.Equal(t, "generate_draft_alt@v2", rewrite.lastReq.Metadata["workflow_prompt_ref"])
+	require.Equal(t, "node-generate-draft", rewrite.lastReq.Metadata["workflow_node_generate_draft"])
+	require.Contains(t, rewrite.lastReq.Metadata, workflowStageOverridesMetadataKey)
 }

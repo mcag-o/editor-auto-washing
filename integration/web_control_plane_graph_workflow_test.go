@@ -8,6 +8,7 @@ import (
 	"content-hub/service"
 	httpserver "content-hub/transport/http"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -45,7 +46,7 @@ func TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t *testing.T)
 			"id":          "generate_draft",
 			"type":        "rewrite_stage",
 			"name":        "generate_draft",
-			"config_json": `{"prompt_template_id":"template-definition-mainline"}`,
+			"config_json": `{"stage_name":"generate_draft","prompt_ref":"generate_draft_alt@v2","vars":{"workflow_marker":"graph-mainline"}}`,
 		}},
 		"edges":      []map[string]any{},
 		"updated_by": "integration-test",
@@ -97,6 +98,10 @@ func TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t *testing.T)
 		"concurrency_limit": 1,
 	})
 	defer startResp.Body.Close()
+	if startResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(startResp.Body)
+		t.Fatalf("unexpected start status %d: %s", startResp.StatusCode, string(body))
+	}
 	require.Equal(t, http.StatusOK, startResp.StatusCode)
 
 	articleResp, err := http.Get(serverURL + "/api/articles/" + createdDoc.ID)
@@ -125,8 +130,11 @@ func TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t *testing.T)
 	require.NotNil(t, stagesPayload.Run)
 	require.Equal(t, domain.RewriteRunSucceeded, stagesPayload.Run.Status)
 	require.Equal(t, "workflow-template-mainline", stagesPayload.Run.Metadata["workflow_template_id"])
+	require.Equal(t, "generate_draft_alt@v2", stagesPayload.Run.Metadata["workflow_prompt_ref"])
 	require.Len(t, stagesPayload.Stages, 1)
 	require.Equal(t, domain.RewriteStageSucceeded, stagesPayload.Stages[0].Status)
+	require.Equal(t, "generate_draft_alt@v2", stagesPayload.Stages[0].PromptRef)
+	require.Contains(t, stagesPayload.Stages[0].InputJSON, "graph-mainline")
 
 	workspace, err := repos.WorkspaceRepo.GetByID(t.Context(), article.WorkspaceArticleID)
 	require.NoError(t, err)
@@ -135,12 +143,13 @@ func TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t *testing.T)
 
 	draft, err := repos.DraftRepo.GetByID(t.Context(), workspace.ID)
 	require.NoError(t, err)
-	require.Equal(t, "daily-intelligence", draft.Template)
+	require.Equal(t, "daily-intelligence-alt", draft.Template)
+	require.Equal(t, "Graph Mainline Title", draft.Headline["title"])
 
 	assets, err := repos.AssetRepo.List(t.Context(), draft.ID, "wechat")
 	require.NoError(t, err)
 	require.Len(t, assets, 1)
-	require.Contains(t, assets[0].Content, "Pasted Rewrite Title")
+	require.Contains(t, assets[0].Content, "Graph Mainline Title")
 
 	auditResp, err := http.Get(serverURL + "/api/audit")
 	require.NoError(t, err)
@@ -174,6 +183,7 @@ func newWebControlPlaneIntegrationServer(t *testing.T) (string, *service.Runtime
 	templateDir := filepath.Join(root, "templates")
 	require.NoError(t, os.MkdirAll(templateDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(templateDir, "daily-intelligence.html"), []byte(`<html><body><h1>{{TITLE}}</h1><div>{{BODY_SECTIONS}}</div><footer>{{CTA}}</footer></body></html>`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(templateDir, "daily-intelligence-alt.html"), []byte(`<html><body><article><header>{{TITLE}}</header><section>{{BODY_SECTIONS}}</section><aside>{{CTA}}</aside></article></body></html>`), 0o644))
 
 	repos, cleanup, err := service.BuildRuntimeRepos(root)
 	require.NoError(t, err)
@@ -182,7 +192,7 @@ func newWebControlPlaneIntegrationServer(t *testing.T) (string, *service.Runtime
 	})
 
 	repos.LLMClient = llminfra.StaticClient{Response: domain.LLMResponse{
-		Content:      `{"title":"Pasted Rewrite Title","body":"Rendered mainline body.","template":"daily-intelligence","meta":{"digest":"Web control digest","author":"Integration Bot"},"sections":[{"cn":"Main Section","blocks":[{"type":"card","title":"Key Point","body":["Control plane detail."],"source":"Web Control"}]}],"conclusion":"End note.","cta":"Read more."}`,
+		Content:      `{"title":"Graph Mainline Title","body":"Rendered graph workflow body.","template":"daily-intelligence-alt","meta":{"digest":"Graph digest","author":"Integration Bot"},"sections":[{"cn":"Main Section","blocks":[{"type":"card","title":"Key Point","body":["Workflow-selected control plane detail."],"source":"Web Control"}]}],"conclusion":"Graph end note.","cta":"Read more."}`,
 		Model:        "static-integration-model",
 		FinishReason: "stop",
 	}}
@@ -211,6 +221,14 @@ func newWebControlPlaneIntegrationServer(t *testing.T) (string, *service.Runtime
 		SystemTemplate: "You rewrite imported articles into drafts.",
 		UserTemplate:   "Rewrite {{title}} into a polished draft.",
 		Description:    "Integration rewrite prompt",
+	}))
+
+	require.NoError(t, repos.PromptTemplateRepo.Upsert(t.Context(), &domain.PromptTemplate{
+		Key:            "generate_draft_alt",
+		Version:        "v2",
+		SystemTemplate: "You rewrite imported articles into drafts using {{workflow_marker}}.",
+		UserTemplate:   "Rewrite {{title}} into a polished draft with {{workflow_marker}}.",
+		Description:    "Workflow-selected integration rewrite prompt",
 	}))
 
 	require.NoError(t, repos.LLMProfileRepo.Upsert(t.Context(), &domain.LLMProfile{

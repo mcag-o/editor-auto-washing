@@ -5,6 +5,7 @@ import (
 	llminfra "content-hub/infra/llm"
 	"content-hub/infra/memory"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -297,6 +298,81 @@ func TestRewriteOrchestratorMarksRunFailedAndWorkspaceRewriteFailed(t *testing.T
 		domain.ArticleWorkspaceStatusRewriting,
 		domain.ArticleWorkspaceStatusRewriteFailed,
 	}, storedWorkspace.StatusHistory)
+}
+
+func TestRewriteOrchestratorWorkflowMetadataOverridesStagePromptRef(t *testing.T) {
+	provider := memory.NewProvider()
+	workspace := domain.NewArticleWorkspaceRecord("article-workflow-override", "Title", "Summary", domain.ArticleWorkspaceSource{SourceType: "collector"}, nil)
+	require.NoError(t, provider.WorkspaceRepo().Create(t.Context(), workspace))
+
+	promptRepo := &stubRewritePromptRegistry{prompt: &domain.PromptTemplate{
+		Key:            "generate_draft_alt",
+		Version:        "v2",
+		SystemTemplate: "workflow sys {{title}} [{{workflow_template_id}}]",
+		UserTemplate:   "workflow user {{title}} [{{workflow_node_generate_draft}}]",
+	}}
+	profileRepo := &stubRewritePipelineProfileRepo{profile: &domain.RewritePipelineProfile{
+		ID:            "profile-1",
+		TargetType:    "wechat-longform",
+		SourceProfile: "sspai",
+		Version:       "v1",
+		Enabled:       true,
+		Stages: []domain.RewriteStageDefinition{{
+			Name:      "generate_draft",
+			Type:      "generate_draft",
+			PromptRef: "generate_draft@v1",
+			Enabled:   true,
+		}},
+	}}
+	client := &recordingLLMClient{response: &llminfra.GenerateResponse{Response: &domain.LLMResponse{
+		Content: `{"title":"Final Title","body":"Paragraph 1","template":"daily-intelligence"}`,
+		Model:   "mock-1",
+	}}}
+	executor := NewRewriteStageExecutor(promptRepo, client, NewQualityGateEngine())
+	orchestrator := NewRewriteOrchestrator(
+		NewRewriteProfileRegistry(profileRepo),
+		provider.RewritePipelineRunRepo(),
+		provider.RewriteStageRunRepo(),
+		provider.WorkspaceRepo(),
+		executor,
+		NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo()),
+	)
+
+	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
+		WorkspaceArticleID: workspace.ID,
+		CollectorArticleID: "collector-1",
+		Title:              "Source",
+		TargetType:         "wechat-longform",
+		SourceProfile:      "sspai",
+		Version:            "v1",
+		Metadata: map[string]any{
+			"workflow_template_id":       "workflow-a",
+			"workflow_node_generate_draft": "node-generate-draft",
+			workflowStageOverridesMetadataKey: map[string]workflowStageOverride{
+				"generate_draft": {
+					NodeID:    "node-generate-draft",
+					PromptRef: "generate_draft_alt@v2",
+				},
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, domain.RewriteRunSucceeded, run.Status)
+	require.Equal(t, "generate_draft_alt", promptRepo.gotKey)
+	require.Equal(t, "v2", promptRepo.gotVersion)
+	require.Equal(t, "generate_draft_alt@v2", client.gotReq.Metadata["prompt_ref"])
+	require.Equal(t, "workflow sys Source [workflow-a]", client.gotReq.Messages[0].Content)
+	require.Equal(t, "workflow user Source [node-generate-draft]", client.gotReq.Messages[1].Content)
+
+	stageRuns, err := provider.RewriteStageRunRepo().ListByPipelineRunID(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Len(t, stageRuns, 1)
+	require.Equal(t, "generate_draft_alt@v2", stageRuns[0].PromptRef)
+	var input map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stageRuns[0].InputJSON), &input))
+	require.Equal(t, "workflow-a", input["workflow_template_id"])
+	require.Equal(t, "node-generate-draft", input["workflow_node_generate_draft"])
 }
 
 func TestRewriteOrchestratorRoutesToRepairStageAndContinues(t *testing.T) {
