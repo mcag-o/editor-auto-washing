@@ -27,13 +27,14 @@ import { useTheme } from '@mui/material/styles';
 
 const drawerWidth = 248;
 
-export type AppPage = 'overview' | 'intake' | 'articles' | 'control' | 'config' | 'audit';
+export type AppPage = 'overview' | 'intake' | 'articles' | 'control' | 'workflows' | 'config' | 'audit';
 
 const navigationItems = [
   { key: 'overview' as const, label: '控制台总览', icon: <AppsRoundedIcon fontSize="small" /> },
   { key: 'intake' as const, label: '文章导入', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
   { key: 'articles' as const, label: '文章队列', icon: <DescriptionRoundedIcon fontSize="small" /> },
   { key: 'control' as const, label: '流程控制', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
+  { key: 'workflows' as const, label: '工作流模板', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
   { key: 'audit', label: '操作审计', icon: <HistoryRoundedIcon fontSize="small" /> },
   { key: 'config' as const, label: '配置管理', icon: <SettingsRoundedIcon fontSize="small" /> },
 ];
@@ -92,6 +93,7 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
                 item.key === 'intake' ||
                 item.key === 'articles' ||
                 item.key === 'control' ||
+                item.key === 'workflows' ||
                 item.key === 'audit' ||
                 item.key === 'config'
               ) {

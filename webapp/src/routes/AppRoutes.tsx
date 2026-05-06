@@ -6,6 +6,7 @@ import ArticlesPage from '../features/articles/ArticlesPage';
 import ControlPage from '../features/control/ControlPage';
 import ConfigPage from '../features/config/ConfigPage';
 import AuditPage from '../features/audit/AuditPage';
+import WorkflowTemplatesPage from '../features/workflows/WorkflowTemplatesPage';
 
 const defaultPage: AppPage = 'overview';
 
@@ -22,6 +23,9 @@ function parsePageFromHash(hash: string): AppPage {
   }
   if (normalized === '/control' || normalized === 'control') {
     return 'control';
+  }
+  if (normalized === '/workflows' || normalized === 'workflows') {
+    return 'workflows';
   }
   if (normalized === '/audit' || normalized === 'audit') {
     return 'audit';
@@ -56,6 +60,7 @@ export default function AppRoutes() {
       {currentPage === 'intake' ? <IntakePage onNavigate={handleNavigate} /> : null}
       {currentPage === 'articles' ? <ArticlesPage onNavigate={handleNavigate} /> : null}
       {currentPage === 'control' ? <ControlPage onNavigate={handleNavigate} /> : null}
+      {currentPage === 'workflows' ? <WorkflowTemplatesPage /> : null}
       {currentPage === 'audit' ? <AuditPage onNavigate={handleNavigate} /> : null}
       {currentPage === 'config' ? <ConfigPage onNavigate={handleNavigate} /> : null}
     </AppShell>
