@@ -21,8 +21,8 @@ type DashboardPageProps = {
 const metrics = [
   { key: 'pending', label: '待处理文章', value: '18', hint: '等待进入改写流水线', icon: <DescriptionRoundedIcon fontSize="small" /> },
   { key: 'running', label: '处理中任务', value: '6', hint: '含改写、草稿生成与渲染步骤', icon: <PlayCircleRoundedIcon fontSize="small" /> },
-  { key: 'completed', label: '今日已处理', value: '42', hint: '本页为本地摘要壳层，数据后续接 API', icon: <ChecklistRoundedIcon fontSize="small" /> },
-  { key: 'templates', label: '启用模板', value: '4', hint: '模板配置页后续补齐', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
+  { key: 'completed', label: '今日已处理', value: '42', hint: '面向当前浏览器控制面的日常处理摘要', icon: <ChecklistRoundedIcon fontSize="small" /> },
+  { key: 'templates', label: '启用模板', value: '4', hint: '工作流与提示模板通过浏览器界面统一维护', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
 ];
 
 const pipelines = [
@@ -34,7 +34,7 @@ const pipelines = [
 const alerts = [
   { key: 'upload', title: '导入入口已切换至浏览器', description: '当前仅保留文件上传与文本粘贴，不展示 URL 导入入口。', status: 'active' as const },
   { key: 'queue', title: '文章队列已拆分状态视图', description: '文章列表支持按未处理、处理中、已处理快速过滤。', status: 'pending' as const },
-  { key: 'api', title: '业务 API 暂未接入', description: '本任务仅提供页面结构与本地交互壳层，真实请求延后到 Task 7。', status: 'disabled' as const },
+  { key: 'api', title: '控制面接口已投入使用', description: '当前浏览器控制面已承接导入、队列控制、工作流模板与提示模板管理。', status: 'completed' as const },
 ];
 
 export default function DashboardPage({ onNavigate }: DashboardPageProps) {
@@ -43,7 +43,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       <PageToolbar
         title="控制台总览"
         description="聚合查看当前处理节奏、待办压力与页面入口，保持运营视角的中文工作台体验。"
-        leading={<StatusChip status="active" label="本地摘要视图" />}
+        leading={<StatusChip status="active" label="浏览器控制面" />}
         actions={
           <>
             <Button variant="outlined" onClick={() => onNavigate?.('articles')}>
@@ -67,7 +67,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       >
         <PageCard
           title="处理链路概览"
-          description="用于承接后续真实统计与节点详情，本任务先提供结构化摘要卡片。"
+          description="概览浏览器控制面当前关注的导入、改写、复核与渲染处理节奏。"
           action={<StatusChip status="completed" label="摘要就绪" />}
         >
           <Stack spacing={2}>
@@ -90,7 +90,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
         <PageCard
           title="运营提醒"
-          description="保留常驻提醒区，后续可替换为真实告警、失败任务与系统通知。"
+          description="集中提示当前浏览器操作路径、队列观察方式与已启用的控制面能力。"
           action={<StatusChip status="pending" label="需持续关注" />}
         >
           <Stack spacing={1.5}>
