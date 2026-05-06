@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestReactControlPlaneMainlineThroughAPI(t *testing.T) {
+func TestReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t *testing.T) {
 	_, repos, serverURL := newWebControlPlaneIntegrationServer(t)
 
 	rootResp, err := http.Get(serverURL + "/")
@@ -176,7 +176,7 @@ func TestReactControlPlaneMainlineThroughAPI(t *testing.T) {
 	require.Contains(t, actions, "web_intake.create_from_paste")
 	require.Contains(t, actions, "web_control.article.workflow_template_assigned")
 	require.Contains(t, actions, "control_plane.started")
-	
+
 	require.Equal(t, createdDoc.ID, actions["web_intake.create_from_paste"].ResourceID)
 	require.Equal(t, createdDoc.ID, actions["web_control.article.workflow_template_assigned"].ResourceID)
 	require.Equal(t, "react-mainline-workflow-template", actions["web_control.article.workflow_template_assigned"].Metadata["workflow_template_id"])
