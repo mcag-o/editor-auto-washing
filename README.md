@@ -1,6 +1,6 @@
 # content-hub
 
-> 当前默认主实现（Go 版，仓库根目录），已覆盖 web control plane、浏览器上传/粘贴 intake、rewrite/draft/render、审核发布能力、作业与自动化主链路。
+> 当前默认主实现（Go 版，仓库根目录），以 `8123` 上的中文 React + Vite web control plane 作为唯一 active operator surface，覆盖浏览器上传/粘贴 intake、rewrite/draft/render、审核发布能力与作业自动化主链路。
 
 ---
 
@@ -16,7 +16,7 @@
 - 结构化 draft / render / validate / asset persistence
 - review / publish gate / publish history
 - workflow / jobs / automation
-- React + Vite web control plane（Material UI + React Flow）/ HTTP API / CLI（开发调试支持）/ 基础 TUI
+- React + Vite web control plane（Material UI + React Flow，唯一 active operator surface）/ HTTP API / CLI（开发调试支持）/ 基础 TUI
 
 这意味着：在“功能等价替代 + 覆盖实际可用主链路”的标准下，仓库根目录下的 Go runtime 已可以作为当前默认主实现；当前唯一 active operator surface 是监听在 `8123` 的 React + Vite web control plane，且操作 UI 以中文为主。当前 active runtime 唯一文档化、默认且面向操作人员的 intake 路径是浏览器中的 upload / paste workflow，业务配置以数据库中的 runtime state 为准，workflow/template 管理也通过该浏览器 UI 以组件化方式完成，前端基础设施以 Material UI 与 React Flow 为主，自动处理默认产物会停在 draft + render，review / publish 保持为后续可选人工步骤。旧的静态 shell、folder-intake、RSS、collector、ingestion surface 不再作为 active runtime 面向操作人员的入口。
 
@@ -229,7 +229,7 @@ go run ./cmd/cli automation stop --root .
 
 核心路由定义在：`transport/http/server.go`
 
-说明：HTTP server 同时承载 React + Vite web control plane 与 API，当前默认操作入口是根路径 `/` 提供的 browser UI，默认端口为 `8123`。该中文 UI 是操作人员管理 intake、workflow 与 template 的主入口；workflow/template 管理界面采用组件化设计，并以 Material UI 与 React Flow 为前端基础；旧的 plain static shell 不再作为当前对外表述。
+说明：HTTP server 同时承载 React + Vite web control plane 与 API，当前唯一 active operator surface 是根路径 `/` 提供的 browser UI，默认端口为 `8123`。该中文 UI 是操作人员管理 intake、workflow 与 template 的主入口；workflow/template 管理界面采用组件化设计，并以 Material UI 与 React Flow 为前端基础；旧的 plain static shell 不再作为当前对外表述。
 
 ### 基础
 

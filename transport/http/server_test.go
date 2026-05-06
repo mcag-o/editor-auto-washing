@@ -58,6 +58,8 @@ func newTestServer(t *testing.T) (*Server, *testWebControlRepos) {
 
 	memProvider := memory.NewProvider()
 	sourceDocumentRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
+	workflowDefinitionRepo := &serverWorkflowDefinitionRepo{}
+	templateDefinitionRepo := &serverTemplateDefinitionRepo{}
 	businessConfigRepo := &stubBusinessConfigRepo{}
 	systemControlStateRepo := &stubSystemControlStateRepo{}
 	auditLogRepo := &stubAuditLogRepo{}
@@ -90,6 +92,12 @@ func newTestServer(t *testing.T) (*Server, *testWebControlRepos) {
 	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, workspaceinfra.WorkspaceSecretsFileName), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
 	automationSvc := service.NewAutomationService(service.NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), ingestionSvc, nil, jobSvc)
 	runtimeRepos := &service.RuntimeRepos{
+		DraftRepo:               memProvider.DraftRepo(),
+		AssetRepo:               memProvider.AssetRepo(),
+		WorkspaceRepo:           memProvider.WorkspaceRepo(),
+		Formatter:               &testFormatter{},
+		WorkflowDefinitionRepo:  workflowDefinitionRepo,
+		TemplateDefinitionRepo:  templateDefinitionRepo,
 		SourceDocumentRepo:     sourceDocumentRepo,
 		BusinessConfigRepo:     businessConfigRepo,
 		SystemControlStateRepo: systemControlStateRepo,
@@ -127,6 +135,14 @@ type testJobExecutor struct {
 	engine *service.WorkflowEngine
 }
 
+type serverWorkflowDefinitionRepo struct {
+	stored map[string]*domain.WorkflowDefinition
+}
+
+type serverTemplateDefinitionRepo struct {
+	stored map[string]*domain.TemplateDefinition
+}
+
 type testFormatter struct{}
 
 type serverPublishProviderStub struct{}
@@ -153,6 +169,104 @@ func (serverPublishProviderStub) Platforms() []string {
 
 func (e *testJobExecutor) Execute(ctx context.Context, wf *domain.WorkflowDefinition, wc *domain.WorkflowContext) error {
 	return e.engine.Execute(ctx, wf, wc)
+}
+
+func (r *serverWorkflowDefinitionRepo) Create(_ context.Context, workflow *domain.WorkflowDefinition) error {
+	if workflow == nil {
+		return nil
+	}
+	if r.stored == nil {
+		r.stored = map[string]*domain.WorkflowDefinition{}
+	}
+	copyValue := *workflow
+	r.stored[workflow.ID] = &copyValue
+	return nil
+}
+
+func (r *serverWorkflowDefinitionRepo) Update(ctx context.Context, workflow *domain.WorkflowDefinition) error {
+	return r.Create(ctx, workflow)
+}
+
+func (r *serverWorkflowDefinitionRepo) Upsert(ctx context.Context, workflow *domain.WorkflowDefinition) error {
+	return r.Create(ctx, workflow)
+}
+
+func (r *serverWorkflowDefinitionRepo) GetByID(_ context.Context, id string) (*domain.WorkflowDefinition, error) {
+	if r.stored == nil || r.stored[id] == nil {
+		return nil, domain.NewNotFoundErr("workflow_definition", id)
+	}
+	copyValue := *r.stored[id]
+	return &copyValue, nil
+}
+
+func (r *serverWorkflowDefinitionRepo) List(_ context.Context, limit int) ([]domain.WorkflowDefinition, error) {
+	items := make([]domain.WorkflowDefinition, 0, len(r.stored))
+	for _, workflow := range r.stored {
+		if workflow == nil {
+			continue
+		}
+		items = append(items, *workflow)
+		if limit > 0 && len(items) >= limit {
+			break
+		}
+	}
+	return items, nil
+}
+
+func (r *serverWorkflowDefinitionRepo) Delete(_ context.Context, id string) error {
+	if r.stored != nil {
+		delete(r.stored, id)
+	}
+	return nil
+}
+
+func (r *serverTemplateDefinitionRepo) Create(_ context.Context, template *domain.TemplateDefinition) error {
+	if template == nil {
+		return nil
+	}
+	if r.stored == nil {
+		r.stored = map[string]*domain.TemplateDefinition{}
+	}
+	copyValue := *template
+	r.stored[template.ID] = &copyValue
+	return nil
+}
+
+func (r *serverTemplateDefinitionRepo) Update(ctx context.Context, template *domain.TemplateDefinition) error {
+	return r.Create(ctx, template)
+}
+
+func (r *serverTemplateDefinitionRepo) Upsert(ctx context.Context, template *domain.TemplateDefinition) error {
+	return r.Create(ctx, template)
+}
+
+func (r *serverTemplateDefinitionRepo) GetByID(_ context.Context, id string) (*domain.TemplateDefinition, error) {
+	if r.stored == nil || r.stored[id] == nil {
+		return nil, domain.NewNotFoundErr("template_definition", id)
+	}
+	copyValue := *r.stored[id]
+	return &copyValue, nil
+}
+
+func (r *serverTemplateDefinitionRepo) List(_ context.Context, limit int) ([]domain.TemplateDefinition, error) {
+	items := make([]domain.TemplateDefinition, 0, len(r.stored))
+	for _, template := range r.stored {
+		if template == nil {
+			continue
+		}
+		items = append(items, *template)
+		if limit > 0 && len(items) >= limit {
+			break
+		}
+	}
+	return items, nil
+}
+
+func (r *serverTemplateDefinitionRepo) Delete(_ context.Context, id string) error {
+	if r.stored != nil {
+		delete(r.stored, id)
+	}
+	return nil
 }
 
 func TestHealthEndpoint(t *testing.T) {

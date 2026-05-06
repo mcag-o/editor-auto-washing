@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"content-hub/domain"
 	workspaceinfra "content-hub/infra/workspace"
 	"context"
@@ -195,6 +196,9 @@ func (s *AutomationService) Status(_ context.Context, root string) (*domain.Auto
 			return s.defaultStatus(), nil
 		}
 		return nil, fmt.Errorf("read automation snapshot: %w", err)
+	}
+	if len(bytes.TrimSpace(payload)) == 0 {
+		return s.defaultStatus(), nil
 	}
 	var snapshot domain.AutomationStatusSnapshot
 	if err := json.Unmarshal(payload, &snapshot); err != nil {
