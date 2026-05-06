@@ -240,7 +240,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
         <PageToolbar
           title="文章列表"
           description="使用现有文章列表、阶段查询与队列控制接口承接文章队列。"
-          leading={<StatusChip status="active" label="实时队列视图" />}
+          leading={<StatusChip status="active" label="队列视图" />}
           actions={
             <>
               <Button variant="outlined" onClick={() => onNavigate?.('overview')}>
