@@ -256,7 +256,7 @@ export default function TemplatesPage() {
           </Stack>
         }
         title="模板管理"
-        description="使用现有模板接口承接列表、预览、编辑抽屉与启停/删除操作。"
+        description="通过后端模板接口管理真实模板记录，并在页面内完成列表、预览、编辑、启停与删除操作。"
         actions={
           <>
             <StatusChip status={selectedTemplate?.enabled ? 'active' : 'disabled'} label={selectedTemplate?.enabled ? '已启用' : '已停用'} />

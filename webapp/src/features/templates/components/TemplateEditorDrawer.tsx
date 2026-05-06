@@ -45,7 +45,7 @@ export default function TemplateEditorDrawer({
           <Box>
             <Typography variant="h5">{editingTemplate ? '编辑模板' : '新建模板'}</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              先用本地抽屉整理提示词、摘要和阶段说明，后续再接入真实模板保存能力。
+              在抽屉中直接编辑提示词、摘要和阶段说明，保存后会写入后端模板记录。
             </Typography>
           </Box>
           <Button variant="text" onClick={onClose} startIcon={<CloseRoundedIcon />}>
@@ -90,7 +90,7 @@ export default function TemplateEditorDrawer({
             label="模板类型"
             value={draft.type}
             onChange={(event) => onChange('type', event.target.value)}
-            helperText="预留 prompt、rewrite、review、stage 等类型输入，当前仅做本地编辑展示。"
+            helperText="支持 prompt、rewrite、review、stage 等模板类型字段，并随保存请求一起提交到后端。"
             fullWidth
           />
 

@@ -25,18 +25,31 @@ var newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serve
 }
 
 func main() {
-	fmt.Println(startupMessage())
-	if err := run(); err != nil {
+	cfg, workspaceRoot, selectedStandaloneFallback, err := loadRuntimeConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(startupMessage(cfg.HTTP.Port))
+	if err := runWithConfig(cfg, workspaceRoot, selectedStandaloneFallback); err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func startupMessage() string {
-	return fmt.Sprintf("content-hub server starting: React web control plane on http://localhost:%d as the primary operator surface; browser upload/paste is the only active operator intake; workflow/template management stays in the browser UI; CLI remains development/debug support and folder-intake is backend/internal compatibility only", webControlPlanePort)
+func startupMessage(port int) string {
+	return fmt.Sprintf("content-hub server starting: React web control plane on http://localhost:%d as the primary operator surface; browser upload/paste is the only active operator intake; workflow/template management stays in the browser UI; CLI remains development/debug support and folder-intake is backend/internal compatibility only", port)
 }
 
 func run() error {
+	cfg, workspaceRoot, selectedStandaloneFallback, err := loadRuntimeConfig()
+	if err != nil {
+		return err
+	}
+	return runWithConfig(cfg, workspaceRoot, selectedStandaloneFallback)
+}
+
+func loadRuntimeConfig() (config.Config, string, bool, error) {
 	loader := config.NewLoader("")
 	workspaceConfigSvc := service.NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator())
 	workspaceRoot := workspaceRootFromEnv()
@@ -49,19 +62,25 @@ func run() error {
 	} else {
 		fallbackPath := "./config/config.json"
 		if _, statErr := os.Stat(fallbackPath); statErr != nil {
-			return fmt.Errorf("load standalone config: failed to read config file: %w", statErr)
+			return config.Config{}, "", false, fmt.Errorf("load standalone config: failed to read config file: %w", statErr)
 		}
 		fallback := config.NewLoader(fallbackPath)
 		loadedCfg, loadErr := fallback.Load()
 		if loadErr != nil {
-			return fmt.Errorf("load standalone config: %w", loadErr)
+			return config.Config{}, "", false, fmt.Errorf("load standalone config: %w", loadErr)
 		}
 		cfg = loadedCfg
 		loader.SetCurrent(cfg)
 		selectedStandaloneFallback = true
 	}
 	cfg.HTTP.Port = normalizePrimaryOperatorPort(cfg.HTTP.Port)
+	return cfg, workspaceRoot, selectedStandaloneFallback, nil
+}
+
+func runWithConfig(cfg config.Config, workspaceRoot string, selectedStandaloneFallback bool) error {
+	loader := config.NewLoader("")
 	loader.SetCurrent(cfg)
+	workspaceConfigSvc := service.NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator())
 
 	var runtimeRepos *service.RuntimeRepos
 	var cleanup func() error
