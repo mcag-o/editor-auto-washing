@@ -235,6 +235,23 @@ func TestReactBuildAssetsServedFromRoot(t *testing.T) {
 	require.Contains(t, w.Body.String(), `console.log("asset")`)
 }
 
+func TestEmbeddedViteBuildServedFromRoot(t *testing.T) {
+	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", "")
+	frontendDistFSForTests = nil
+
+	s, _ := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Header().Get("Content-Type"), "text/html")
+	require.Contains(t, w.Body.String(), `<div id="root"></div>`)
+	require.Contains(t, w.Body.String(), `/ui/assets/`)
+	require.NotContains(t, w.Body.String(), "图工作流控制台")
+}
+
 func TestReactFrontendFallbackReturnsShellForClientRoute(t *testing.T) {
 	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", "")
 	useTestFrontendFS(t, fstest.MapFS{
