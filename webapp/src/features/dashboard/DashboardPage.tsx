@@ -19,16 +19,16 @@ type DashboardPageProps = {
 };
 
 const metrics = [
-  { key: 'pending', label: '待处理文章', value: '18', hint: '等待进入改写流水线', icon: <DescriptionRoundedIcon fontSize="small" /> },
-  { key: 'running', label: '处理中任务', value: '6', hint: '含改写、草稿生成与渲染步骤', icon: <PlayCircleRoundedIcon fontSize="small" /> },
-  { key: 'completed', label: '今日已处理', value: '42', hint: '面向当前浏览器控制面的日常处理摘要', icon: <ChecklistRoundedIcon fontSize="small" /> },
-  { key: 'templates', label: '启用模板', value: '4', hint: '工作流与提示模板通过浏览器界面统一维护', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
+  { key: 'pending', label: '待处理文章', value: '18', hint: '示例数值，用于预览队列摘要卡片样式', icon: <DescriptionRoundedIcon fontSize="small" /> },
+  { key: 'running', label: '处理中任务', value: '6', hint: '示例数值，展示改写、草稿生成与渲染节奏', icon: <PlayCircleRoundedIcon fontSize="small" /> },
+  { key: 'completed', label: '今日已处理', value: '42', hint: '示例数值，用于演示浏览器控制面的日常摘要', icon: <ChecklistRoundedIcon fontSize="small" /> },
+  { key: 'templates', label: '启用模板', value: '4', hint: '示例数值，对应浏览器中的工作流与提示模板管理', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
 ];
 
 const pipelines = [
-  { key: 'rewrite', label: '标准改写链路', progress: 78, detail: '导入文章后自动改写并生成草稿' },
-  { key: 'review', label: '人工复核队列', progress: 32, detail: '处理异常文章与待确认内容' },
-  { key: 'render', label: '渲染输出准备', progress: 61, detail: '生成渲染稿并等待后续发布节点' },
+  { key: 'rewrite', label: '标准改写链路', progress: 78, detail: '示例进度，用于预览导入后自动改写并生成草稿的展示方式' },
+  { key: 'review', label: '人工复核队列', progress: 32, detail: '示例进度，用于预览异常文章与待确认内容的观察方式' },
+  { key: 'render', label: '渲染输出准备', progress: 61, detail: '示例进度，用于预览渲染稿与后续发布节点的展示方式' },
 ];
 
 const alerts = [
@@ -42,7 +42,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     <Stack spacing={3}>
       <PageToolbar
         title="控制台总览"
-        description="聚合查看当前处理节奏、待办压力与页面入口，保持运营视角的中文工作台体验。"
+        description="聚合展示当前浏览器控制面的主要入口与示例化运营摘要，保持中文工作台体验。"
         leading={<StatusChip status="active" label="浏览器控制面" />}
         actions={
           <>
@@ -67,7 +67,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       >
         <PageCard
           title="处理链路概览"
-          description="概览浏览器控制面当前关注的导入、改写、复核与渲染处理节奏。"
+          description="以示例数据预览浏览器控制面中导入、改写、复核与渲染摘要的呈现方式。"
           action={<StatusChip status="completed" label="摘要就绪" />}
         >
           <Stack spacing={2}>
@@ -90,7 +90,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
         <PageCard
           title="运营提醒"
-          description="集中提示当前浏览器操作路径、队列观察方式与已启用的控制面能力。"
+          description="集中提示当前浏览器操作路径、队列观察方式与已启用的控制面能力。提醒内容为页面说明，不代表实时告警流。"
           action={<StatusChip status="pending" label="需持续关注" />}
         >
           <Stack spacing={1.5}>
