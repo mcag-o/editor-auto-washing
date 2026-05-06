@@ -15,6 +15,7 @@ type WorkflowGraphPanelProps = {
   edges: Edge[];
   nodes: Array<Node<WorkflowCanvasNodeData>>;
   onConnect: (params: Connection) => void;
+  onClearSelection: () => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onEdgeClick: (edge: Edge) => void;
   onNodeClick: (node: Node<WorkflowCanvasNodeData> | null) => void;
@@ -27,6 +28,7 @@ export default function WorkflowGraphPanel({
   edges,
   nodes,
   onConnect,
+  onClearSelection,
   onEdgeClick,
   onEdgesChange,
   onNodeClick,
@@ -57,7 +59,7 @@ export default function WorkflowGraphPanel({
         onConnect={onConnect}
         onNodeClick={(_, node) => onNodeClick(node)}
         onEdgeClick={(_, edge) => onEdgeClick(edge)}
-        onPaneClick={() => onNodeClick(null as never)}
+        onPaneClick={onClearSelection}
         defaultEdgeOptions={{ animated: false, style: { strokeWidth: 2, stroke: '#0f62fe' } }}
       >
         <MiniMap

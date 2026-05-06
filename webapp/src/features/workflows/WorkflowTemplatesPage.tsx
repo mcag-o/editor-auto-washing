@@ -31,6 +31,14 @@ type WorkflowTemplate = WorkflowTemplateSummary & {
   nodes: Array<Node<WorkflowCanvasNodeData>>;
 };
 
+function createLocalId(prefix: string) {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const typeLabelMap: Record<WorkflowNodeType, string> = {
   input: '导入节点',
   rewrite: '改写节点',
@@ -238,11 +246,12 @@ export default function WorkflowTemplatesPage() {
   };
 
   const handleCreateTemplate = () => {
-    const nextId = `workflow-local-${templates.length + 1}`;
-    const seedNodeId = `node-local-${templates.length + 1}-1`;
+    const nextLabelIndex = templates.length + 1;
+    const nextId = createLocalId('workflow-local');
+    const seedNodeId = createLocalId('node-local');
     const newTemplate: WorkflowTemplate = {
       id: nextId,
-      name: `本地模板 ${templates.length + 1}`,
+      name: `本地模板 ${nextLabelIndex}`,
       description: '用于验证本地节点编排与侧边配置交互。',
       updatedAt: '刚刚',
       entryNodeId: seedNodeId,
@@ -270,7 +279,7 @@ export default function WorkflowTemplatesPage() {
 
   const handleAddNode = () => {
     const nextIndex = selectedTemplate.nodes.length + 1;
-    const nextNodeId = `${selectedTemplate.id}-node-${nextIndex}`;
+    const nextNodeId = createLocalId(`${selectedTemplate.id}-node`);
     const newNode = createNode(
       nextNodeId,
       `新节点 ${nextIndex}`,
@@ -475,6 +484,10 @@ export default function WorkflowTemplatesPage() {
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}
+            onClearSelection={() => {
+              setSelectedNodeId(null);
+              setSelectedEdgeId(null);
+            }}
             onNodeClick={(node) => {
               setSelectedNodeId(node?.id ?? null);
               setSelectedEdgeId(null);

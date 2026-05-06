@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import AppShell, { type AppPage } from '../layout/AppShell';
 import DashboardPage from '../features/dashboard/DashboardPage';
 import IntakePage from '../features/intake/IntakePage';
@@ -6,7 +6,8 @@ import ArticlesPage from '../features/articles/ArticlesPage';
 import ControlPage from '../features/control/ControlPage';
 import ConfigPage from '../features/config/ConfigPage';
 import AuditPage from '../features/audit/AuditPage';
-import WorkflowTemplatesPage from '../features/workflows/WorkflowTemplatesPage';
+
+const WorkflowTemplatesPage = lazy(() => import('../features/workflows/WorkflowTemplatesPage'));
 
 const defaultPage: AppPage = 'overview';
 
@@ -60,7 +61,11 @@ export default function AppRoutes() {
       {currentPage === 'intake' ? <IntakePage onNavigate={handleNavigate} /> : null}
       {currentPage === 'articles' ? <ArticlesPage onNavigate={handleNavigate} /> : null}
       {currentPage === 'control' ? <ControlPage onNavigate={handleNavigate} /> : null}
-      {currentPage === 'workflows' ? <WorkflowTemplatesPage /> : null}
+      {currentPage === 'workflows' ? (
+        <Suspense fallback={null}>
+          <WorkflowTemplatesPage />
+        </Suspense>
+      ) : null}
       {currentPage === 'audit' ? <AuditPage onNavigate={handleNavigate} /> : null}
       {currentPage === 'config' ? <ConfigPage onNavigate={handleNavigate} /> : null}
     </AppShell>
