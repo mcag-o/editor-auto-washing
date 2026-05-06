@@ -9,6 +9,7 @@ export type WorkflowEdgeSummary = {
   id: string;
   sourceLabel: string;
   targetLabel: string;
+  condition: string;
 };
 
 type WorkflowEdgePanelProps = {
@@ -47,6 +48,13 @@ export default function WorkflowEdgePanel({ selectedEdge, onDeleteEdge }: Workfl
             <Typography variant="subtitle2">目标节点</Typography>
             <Typography variant="body2" color="text.secondary">
               {selectedEdge.targetLabel}
+            </Typography>
+          </Stack>
+          <Divider />
+          <Stack spacing={0.5}>
+            <Typography variant="subtitle2">条件分支</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {selectedEdge.condition}
             </Typography>
           </Stack>
           <Typography variant="caption" color="text.secondary">

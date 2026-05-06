@@ -110,4 +110,94 @@ describe('workflow mapper contract', () => {
     expect(api.edges[0]?.priority).toBe(0);
     expect(api.edges[1]?.priority).toBe(1);
   });
+
+  it('preserves backend edge conditions through a load and save round-trip', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'wf-conditions',
+      name: 'Condition Workflow',
+      description: 'verifies edge condition preservation',
+      version: 'v1',
+      enabled: true,
+      entry_node_id: 'node-1',
+      updated_by: 'tester',
+      updated_at: '2026-05-07T00:00:00Z',
+      nodes: [
+        {
+          id: 'node-1',
+          type: 'input',
+          name: 'Input',
+          config_json: JSON.stringify({ label: 'Input', type: 'input' }),
+        },
+        {
+          id: 'node-2',
+          type: 'rewrite',
+          name: 'Retry Handler',
+          config_json: JSON.stringify({ label: 'Retry Handler', type: 'rewrite' }),
+        },
+      ],
+      edges: [
+        {
+          from_node_id: 'node-1',
+          to_node_id: 'node-2',
+          condition: 'retry',
+          priority: 0,
+        },
+      ],
+    };
+
+    const form = mapApiWorkflowToForm(workflow);
+
+    expect(form.edges[0]?.label).toBe('retry');
+
+    const api = mapWorkflowFormToApi(form);
+
+    expect(api.edges[0]?.condition).toBe('retry');
+  });
+
+  it('defaults a newly created edge condition to always when no prior condition exists', () => {
+    const api = mapWorkflowFormToApi({
+      id: 'wf-new-edge',
+      name: 'New Edge Workflow',
+      description: 'verifies new edge default',
+      version: 'v1',
+      enabled: true,
+      updatedBy: 'tester',
+      updatedAt: '2026-05-07T00:00:00Z',
+      entryNodeId: 'node-1',
+      nodeCount: 2,
+      nodes: [
+        {
+          id: 'node-1',
+          type: 'default',
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'Start',
+            type: 'input',
+            rawType: 'input',
+            template: '',
+            model: '',
+            context: '',
+            isEntry: true,
+          },
+        },
+        {
+          id: 'node-2',
+          type: 'default',
+          position: { x: 100, y: 0 },
+          data: {
+            label: 'Next',
+            type: 'rewrite',
+            rawType: 'rewrite',
+            template: '',
+            model: '',
+            context: '',
+            isEntry: false,
+          },
+        },
+      ],
+      edges: [{ id: 'edge-new', source: 'node-1', target: 'node-2' }],
+    });
+
+    expect(api.edges[0]?.condition).toBe('always');
+  });
 });

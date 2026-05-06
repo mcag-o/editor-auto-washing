@@ -93,6 +93,7 @@ export function mapApiWorkflowToForm(workflow: WorkflowDefinition): WorkflowForm
     id: `edge-${edge.from_node_id}-${edge.to_node_id}`,
     source: edge.from_node_id,
     target: edge.to_node_id,
+    label: edge.condition,
   }));
 
   return {

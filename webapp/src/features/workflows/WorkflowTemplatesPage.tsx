@@ -223,6 +223,7 @@ export default function WorkflowTemplatesPage() {
         id: selectedEdge.id,
         sourceLabel: selectedTemplate.nodes.find((node) => node.id === selectedEdge.source)?.data.label ?? selectedEdge.source,
         targetLabel: selectedTemplate.nodes.find((node) => node.id === selectedEdge.target)?.data.label ?? selectedEdge.target,
+        condition: selectedEdge.label ? String(selectedEdge.label) : 'always',
       }
     : null;
 
