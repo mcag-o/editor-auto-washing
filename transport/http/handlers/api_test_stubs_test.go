@@ -214,10 +214,14 @@ func cloneSourceDocument(doc *domain.SourceDocument) *domain.SourceDocument {
 }
 
 type stubAuditLogRepo struct {
-	logs []*domain.AuditLog
+	logs      []*domain.AuditLog
+	createErr error
 }
 
 func (r *stubAuditLogRepo) Create(_ context.Context, log *domain.AuditLog) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
 	if err := log.Validate(); err != nil {
 		return err
 	}

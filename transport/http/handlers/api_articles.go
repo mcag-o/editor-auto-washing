@@ -6,6 +6,7 @@ import (
 	"content-hub/service"
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -121,7 +122,7 @@ func (h *APIArticlesHandler) Retry(c *gin.Context) {
 	}
 	if workflowChanged {
 		workflowStateReset = true
-		if err := h.resetWorkflowExecution(c.Request.Context(), item); err != nil {
+		if err := h.deleteWorkflowExecution(c.Request.Context(), item.RewriteRunID); err != nil {
 			HandleError(c, err)
 			return
 		}
@@ -148,14 +149,11 @@ func (h *APIArticlesHandler) Retry(c *gin.Context) {
 	if !workerRunning {
 		message = "article re-queued, but the worker is not actively running"
 	}
-	if err := h.recordArticleAudit(c.Request.Context(), item, "retry", "success", message, map[string]any{
+	h.recordArticleAuditBestEffort(c.Request.Context(), item, "retry", "success", message, map[string]any{
 		"workflow_state_reset": workflowStateReset,
 		"worker_running":       workerRunning,
 		"system_state":         systemState,
-	}); err != nil {
-		HandleError(c, err)
-		return
-	}
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":         "requeued",
@@ -187,12 +185,9 @@ func (h *APIArticlesHandler) Stop(c *gin.Context) {
 		return
 	}
 	message := "pause requested; the current worker step is not synchronously interrupted"
-	if err := h.recordArticleAudit(c.Request.Context(), item, "stop", "success", message, map[string]any{
+	h.recordArticleAuditBestEffort(c.Request.Context(), item, "stop", "success", message, map[string]any{
 		"workflow_position_preserved": strings.TrimSpace(item.RewriteRunID) != "",
-	}); err != nil {
-		HandleError(c, err)
-		return
-	}
+	})
 
 	c.JSON(http.StatusAccepted, gin.H{
 		"status":          domain.SourceDocumentStatusPaused,
@@ -243,14 +238,11 @@ func (h *APIArticlesHandler) Resume(c *gin.Context) {
 	if !workerRunning {
 		message = "article queued to resume, but the worker is not actively running"
 	}
-	if err := h.recordArticleAudit(c.Request.Context(), item, "resume", "success", message, map[string]any{
+	h.recordArticleAuditBestEffort(c.Request.Context(), item, "resume", "success", message, map[string]any{
 		"workflow_position_preserved": strings.TrimSpace(item.RewriteRunID) != "",
 		"worker_running":              workerRunning,
 		"system_state":                systemState,
-	}); err != nil {
-		HandleError(c, err)
-		return
-	}
+	})
 
 	c.JSON(http.StatusAccepted, gin.H{
 		"status":         "requeued",
@@ -297,12 +289,9 @@ func (h *APIArticlesHandler) Delete(c *gin.Context) {
 		HandleError(c, err)
 		return
 	}
-	if err := h.recordArticleAudit(c.Request.Context(), item, "delete", "success", "deleted article", map[string]any{
+	h.recordArticleAuditBestEffort(c.Request.Context(), item, "delete", "success", "deleted article", map[string]any{
 		"workflow_records_deleted": workflowRecordsDeleted,
-	}); err != nil {
-		HandleError(c, err)
-		return
-	}
+	})
 	c.Status(http.StatusNoContent)
 }
 
@@ -373,6 +362,12 @@ func (h *APIArticlesHandler) recordArticleAudit(ctx context.Context, item *domai
 		Metadata:   metadata,
 	})
 	return err
+}
+
+func (h *APIArticlesHandler) recordArticleAuditBestEffort(ctx context.Context, item *domain.SourceDocument, action, result, message string, metadata map[string]any) {
+	if err := h.recordArticleAudit(ctx, item, action, result, message, metadata); err != nil {
+		log.Printf("warning: write article lifecycle audit action=%s resource_id=%s: %v", strings.TrimSpace(action), item.ID, err)
+	}
 }
 
 func (h *APIArticlesHandler) workflowExecutionChanged(ctx context.Context, item *domain.SourceDocument) (bool, error) {

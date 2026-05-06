@@ -319,19 +319,11 @@ func TestAPIArticlesRetryResetsPreviousWorkflowExecutionForFreshRun(t *testing.T
 	require.Nil(t, stored.ProcessingStartedAt)
 	require.Nil(t, stored.CompletedAt)
 	require.Empty(t, stored.RewriteRunID)
-	storedRun, err := runRepo.GetByID(t.Context(), run.ID)
-	require.NoError(t, err)
-	require.Equal(t, domain.RewriteRunPending, storedRun.Status)
-	require.Empty(t, storedRun.CurrentStage)
-	require.Nil(t, storedRun.CompletedAt)
-	require.Empty(t, storedRun.ErrorSummary)
+	_, err = runRepo.GetByID(t.Context(), run.ID)
+	require.Error(t, err)
 	storedStages, err := stageRepo.ListByPipelineRunID(t.Context(), run.ID)
 	require.NoError(t, err)
-	require.Len(t, storedStages, 1)
-	require.Equal(t, domain.RewriteStagePending, storedStages[0].Status)
-	require.Equal(t, 0, storedStages[0].Attempt)
-	require.Nil(t, storedStages[0].CompletedAt)
-	require.Empty(t, storedStages[0].ErrorSummary)
+	require.Len(t, storedStages, 0)
 }
 
 func TestAPIArticlesRetryPreservesSavedWorkflowRunWhenWorkflowIsUnchanged(t *testing.T) {
@@ -465,22 +457,52 @@ func TestAPIArticlesRetryWithWorkflowChangeResetsSavedWorkflowRun(t *testing.T) 
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	storedRun, err := runRepo.GetByID(t.Context(), run.ID)
-	require.NoError(t, err)
-	require.Equal(t, domain.RewriteRunPending, storedRun.Status)
-	require.Empty(t, storedRun.CurrentStage)
-	require.Nil(t, storedRun.CompletedAt)
-	require.Empty(t, storedRun.ErrorSummary)
+	_, err := runRepo.GetByID(t.Context(), run.ID)
+	require.Error(t, err)
 	storedStages, err := stageRepo.ListByPipelineRunID(t.Context(), run.ID)
 	require.NoError(t, err)
-	require.Len(t, storedStages, 1)
-	require.Equal(t, domain.RewriteStagePending, storedStages[0].Status)
-	require.Equal(t, 0, storedStages[0].Attempt)
-	require.Nil(t, storedStages[0].CompletedAt)
-	require.Empty(t, storedStages[0].ErrorSummary)
+	require.Len(t, storedStages, 0)
+	storedDoc, err := sourceRepo.GetByID(t.Context(), doc.ID)
+	require.NoError(t, err)
+	require.Empty(t, storedDoc.RewriteRunID)
 	require.Len(t, auditRepo.logs, 1)
 	require.Equal(t, "web_control.article.retry", auditRepo.logs[0].Action)
 	require.Equal(t, true, auditRepo.logs[0].Metadata["workflow_state_reset"])
+}
+
+func TestAPIArticlesRetrySuccessIgnoresAuditFailure(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	sourceRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
+	auditRepo := &stubAuditLogRepo{createErr: domain.NewInternalErr("audit write failed", nil)}
+	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-1")
+	doc.Status = domain.SourceDocumentStatusFailed
+	doc.ErrorSummary = "broken"
+	require.NoError(t, sourceRepo.Create(t.Context(), doc))
+
+	handler := NewAPIArticlesHandler(
+		service.NewArticleQueryService(sourceRepo),
+		&stubRewritePipelineRunRepo{},
+		&stubRewriteStageRunRepo{},
+		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		auditRepo,
+		&stubSystemControlStateRepo{state: startedControlState("runner", domain.SystemStateRunning, "started", 2)},
+	)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/articles/:id/retry", handler.Retry)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/retry", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	stored, err := sourceRepo.GetByID(t.Context(), doc.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.SourceDocumentStatusPending, stored.Status)
+	require.Empty(t, stored.ErrorSummary)
 }
 
 func TestAPIArticlesStopReturnsAccepted(t *testing.T) {
@@ -567,6 +589,44 @@ func TestAPIArticlesStopWritesAuditEntry(t *testing.T) {
 	require.Equal(t, "source_document", auditRepo.logs[0].Resource)
 	require.Equal(t, doc.ID, auditRepo.logs[0].ResourceID)
 	require.Equal(t, "success", auditRepo.logs[0].Result)
+}
+
+func TestAPIArticlesStopSuccessIgnoresAuditFailure(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	sourceRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
+	auditRepo := &stubAuditLogRepo{createErr: domain.NewInternalErr("audit write failed", nil)}
+	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-1")
+	now := time.Now().UTC()
+	doc.Status = domain.SourceDocumentStatusProcessing
+	doc.RewriteRunID = "run-1"
+	doc.ClaimedBy = "worker-1"
+	doc.ClaimedAt = &now
+	doc.ProcessingStartedAt = &now
+	require.NoError(t, sourceRepo.Create(t.Context(), doc))
+
+	handler := NewAPIArticlesHandler(
+		service.NewArticleQueryService(sourceRepo),
+		&stubRewritePipelineRunRepo{},
+		&stubRewriteStageRunRepo{},
+		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		auditRepo,
+		&stubSystemControlStateRepo{},
+	)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/articles/:id/stop", handler.Stop)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/stop", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusAccepted, w.Code)
+	stored, err := sourceRepo.GetByID(t.Context(), doc.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.SourceDocumentStatusPaused, stored.Status)
 }
 
 func TestAPIArticlesResumeReturnsAccepted(t *testing.T) {
@@ -685,6 +745,40 @@ func TestAPIArticlesResumeWritesAuditEntry(t *testing.T) {
 	require.Equal(t, "web_control.article.resume", auditRepo.logs[0].Action)
 	require.Equal(t, "success", auditRepo.logs[0].Result)
 	require.Equal(t, doc.ID, auditRepo.logs[0].ResourceID)
+}
+
+func TestAPIArticlesResumeSuccessIgnoresAuditFailure(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	sourceRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
+	auditRepo := &stubAuditLogRepo{createErr: domain.NewInternalErr("audit write failed", nil)}
+	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-1")
+	doc.Status = domain.SourceDocumentStatusPaused
+	doc.RewriteRunID = "run-1"
+	require.NoError(t, sourceRepo.Create(t.Context(), doc))
+
+	handler := NewAPIArticlesHandler(
+		service.NewArticleQueryService(sourceRepo),
+		&stubRewritePipelineRunRepo{},
+		&stubRewriteStageRunRepo{},
+		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		auditRepo,
+		&stubSystemControlStateRepo{state: startedControlState("runner", domain.SystemStateRunning, "started", 2)},
+	)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/articles/:id/resume", handler.Resume)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/resume", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusAccepted, w.Code)
+	stored, err := sourceRepo.GetByID(t.Context(), doc.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.SourceDocumentStatusPending, stored.Status)
 }
 
 func TestAPIArticlesDeleteRejectsProcessingArticle(t *testing.T) {
@@ -820,6 +914,58 @@ func TestAPIArticlesDeleteRemovesWorkflowRecordsForPausedArticle(t *testing.T) {
 	require.Equal(t, "web_control.article.delete", auditRepo.logs[0].Action)
 	require.Equal(t, "success", auditRepo.logs[0].Result)
 	require.Equal(t, true, auditRepo.logs[0].Metadata["workflow_records_deleted"])
+}
+
+func TestAPIArticlesDeleteSuccessIgnoresAuditFailure(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	sourceRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
+	runRepo := &stubRewritePipelineRunRepo{}
+	stageRepo := &stubRewriteStageRunRepo{}
+	auditRepo := &stubAuditLogRepo{createErr: domain.NewInternalErr("audit write failed", nil)}
+	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-1")
+	now := time.Now().UTC()
+	doc.Status = domain.SourceDocumentStatusPaused
+	doc.RewriteRunID = "run-1"
+	doc.ClaimedBy = "worker-1"
+	doc.ClaimedAt = &now
+	doc.ProcessingStartedAt = &now
+	require.NoError(t, sourceRepo.Create(t.Context(), doc))
+	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", doc.ID, "wechat-longform", "sspai")
+	run.ID = doc.RewriteRunID
+	require.NoError(t, runRepo.Create(t.Context(), run))
+	require.NoError(t, stageRepo.Create(t.Context(), &domain.RewriteStageRun{
+		ID:            "stage-1",
+		PipelineRunID: run.ID,
+		StageName:     "repair_draft",
+		StageType:     "repair",
+		Status:        domain.RewriteStageRunning,
+		Attempt:       1,
+		StartedAt:     now,
+	}))
+
+	handler := NewAPIArticlesHandler(
+		service.NewArticleQueryService(sourceRepo),
+		runRepo,
+		stageRepo,
+		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		auditRepo,
+		&stubSystemControlStateRepo{},
+	)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.DELETE("/api/articles/:id", handler.Delete)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/articles/"+doc.ID, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+	_, err := sourceRepo.GetByID(t.Context(), doc.ID)
+	require.Error(t, err)
+	_, err = runRepo.GetByID(t.Context(), run.ID)
+	require.Error(t, err)
 }
 
 func TestAPIArticlesAssignWorkflowTemplateRejectsDisabledWorkflow(t *testing.T) {
