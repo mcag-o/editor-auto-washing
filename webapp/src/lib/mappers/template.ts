@@ -103,7 +103,8 @@ export function parseTemplateStages(stagesText: string): TemplateFormStage[] {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line, index) => {
-      const separatorIndex = line.indexOf(':');
+      const separatorMatch = /[:：]/.exec(line);
+      const separatorIndex = separatorMatch?.index ?? -1;
       if (separatorIndex === -1) {
         return {
           key: `stage-${index + 1}`,

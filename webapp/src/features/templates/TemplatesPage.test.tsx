@@ -3,6 +3,7 @@ import { act } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import TemplatesPage from './TemplatesPage';
+import { parseTemplateStages } from '../../lib/mappers/template';
 import theme from '../../theme/theme';
 
 function renderTemplatesPage() {
@@ -15,6 +16,26 @@ function renderTemplatesPage() {
 }
 
 describe('TemplatesPage', () => {
+  it('parses stage lines with an ASCII colon', () => {
+    expect(parseTemplateStages('阶段名: 说明')).toEqual([
+      {
+        key: 'stage-1',
+        label: '阶段名',
+        note: '说明',
+      },
+    ]);
+  });
+
+  it('parses stage lines with a full-width Chinese colon', () => {
+    expect(parseTemplateStages('阶段名：说明')).toEqual([
+      {
+        key: 'stage-1',
+        label: '阶段名',
+        note: '说明',
+      },
+    ]);
+  });
+
   it('renders a local template management shell with table, preview, and drawer interactions', async () => {
     renderTemplatesPage();
 
