@@ -2,7 +2,6 @@ import type {
   ApiEnvelope,
   ApiErrorPayload,
   ApiRequestOptions,
-  DashboardSummary,
   HealthResponse,
 } from './types';
 
@@ -79,9 +78,5 @@ export function unwrapEnvelope<T>(payload: T | ApiEnvelope<T>): T {
 }
 
 export function getHealth(options?: ApiRequestOptions) {
-  return apiClient.get<HealthResponse | ApiEnvelope<HealthResponse>>('/health', options);
-}
-
-export function getDashboardSummary(options?: ApiRequestOptions) {
-  return apiClient.get<DashboardSummary | ApiEnvelope<DashboardSummary>>('/dashboard/summary', options);
+  return apiClient.get<HealthResponse | ApiEnvelope<HealthResponse>>('/system/status', options);
 }

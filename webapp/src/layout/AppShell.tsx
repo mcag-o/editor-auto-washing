@@ -1,8 +1,10 @@
 import type { PropsWithChildren } from 'react';
+import { useState } from 'react';
 import AppsRoundedIcon from '@mui/icons-material/AppsRounded';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import DescriptionRoundedIcon from '@mui/icons-material/DescriptionRounded';
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
+import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
 import AppBar from '@mui/material/AppBar';
 import Avatar from '@mui/material/Avatar';
@@ -11,6 +13,7 @@ import Button from '@mui/material/Button';
 import Container from '@mui/material/Container';
 import Divider from '@mui/material/Divider';
 import Drawer from '@mui/material/Drawer';
+import IconButton from '@mui/material/IconButton';
 import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemIcon from '@mui/material/ListItemIcon';
@@ -19,6 +22,8 @@ import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme } from '@mui/material/styles';
 
 const drawerWidth = 248;
 
@@ -31,11 +36,80 @@ const navigationItems = [
 ];
 
 export default function AppShell({ children }: PropsWithChildren) {
+  const theme = useTheme();
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const handleOpenMobileNav = () => {
+    setMobileNavOpen(true);
+  };
+
+  const handleCloseMobileNav = () => {
+    setMobileNavOpen(false);
+  };
+
+  const drawerContent = (
+    <>
+      <Toolbar sx={{ minHeight: 72 }} />
+      <Box sx={{ px: 2, py: 2.5 }}>
+        <Stack
+          spacing={1}
+          sx={{
+            p: 2,
+            borderRadius: 4,
+            background: 'linear-gradient(135deg, rgba(91, 61, 245, 0.26), rgba(15, 98, 254, 0.12))',
+            border: `1px solid ${alpha('#ffffff', 0.08)}`,
+          }}
+        >
+          <Typography variant="overline" sx={{ color: alpha('#ffffff', 0.64) }}>
+            Operator Mode
+          </Typography>
+          <Typography variant="h4" sx={{ color: '#ffffff' }}>
+            控制面板
+          </Typography>
+          <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
+            后续页面将在同一外壳中接入文章、模板与审计视图。
+          </Typography>
+        </Stack>
+      </Box>
+      <Divider sx={{ borderColor: alpha('#ffffff', 0.08) }} />
+      <List sx={{ px: 1.5, py: 2 }}>
+        {navigationItems.map((item) => (
+          <ListItemButton
+            key={item.key}
+            selected={item.active}
+            onClick={handleCloseMobileNav}
+            sx={{
+              mb: 0.75,
+              borderRadius: 3,
+              color: item.active ? '#ffffff' : alpha('#ffffff', 0.74),
+              bgcolor: item.active ? alpha('#ffffff', 0.1) : 'transparent',
+              '&.Mui-selected': {
+                bgcolor: alpha('#ffffff', 0.1),
+              },
+              '&.Mui-selected:hover, &:hover': {
+                bgcolor: alpha('#ffffff', 0.14),
+              },
+            }}
+          >
+            <ListItemIcon sx={{ color: 'inherit', minWidth: 36 }}>{item.icon}</ListItemIcon>
+            <ListItemText primary={item.label} />
+          </ListItemButton>
+        ))}
+      </List>
+    </>
+  );
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <AppBar position="fixed">
         <Toolbar sx={{ minHeight: 72, px: { xs: 2, md: 3 } }}>
           <Stack direction="row" spacing={2} alignItems="center" sx={{ flexGrow: 1 }}>
+            {!isDesktop ? (
+              <IconButton color="inherit" edge="start" onClick={handleOpenMobileNav} sx={{ ml: -1 }}>
+                <MenuRoundedIcon />
+              </IconButton>
+            ) : null}
             <Avatar
               variant="rounded"
               sx={{
@@ -65,68 +139,28 @@ export default function AppShell({ children }: PropsWithChildren) {
       </AppBar>
 
       <Drawer
-        variant="permanent"
+        variant={isDesktop ? 'permanent' : 'temporary'}
+        open={isDesktop ? true : mobileNavOpen}
+        onClose={handleCloseMobileNav}
+        ModalProps={{ keepMounted: true }}
         sx={{
           width: drawerWidth,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
             width: drawerWidth,
             boxSizing: 'border-box',
+            borderRight: `1px solid ${alpha('#ffffff', 0.08)}`,
           },
         }}
       >
-        <Toolbar sx={{ minHeight: 72 }} />
-        <Box sx={{ px: 2, py: 2.5 }}>
-          <Stack
-            spacing={1}
-            sx={{
-              p: 2,
-              borderRadius: 4,
-              background: 'linear-gradient(135deg, rgba(91, 61, 245, 0.26), rgba(15, 98, 254, 0.12))',
-              border: `1px solid ${alpha('#ffffff', 0.08)}`,
-            }}
-          >
-            <Typography variant="overline" sx={{ color: alpha('#ffffff', 0.64) }}>
-              Operator Mode
-            </Typography>
-            <Typography variant="h4" sx={{ color: '#ffffff' }}>
-              控制面板
-            </Typography>
-            <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
-              后续页面将在同一外壳中接入文章、模板与审计视图。
-            </Typography>
-          </Stack>
-        </Box>
-        <Divider sx={{ borderColor: alpha('#ffffff', 0.08) }} />
-        <List sx={{ px: 1.5, py: 2 }}>
-          {navigationItems.map((item) => (
-            <ListItemButton
-              key={item.key}
-              selected={item.active}
-              sx={{
-                mb: 0.75,
-                borderRadius: 3,
-                color: item.active ? '#ffffff' : alpha('#ffffff', 0.74),
-                bgcolor: item.active ? alpha('#ffffff', 0.1) : 'transparent',
-                '&.Mui-selected': {
-                  bgcolor: alpha('#ffffff', 0.1),
-                },
-                '&.Mui-selected:hover, &:hover': {
-                  bgcolor: alpha('#ffffff', 0.14),
-                },
-              }}
-            >
-              <ListItemIcon sx={{ color: 'inherit', minWidth: 36 }}>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.label} />
-            </ListItemButton>
-          ))}
-        </List>
+        {drawerContent}
       </Drawer>
 
       <Box
         component="main"
         sx={{
           ml: { md: `${drawerWidth}px` },
+          width: { md: `calc(100% - ${drawerWidth}px)` },
           pt: '88px',
           pb: 5,
         }}

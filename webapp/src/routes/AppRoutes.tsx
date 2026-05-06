@@ -1,42 +1,25 @@
-import AutorenewRoundedIcon from '@mui/icons-material/AutorenewRounded';
-import CloudDoneRoundedIcon from '@mui/icons-material/CloudDoneRounded';
 import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded';
 import PlayCircleRoundedIcon from '@mui/icons-material/PlayCircleRounded';
-import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import AppShell from '../layout/AppShell';
 import ConfirmDialog from '../components/ConfirmDialog';
 import MetricCards from '../components/MetricCards';
 import PageCard from '../components/PageCard';
 import PageToolbar from '../components/PageToolbar';
 import StatusChip from '../components/StatusChip';
-import { useDashboardSummaryQuery, useHealthQuery } from '../lib/api/hooks';
 
 export default function AppRoutes() {
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const healthQuery = useHealthQuery();
-  const summaryQuery = useDashboardSummaryQuery();
-
-  const metrics = useMemo(() => {
-    if (summaryQuery.data?.metrics.length) {
-      return summaryQuery.data.metrics.map((metric) => ({
-        key: metric.key,
-        label: metric.label,
-        value: String(metric.value),
-      }));
-    }
-
-    return [
-      { key: 'queue', label: '待处理文章', value: '--', hint: '等待 API 接入真实汇总值' },
-      { key: 'running', label: '运行中的流程', value: '--', hint: '共享壳层预留占位' },
-      { key: 'drafts', label: '今日草稿产出', value: '--', hint: '后续页面复用同一卡片样式' },
-      { key: 'errors', label: '最近失败任务', value: '--', hint: '统一错误呈现入口' },
-    ];
-  }, [summaryQuery.data]);
+  const metrics = [
+    { key: 'queue', label: '待处理文章', value: '--', hint: '等待文章列表页接入真实数据' },
+    { key: 'running', label: '运行中的流程', value: '--', hint: '共享壳层预留占位' },
+    { key: 'drafts', label: '今日草稿产出', value: '--', hint: '后续页面复用同一卡片样式' },
+    { key: 'errors', label: '最近失败任务', value: '--', hint: '统一错误呈现入口' },
+  ];
 
   return (
     <AppShell>
@@ -64,13 +47,6 @@ export default function AppRoutes() {
             </Stack>
           }
         />
-
-        {healthQuery.error ? (
-          <Alert severity="warning">健康检查接口尚未接通：{healthQuery.error.message}</Alert>
-        ) : null}
-        {summaryQuery.error ? (
-          <Alert severity="info">汇总接口尚未接通：{summaryQuery.error.message}</Alert>
-        ) : null}
 
         <MetricCards items={metrics} />
 
@@ -101,21 +77,17 @@ export default function AppRoutes() {
 
           <PageCard
             title="API 基础层"
-            description="`/api/*` 的 typed client、错误类型与 hooks 已就位。"
-            action={<StatusChip status={healthQuery.data ? 'completed' : 'pending'} />}
+            description="保留共享 typed client、错误类型与真实接口示例，不在壳层默认路由中主动请求未实现的功能端点。"
+            action={<StatusChip status="completed" />}
           >
             <Stack spacing={1.5}>
-              <Stack direction="row" spacing={1.25} alignItems="center">
-                <CloudDoneRoundedIcon color={healthQuery.data ? 'success' : 'disabled'} />
-                <Typography variant="body2" color="text.secondary">
-                  健康检查状态：{healthQuery.loading ? '检查中' : healthQuery.data?.status ?? '未连接'}
-                </Typography>
-              </Stack>
-              <Stack direction="row" spacing={1.25} alignItems="center">
-                <AutorenewRoundedIcon color={summaryQuery.data ? 'success' : 'disabled'} />
-                <Typography variant="body2" color="text.secondary">
-                  汇总查询：{summaryQuery.loading ? '加载中' : summaryQuery.data ? '已返回数据' : '等待接口'}
-                </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Task 2 仅保留共享 API 基础设施。默认壳层作为静态占位，不在挂载时触发任何尚未落地的业务接口请求。
+              </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+                <StatusChip status="active" label="typed fetch client" />
+                <StatusChip status="active" label="统一错误模型" />
+                <StatusChip status="active" label="真实 health hook 示例" />
               </Stack>
             </Stack>
           </PageCard>

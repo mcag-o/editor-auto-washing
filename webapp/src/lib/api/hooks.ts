@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useState } from 'react';
-import { ApiError, getDashboardSummary, getHealth, unwrapEnvelope } from './client';
-import type { DashboardSummary, HealthResponse } from './types';
+import { ApiError, getHealth, unwrapEnvelope } from './client';
+import type { HealthResponse } from './types';
 
 type AsyncState<T> = {
   data: T | null;
@@ -48,11 +48,5 @@ function useApiQuery<T>(queryFn: (signal: AbortSignal) => Promise<T>) {
 export function useHealthQuery() {
   return useApiQuery<HealthResponse>((signal) =>
     getHealth({ signal }).then((payload) => unwrapEnvelope(payload)),
-  );
-}
-
-export function useDashboardSummaryQuery() {
-  return useApiQuery<DashboardSummary>((signal) =>
-    getDashboardSummary({ signal }).then((payload) => unwrapEnvelope(payload)),
   );
 }

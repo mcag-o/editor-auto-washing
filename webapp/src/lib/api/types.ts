@@ -16,17 +16,8 @@ export type ApiRequestOptions = {
 
 export type HealthResponse = {
   status: string;
-  service?: string;
-  version?: string;
-};
-
-export type SummaryMetric = {
-  key: string;
-  label: string;
-  value: number;
-};
-
-export type DashboardSummary = {
-  metrics: SummaryMetric[];
-  updatedAt?: string;
+  running?: boolean;
+  paused?: boolean;
+  started_at?: string;
+  updated_at?: string;
 };
