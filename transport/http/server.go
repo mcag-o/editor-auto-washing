@@ -31,7 +31,29 @@ type Server struct {
 	provider *Provider
 }
 
-var frontendDistFSForTests func() (fs.FS, error)
+var frontendDistFSForTests func() (fs.FS, bool, error)
+
+var spaFallbackPrefixes = []string{
+	"/api",
+	"/health",
+	"/ready",
+	"/config",
+	"/content",
+	"/templates",
+	"/drafts",
+	"/assets",
+	"/automation",
+	"/workspace",
+	"/jobs",
+	"/reviews",
+	"/publish",
+	"/rewrite",
+	"/workflows",
+	"/ui/assets",
+	"/rss",
+	"/collector",
+	"/ingestion",
+}
 
 func (s *Server) Handler() http.Handler {
 	if s == nil {
@@ -188,6 +210,13 @@ func (s *Server) registerRoutes() {
 	if err != nil {
 		panic(fmt.Errorf("load react frontend dist: %w", err))
 	}
+	var frontendIndexHTML []byte
+	if frontendReady {
+		frontendIndexHTML, err = fs.ReadFile(frontendFS, "index.html")
+		if err != nil {
+			panic(fmt.Errorf("read react frontend index: %w", err))
+		}
+	}
 
 	healthHandler := handlers.NewHealthHandler()
 	configHandler := handlers.NewConfigHandler(s.provider.ConfigLoader)
@@ -235,7 +264,7 @@ func (s *Server) registerRoutes() {
 	}
 
 	if frontendReady {
-		s.engine.GET("/", serveFSAsset(frontendFS, "index.html"))
+		s.engine.GET("/", serveAdminAsset("text/html; charset=utf-8", frontendIndexHTML))
 		s.engine.GET("/ui/assets/*filepath", func(c *gin.Context) {
 			assetPath := strings.TrimPrefix(c.Param("filepath"), "/")
 			if assetPath == "" {
@@ -361,15 +390,39 @@ func (s *Server) registerRoutes() {
 		api.PUT("/templates/:id", apiTemplatesHandler.Update)
 		api.DELETE("/templates/:id", apiTemplatesHandler.Delete)
 	}
+
+	if frontendReady {
+		s.engine.NoRoute(func(c *gin.Context) {
+			if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			requestPath := c.Request.URL.Path
+			for _, prefix := range spaFallbackPrefixes {
+				if requestPath == prefix || strings.HasPrefix(requestPath, prefix+"/") {
+					c.Status(http.StatusNotFound)
+					return
+				}
+			}
+			c.Data(http.StatusOK, "text/html; charset=utf-8", frontendIndexHTML)
+		})
+	}
 }
 
 func loadFrontendDistFS() (fs.FS, bool, error) {
 	if frontendDistFSForTests != nil {
-		frontendFS, err := frontendDistFSForTests()
+		frontendFS, ready, err := frontendDistFSForTests()
 		if err != nil {
 			return nil, false, err
 		}
-		return frontendFS, true, nil
+		return frontendFS, ready, nil
+	}
+
+	frontendFS, err := fs.Sub(web.Static, "dist")
+	if err == nil {
+		if _, readErr := fs.ReadFile(frontendFS, "index.html"); readErr == nil {
+			return frontendFS, true, nil
+		}
 	}
 
 	distDir := os.Getenv("CONTENT_HUB_WEBAPP_DIST_DIR")

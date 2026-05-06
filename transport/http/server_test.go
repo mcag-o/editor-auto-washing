@@ -25,6 +25,30 @@ import (
 	"time"
 )
 
+func useTestFrontendFS(t *testing.T, files fstest.MapFS) {
+	t.Helper()
+	frontendDistFSForTests = func() (fs.FS, bool, error) {
+		frontendFS, err := fs.Sub(files, ".")
+		if err != nil {
+			return nil, false, err
+		}
+		return frontendFS, true, nil
+	}
+	t.Cleanup(func() {
+		frontendDistFSForTests = nil
+	})
+}
+
+func disableTestFrontendFS(t *testing.T) {
+	t.Helper()
+	frontendDistFSForTests = func() (fs.FS, bool, error) {
+		return nil, false, nil
+	}
+	t.Cleanup(func() {
+		frontendDistFSForTests = nil
+	})
+}
+
 func newTestServer(t *testing.T) (*Server, *testWebControlRepos) {
 	t.Helper()
 
@@ -171,16 +195,11 @@ func TestReadyEndpoint(t *testing.T) {
 	}
 }
 
-func TestAdminFrontendServedFromRoot(t *testing.T) {
+func TestReactFrontendServedFromRoot(t *testing.T) {
 	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", "")
-	frontendDistFSForTests = func() (fs.FS, error) {
-		return fs.Sub(fstest.MapFS{
-			"index.html":      &fstest.MapFile{Data: []byte(`<!doctype html><html><head><title>Content Hub Control Plane</title><script type="module" src="/ui/assets/index.js"></script></head><body><div id="root"></div></body></html>`)},
-			"assets/index.js": &fstest.MapFile{Data: []byte(`console.log("react-shell")`)},
-		}, ".")
-	}
-	t.Cleanup(func() {
-		frontendDistFSForTests = nil
+	useTestFrontendFS(t, fstest.MapFS{
+		"index.html":      &fstest.MapFile{Data: []byte(`<!doctype html><html><head><title>Content Hub Control Plane</title><script type="module" src="/ui/assets/index.js"></script></head><body><div id="root"></div></body></html>`)},
+		"assets/index.js": &fstest.MapFile{Data: []byte(`console.log("react-shell")`)},
 	})
 
 	s, _ := newTestServer(t)
@@ -197,9 +216,66 @@ func TestAdminFrontendServedFromRoot(t *testing.T) {
 	require.NotContains(t, w.Body.String(), "图工作流控制台")
 }
 
+func TestReactBuildAssetsServedFromRoot(t *testing.T) {
+	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", "")
+	useTestFrontendFS(t, fstest.MapFS{
+		"index.html":       &fstest.MapFile{Data: []byte(`<!doctype html><html><body><div id="root"></div></body></html>`)},
+		"assets/index.js":  &fstest.MapFile{Data: []byte(`console.log("asset")`)},
+		"assets/index.css": &fstest.MapFile{Data: []byte(`body{margin:0}`)},
+	})
+
+	s, _ := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/assets/index.js", nil)
+	w := httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Header().Get("Content-Type"), "javascript")
+	require.Contains(t, w.Body.String(), `console.log("asset")`)
+}
+
+func TestReactFrontendFallbackReturnsShellForClientRoute(t *testing.T) {
+	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", "")
+	useTestFrontendFS(t, fstest.MapFS{
+		"index.html":      &fstest.MapFile{Data: []byte(`<!doctype html><html><head><title>Content Hub Control Plane</title></head><body><div id="root"></div></body></html>`)},
+		"assets/index.js": &fstest.MapFile{Data: []byte(`console.log("asset")`)},
+	})
+
+	s, _ := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/workflow-templates/123", nil)
+	w := httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Header().Get("Content-Type"), "text/html")
+	require.Contains(t, w.Body.String(), "<title>Content Hub Control Plane</title>")
+	require.Contains(t, w.Body.String(), `<div id="root"></div>`)
+}
+
+func TestAPIBackendRoutesAreNotSwallowedByFrontendFallback(t *testing.T) {
+	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", "")
+	useTestFrontendFS(t, fstest.MapFS{
+		"index.html":      &fstest.MapFile{Data: []byte(`<!doctype html><html><head><title>Content Hub Control Plane</title></head><body><div id="root"></div></body></html>`)},
+		"assets/index.js": &fstest.MapFile{Data: []byte(`console.log("asset")`)},
+	})
+
+	s, _ := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/articles", nil)
+	w := httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Header().Get("Content-Type"), "application/json")
+	require.Contains(t, w.Body.String(), `"data"`)
+	require.NotContains(t, w.Body.String(), `<div id="root"></div>`)
+}
+
 func TestAdminFrontendFallsBackToLegacyStaticShellWhenReactBuildIsUnavailable(t *testing.T) {
 	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", filepath.Join(t.TempDir(), "missing-dist"))
-	frontendDistFSForTests = nil
+	disableTestFrontendFS(t)
 
 	s, _ := newTestServer(t)
 
@@ -642,7 +718,7 @@ func TestNewServerWithWebControlDependenciesSucceeds(t *testing.T) {
 	require.NotNil(t, s.engine)
 }
 
-func TestAPIDeleteRoutesAreRegisteredForWorkflowsAndTemplates(t *testing.T) {
+func TestDeleteRoutesAreRegisteredForWorkflowsAndTemplates(t *testing.T) {
 	s, _ := newTestServer(t)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/workflows/nonexistent", nil)
