@@ -32,7 +32,11 @@ func (e *WorkflowEngine) RegisteredNames() []string {
 }
 
 func (e *WorkflowEngine) Execute(ctx context.Context, wf *domain.WorkflowDefinition, wc *domain.WorkflowContext) error {
-	for _, nodeName := range wf.Nodes {
+	for _, workflowNode := range wf.Nodes {
+		nodeName := workflowNode.Name
+		if nodeName == "" {
+			nodeName = workflowNode.ID
+		}
 		node, ok := e.nodes[nodeName]
 		if !ok {
 			return fmt.Errorf("workflow node not found: %s", nodeName)

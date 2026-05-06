@@ -1,10 +1,5 @@
 package domain
 
-type WorkflowDefinition struct {
-	Name  string   `json:"name"`
-	Nodes []string `json:"nodes"`
-}
-
 type WorkflowContext struct {
 	Document     *ContentDocument
 	ArtifactPath string
@@ -15,8 +10,15 @@ type WorkflowContext struct {
 
 func DefaultWorkflowDefinition() *WorkflowDefinition {
 	return &WorkflowDefinition{
-		Name:  "default",
-		Nodes: []string{"automation_dispatch", "automation_snapshot"},
+		Name:        "default",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "automation_dispatch",
+		Nodes: []WorkflowNode{
+			{ID: "automation_dispatch", Type: "action", Name: "automation_dispatch"},
+			{ID: "automation_snapshot", Type: "action", Name: "automation_snapshot"},
+		},
+		Edges: []WorkflowEdge{{FromNodeID: "automation_dispatch", ToNodeID: "automation_snapshot", Priority: 1}},
 	}
 }
 
