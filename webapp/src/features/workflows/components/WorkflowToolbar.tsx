@@ -36,7 +36,7 @@ export default function WorkflowToolbar({
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
         <StatusChip status="active" label="工作流编辑" />
         <Typography variant="body2" color="text.secondary">
-          当前画布共 {nodeCount} 个节点、{edgeCount} 条连线，保存后会整体覆盖后端中的当前工作流定义。
+          当前画布共 {nodeCount} 个节点、{edgeCount} 条连线，保存后会整体提交当前工作流定义。
         </Typography>
       </Stack>
 

@@ -69,7 +69,7 @@ export default function TemplatesPage() {
       const mapped = items.map(mapApiTemplateToForm);
       setTemplates(mapped);
       setSelectedId((current) => (mapped.some((item) => item.id === current) ? current : mapped[0]?.id ?? ''));
-      setBannerMessage(`已从真实模板接口加载 ${mapped.length} 个模板。`);
+      setBannerMessage(`已加载 ${mapped.length} 个模板。`);
     } catch (apiError) {
       setError(apiError instanceof ApiError ? apiError.message : '模板列表加载失败');
     } finally {
@@ -256,7 +256,7 @@ export default function TemplatesPage() {
           </Stack>
         }
         title="模板管理"
-        description="通过后端模板接口管理真实模板记录，并在页面内完成列表、预览、编辑、启停与删除操作。"
+        description="通过后端模板接口管理模板记录，并在页面内完成列表、预览、编辑、启停与删除操作。"
         actions={
           <>
             <StatusChip status={selectedTemplate?.enabled ? 'active' : 'disabled'} label={selectedTemplate?.enabled ? '已启用' : '已停用'} />

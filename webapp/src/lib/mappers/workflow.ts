@@ -128,7 +128,7 @@ export function mapWorkflowFormToApi(template: WorkflowFormTemplate): WorkflowDe
   const edges: WorkflowEdgeDefinition[] = template.edges.map((edge, index) => ({
     from_node_id: edge.source,
     to_node_id: edge.target,
-    condition: '',
+    condition: edge.label ? String(edge.label) : 'always',
     priority: index,
   }));
 

@@ -76,7 +76,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const runtimeLabel = systemState?.state === 'running' ? '运行中' : systemState?.state === 'paused' ? '已暂停' : '待启动';
 
   const metrics = [
-    { key: 'pending', label: '待处理文章', value: String(pendingCount), hint: '来源于真实文章队列中的 pending 状态。', icon: <DescriptionRoundedIcon fontSize="small" /> },
+    { key: 'pending', label: '待处理文章', value: String(pendingCount), hint: '来源于文章队列中的 pending 状态。', icon: <DescriptionRoundedIcon fontSize="small" /> },
     { key: 'running', label: '处理中任务', value: String(runningCount), hint: `当前系统状态：${runtimeLabel}。`, icon: <PlayCircleRoundedIcon fontSize="small" /> },
     { key: 'completed', label: '已完成文章', value: String(completedCount), hint: '来源于已完成状态文章数量。', icon: <ChecklistRoundedIcon fontSize="small" /> },
     { key: 'templates', label: '启用模板', value: String(enabledTemplates), hint: `${enabledTemplates} 个已启用`, icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
@@ -119,7 +119,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     <Stack spacing={3}>
       <PageToolbar
         title="控制台总览"
-        description="聚合展示当前浏览器控制面的主要入口与真实运营摘要，保持中文工作台体验。"
+        description="聚合展示当前浏览器控制面的主要入口与运营摘要，保持中文工作台体验。"
         leading={<StatusChip status="active" label="浏览器控制面" />}
         actions={
           <>
@@ -146,7 +146,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       >
         <PageCard
           title="处理链路概览"
-          description="以真实系统状态、文章队列和模板摘要呈现浏览器控制面的主链路观察。"
+          description="以系统状态、文章队列和模板摘要呈现浏览器控制面的主链路观察。"
           action={loading ? <CircularProgress size={18} /> : <StatusChip status="completed" label="摘要就绪" />}
         >
           <Stack spacing={2}>

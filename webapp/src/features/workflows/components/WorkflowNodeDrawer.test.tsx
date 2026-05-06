@@ -21,6 +21,6 @@ describe('WorkflowNodeDrawer node type contract', () => {
     );
 
     expect(screen.getByLabelText('节点类型')).toHaveValue('moderate');
-    expect(screen.getByText('保留当前后端类型值，保存时将原样写回。')).toBeInTheDocument();
+    expect(screen.getByText('保留当前后端类型值，保存时会原样写入节点 config_json。')).toBeInTheDocument();
   });
 });

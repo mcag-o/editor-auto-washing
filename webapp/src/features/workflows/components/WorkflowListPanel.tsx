@@ -54,7 +54,7 @@ export default function WorkflowListPanel({
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
             模板列表、保存与删除都直接对应后端工作流定义接口。
           </Typography>
-          </Box>
+        </Box>
 
           <Divider />
 

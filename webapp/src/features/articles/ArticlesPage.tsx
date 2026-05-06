@@ -239,7 +239,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
       <Stack spacing={3}>
         <PageToolbar
           title="文章列表"
-          description="使用现有文章列表、阶段查询与队列控制接口承接真实文章队列。"
+          description="使用现有文章列表、阶段查询与队列控制接口承接文章队列。"
           leading={<StatusChip status="active" label="实时队列视图" />}
           actions={
             <>
@@ -310,7 +310,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
 
         <PageCard
           title="队列表格"
-          description="展示真实文章队列，并在右侧保留阶段查看入口。"
+          description="展示文章队列，并在右侧保留阶段查看入口。"
           action={loading ? <CircularProgress size={18} /> : <StatusChip status="completed" label={`共 ${filteredRows.length} 条`} />}
         >
           <TableContainer>

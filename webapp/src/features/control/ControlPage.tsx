@@ -85,8 +85,8 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
   const activeConcurrency = Number(systemState?.metadata?.concurrency_limit ?? 0);
 
   const metrics = [
-    { key: 'runtime', label: '当前状态', value: runtimeState === 'running' ? '运行中' : runtimeState === 'paused' ? '已暂停' : '待启动', hint: '由真实系统状态接口返回', icon: <PlayArrowRoundedIcon fontSize="small" /> },
-    { key: 'queue', label: '待处理任务', value: String(pendingCount), hint: '来源于真实文章队列', icon: <RestartAltRoundedIcon fontSize="small" /> },
+    { key: 'runtime', label: '当前状态', value: runtimeState === 'running' ? '运行中' : runtimeState === 'paused' ? '已暂停' : '待启动', hint: '由系统状态接口返回', icon: <PlayArrowRoundedIcon fontSize="small" /> },
+    { key: 'queue', label: '待处理任务', value: String(pendingCount), hint: '来源于文章队列', icon: <RestartAltRoundedIcon fontSize="small" /> },
     { key: 'active', label: '处理中任务', value: String(processingCount), hint: '包含 processing / claimed', icon: <Chip size="small" label="任务" /> },
     { key: 'alerts', label: '失败提醒', value: String(failedCount), hint: '来源于失败状态文章数量', icon: <PauseCircleOutlineRoundedIcon fontSize="small" /> },
   ];
@@ -207,7 +207,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
                 </Button>
               </Stack>
               <Typography variant="body2" color="text.secondary">
-                操作人固定为后端的 `local-admin`，页面仅负责调用现有系统控制接口并展示返回状态。
+                操作记录中的执行人由后端决定，页面仅负责调用现有系统控制接口并展示返回状态。
               </Typography>
             </Stack>
           </PageCard>
@@ -239,7 +239,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
         <Stack spacing={3} flex={0.9} minWidth={{ xl: 340 }}>
           <PageCard
             title="值守提醒"
-            description="基于当前真实状态保留系统值守的快速观察位。"
+            description="基于当前状态保留系统值守的快速观察位。"
             action={<StatusChip status="active" label="持续观察" />}
           >
             <Stack spacing={1.5}>

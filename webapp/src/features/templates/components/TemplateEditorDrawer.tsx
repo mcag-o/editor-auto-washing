@@ -90,7 +90,7 @@ export default function TemplateEditorDrawer({
             label="模板类型"
             value={draft.type}
             onChange={(event) => onChange('type', event.target.value)}
-            helperText="支持 prompt、rewrite、review、stage 等模板类型字段，并随保存请求一起提交到后端。"
+            helperText="该字段直接写入模板记录的 type，可保留后端当前使用的类型值。"
             fullWidth
           />
 
@@ -109,7 +109,7 @@ export default function TemplateEditorDrawer({
             onChange={(event) => onChange('stagesText', event.target.value)}
             multiline
             minRows={6}
-            helperText="每行一个阶段，格式为“阶段名: 说明”。"
+            helperText="每行一个阶段，格式为“阶段名: 说明”；保存时会写入 variables_json.stages。"
             fullWidth
           />
         </Stack>

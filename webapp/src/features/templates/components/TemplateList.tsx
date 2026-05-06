@@ -90,7 +90,7 @@ export default function TemplateList({
           <Box>
             <Typography variant="h5">模板列表</Typography>
             <Typography variant="body2" color="text.secondary">
-              以表格形式展示模板版本、启用状态、更新时间与真实操作入口。
+              以表格形式展示模板版本、启用状态、更新时间与操作入口。
             </Typography>
           </Box>
           <Chip label={`${items.length} 个模板`} variant="outlined" />
@@ -114,7 +114,7 @@ export default function TemplateList({
                 <TableRow>
                   <TableCell colSpan={7}>
                     <Stack spacing={0.75} sx={{ py: 4, alignItems: 'center' }}>
-                      <Typography variant="subtitle2">当前没有本地模板</Typography>
+                      <Typography variant="subtitle2">当前没有模板记录</Typography>
                       <Typography variant="body2" color="text.secondary">
                         点击右上角“新建模板”即可开始搭建新的提示词或阶段模板。
                       </Typography>
