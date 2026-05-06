@@ -19,7 +19,9 @@ type templateDefinitionRepoStub struct {
 	stored    *domain.TemplateDefinition
 	list      []domain.TemplateDefinition
 	created   *domain.TemplateDefinition
+	updated   *domain.TemplateDefinition
 	createErr error
+	updateErr error
 	upsertErr error
 	getErr    error
 	listErr   error
@@ -51,6 +53,31 @@ func (r *templateDefinitionRepoStub) Create(_ context.Context, template *domain.
 func (r *templateDefinitionRepoStub) Upsert(_ context.Context, template *domain.TemplateDefinition) error {
 	if r.upsertErr != nil {
 		return r.upsertErr
+	}
+	r.stored = template
+	if template != nil {
+		replaced := false
+		for i := range r.list {
+			if r.list[i].ID == template.ID {
+				r.list[i] = *template
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			r.list = append(r.list, *template)
+		}
+	}
+	return nil
+}
+
+func (r *templateDefinitionRepoStub) Update(_ context.Context, template *domain.TemplateDefinition) error {
+	r.updated = template
+	if r.updateErr != nil {
+		return r.updateErr
+	}
+	if r.stored == nil || r.stored.ID != template.ID {
+		return domain.NewNotFoundErr("template_definition", template.ID)
 	}
 	r.stored = template
 	if template != nil {

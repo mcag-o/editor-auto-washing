@@ -18,6 +18,10 @@ func (s *TemplateDefinitionService) Create(ctx context.Context, template *domain
 	return s.repo.Create(ctx, template)
 }
 
+func (s *TemplateDefinitionService) Update(ctx context.Context, template *domain.TemplateDefinition) error {
+	return s.repo.Update(ctx, template)
+}
+
 func (s *TemplateDefinitionService) Upsert(ctx context.Context, template *domain.TemplateDefinition) error {
 	return s.repo.Upsert(ctx, template)
 }

@@ -18,6 +18,34 @@ func (r *templateDefinitionRepo) Create(ctx context.Context, template *domain.Te
 	return r.write(ctx, template, false)
 }
 
+func (r *templateDefinitionRepo) Update(ctx context.Context, template *domain.TemplateDefinition) error {
+	if err := template.Validate(); err != nil {
+		return err
+	}
+	variablesJSON, err := normalizeTemplateVariablesJSON(template.VariablesJSON)
+	if err != nil {
+		return err
+	}
+	template.VariablesJSON = variablesJSON
+	template.UpdatedAt = time.Now().UTC()
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE template_definitions
+		SET name = ?, type = ?, version = ?, enabled = ?, content = ?, variables_json = ?, updated_by = ?, updated_at = ?
+		WHERE id = ?
+	`, template.Name, template.Type, template.Version, boolToInt(template.Enabled), template.Content, template.VariablesJSON, template.UpdatedBy, template.UpdatedAt.Format(time.RFC3339Nano), template.ID)
+	if err != nil {
+		return fmt.Errorf("update template definition: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update template definition rows affected: %w", err)
+	}
+	if affected == 0 {
+		return domain.NewNotFoundErr("template_definition", template.ID)
+	}
+	return nil
+}
+
 func (r *templateDefinitionRepo) Upsert(ctx context.Context, template *domain.TemplateDefinition) error {
 	return r.write(ctx, template, true)
 }

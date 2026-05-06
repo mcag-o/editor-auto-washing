@@ -99,6 +99,57 @@ func TestWorkflowDefinitionRepoListOrdersLatestUpdateFirst(t *testing.T) {
 	require.Equal(t, older.ID, list[1].ID)
 }
 
+func TestWorkflowDefinitionRepoUpdateExistingRecord(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	wf := &domain.WorkflowDefinition{
+		ID:          id.New(),
+		Name:        "默认流程",
+		Description: "main workflow",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start-1",
+		Nodes:       []domain.WorkflowNode{{ID: "start-1", Type: "start", Name: "开始", ConfigJSON: `{"mode":"auto"}`}},
+		UpdatedBy:   "tester",
+	}
+	require.NoError(t, provider.WorkflowDefinitionRepo().Create(t.Context(), wf))
+
+	updated := &domain.WorkflowDefinition{
+		ID:          wf.ID,
+		Name:        "更新流程",
+		Description: "updated workflow",
+		Version:     "v2",
+		Enabled:     false,
+		EntryNodeID: "start-1",
+		Nodes:       []domain.WorkflowNode{{ID: "start-1", Type: "start", Name: "开始", ConfigJSON: `{"mode":"manual"}`}},
+		Edges:       []domain.WorkflowEdge{{FromNodeID: "start-1", ToNodeID: "start-1", Condition: "retry", Priority: 1}},
+		UpdatedBy:   "editor",
+	}
+	require.NoError(t, provider.WorkflowDefinitionRepo().Update(t.Context(), updated))
+
+	stored, err := provider.WorkflowDefinitionRepo().GetByID(t.Context(), wf.ID)
+	require.NoError(t, err)
+	require.Equal(t, "更新流程", stored.Name)
+	require.Equal(t, "v2", stored.Version)
+	require.False(t, stored.Enabled)
+	require.Len(t, stored.Edges, 1)
+	require.Equal(t, "editor", stored.UpdatedBy)
+}
+
+func TestWorkflowDefinitionRepoUpdateMissingReturnsNotFound(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	err := provider.WorkflowDefinitionRepo().Update(t.Context(), &domain.WorkflowDefinition{
+		ID:          id.New(),
+		Name:        "missing workflow",
+		Version:     "v1",
+		EntryNodeID: "start-1",
+		Nodes:       []domain.WorkflowNode{{ID: "start-1", Type: "start", Name: "开始"}},
+	})
+	require.Error(t, err)
+	appErr, ok := err.(*domain.AppError)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrNotFound, appErr.Code)
+}
+
 func TestWorkflowDefinitionRepoDeleteRemovesStoredDefinition(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	wf := &domain.WorkflowDefinition{
@@ -186,6 +237,59 @@ func TestTemplateDefinitionRepoCreateReturnsConflictOnDuplicateID(t *testing.T) 
 	appErr, ok := err.(*domain.AppError)
 	require.True(t, ok)
 	require.Equal(t, domain.ErrConflict, appErr.Code)
+}
+
+func TestTemplateDefinitionRepoUpdateExistingRecord(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	tpl := &domain.TemplateDefinition{
+		ID:            id.New(),
+		Name:          "标题模板",
+		Type:          "prompt",
+		Version:       "v1",
+		Enabled:       true,
+		Content:       "标题：{{title}}",
+		VariablesJSON: []byte(`{"title":"string"}`),
+		UpdatedBy:     "tester",
+	}
+	require.NoError(t, provider.TemplateDefinitionRepo().Create(t.Context(), tpl))
+
+	updated := &domain.TemplateDefinition{
+		ID:            tpl.ID,
+		Name:          "修复模板",
+		Type:          "stage",
+		Version:       "v2",
+		Enabled:       false,
+		Content:       "修复：{{title}}",
+		VariablesJSON: []byte(`{"title":"string","tone":"string"}`),
+		UpdatedBy:     "editor",
+	}
+	require.NoError(t, provider.TemplateDefinitionRepo().Update(t.Context(), updated))
+
+	stored, err := provider.TemplateDefinitionRepo().GetByID(t.Context(), tpl.ID)
+	require.NoError(t, err)
+	require.Equal(t, "修复模板", stored.Name)
+	require.Equal(t, "stage", stored.Type)
+	require.Equal(t, "v2", stored.Version)
+	require.False(t, stored.Enabled)
+	require.Equal(t, []byte(`{"title":"string","tone":"string"}`), stored.VariablesJSON)
+	require.Equal(t, "editor", stored.UpdatedBy)
+}
+
+func TestTemplateDefinitionRepoUpdateMissingReturnsNotFound(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	err := provider.TemplateDefinitionRepo().Update(t.Context(), &domain.TemplateDefinition{
+		ID:            id.New(),
+		Name:          "missing template",
+		Type:          "prompt",
+		Version:       "v1",
+		Enabled:       true,
+		Content:       "标题：{{title}}",
+		VariablesJSON: []byte(`{"title":"string"}`),
+	})
+	require.Error(t, err)
+	appErr, ok := err.(*domain.AppError)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrNotFound, appErr.Code)
 }
 
 func TestTemplateDefinitionRepoNormalizesEmptyVariablesJSON(t *testing.T) {

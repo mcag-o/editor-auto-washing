@@ -70,13 +70,8 @@ func (h *APITemplatesHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	targetID := c.Param("id")
-	if _, err := h.svc.GetByID(c.Request.Context(), targetID); err != nil {
-		HandleError(c, err)
-		return
-	}
-	template.ID = targetID
-	if err := h.svc.Upsert(c.Request.Context(), template); err != nil {
+	template.ID = c.Param("id")
+	if err := h.svc.Update(c.Request.Context(), template); err != nil {
 		HandleError(c, err)
 		return
 	}

@@ -58,13 +58,8 @@ func (h *APIWorkflowsHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	targetID := c.Param("id")
-	if _, err := h.svc.GetByID(c.Request.Context(), targetID); err != nil {
-		HandleError(c, err)
-		return
-	}
-	workflow.ID = targetID
-	if err := h.svc.Upsert(c.Request.Context(), &workflow); err != nil {
+	workflow.ID = c.Param("id")
+	if err := h.svc.Update(c.Request.Context(), &workflow); err != nil {
 		HandleError(c, err)
 		return
 	}

@@ -20,6 +20,37 @@ func (r *workflowDefinitionRepo) Create(ctx context.Context, workflow *domain.Wo
 	return r.write(ctx, workflow, false)
 }
 
+func (r *workflowDefinitionRepo) Update(ctx context.Context, workflow *domain.WorkflowDefinition) error {
+	if err := workflow.Validate(); err != nil {
+		return err
+	}
+	workflow.UpdatedAt = time.Now().UTC()
+	nodesJSON, err := json.Marshal(workflow.Nodes)
+	if err != nil {
+		return fmt.Errorf("marshal workflow definition nodes: %w", err)
+	}
+	edgesJSON, err := json.Marshal(workflow.Edges)
+	if err != nil {
+		return fmt.Errorf("marshal workflow definition edges: %w", err)
+	}
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE workflow_definitions
+		SET name = ?, description = ?, version = ?, enabled = ?, entry_node_id = ?, nodes_json = ?, edges_json = ?, updated_by = ?, updated_at = ?
+		WHERE id = ?
+	`, workflow.Name, workflow.Description, workflow.Version, boolToInt(workflow.Enabled), workflow.EntryNodeID, string(nodesJSON), string(edgesJSON), workflow.UpdatedBy, workflow.UpdatedAt.Format(time.RFC3339Nano), workflow.ID)
+	if err != nil {
+		return fmt.Errorf("update workflow definition: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update workflow definition rows affected: %w", err)
+	}
+	if affected == 0 {
+		return domain.NewNotFoundErr("workflow_definition", workflow.ID)
+	}
+	return nil
+}
+
 func (r *workflowDefinitionRepo) Upsert(ctx context.Context, workflow *domain.WorkflowDefinition) error {
 	return r.write(ctx, workflow, true)
 }

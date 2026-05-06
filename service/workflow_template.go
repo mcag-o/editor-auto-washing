@@ -18,6 +18,10 @@ func (s *WorkflowTemplateService) Create(ctx context.Context, workflow *domain.W
 	return s.repo.Create(ctx, workflow)
 }
 
+func (s *WorkflowTemplateService) Update(ctx context.Context, workflow *domain.WorkflowDefinition) error {
+	return s.repo.Update(ctx, workflow)
+}
+
 func (s *WorkflowTemplateService) Upsert(ctx context.Context, workflow *domain.WorkflowDefinition) error {
 	return s.repo.Upsert(ctx, workflow)
 }

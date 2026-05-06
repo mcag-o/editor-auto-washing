@@ -13,8 +13,10 @@ type stubTemplateDefinitionRepo struct {
 	stored    *domain.TemplateDefinition
 	list      []domain.TemplateDefinition
 	created   *domain.TemplateDefinition
+	updated   *domain.TemplateDefinition
 	upsert    *domain.TemplateDefinition
 	createErr error
+	updateErr error
 	deleteErr error
 	upsertErr error
 	getErr    error
@@ -40,6 +42,18 @@ func (r *stubTemplateDefinitionRepo) Upsert(_ context.Context, template *domain.
 	r.upsert = template
 	if r.upsertErr != nil {
 		return r.upsertErr
+	}
+	r.stored = template
+	if template != nil {
+		r.list = []domain.TemplateDefinition{*template}
+	}
+	return nil
+}
+
+func (r *stubTemplateDefinitionRepo) Update(_ context.Context, template *domain.TemplateDefinition) error {
+	r.updated = template
+	if r.updateErr != nil {
+		return r.updateErr
 	}
 	r.stored = template
 	if template != nil {
@@ -118,9 +132,20 @@ func TestTemplateDefinitionServiceDelete(t *testing.T) {
 	require.Empty(t, repo.list)
 }
 
+func TestTemplateDefinitionServiceUpdate(t *testing.T) {
+	tpl := &domain.TemplateDefinition{ID: "tpl-1", Name: "修复模板", Type: "stage", Version: "v2", Content: "标题：{{title}}"}
+	repo := &stubTemplateDefinitionRepo{}
+	svc := NewTemplateDefinitionService(repo)
+
+	require.NoError(t, svc.Update(t.Context(), tpl))
+	require.Same(t, tpl, repo.updated)
+	require.Same(t, tpl, repo.stored)
+}
+
 func TestTemplateDefinitionServicePropagatesRepoErrors(t *testing.T) {
 	repo := &stubTemplateDefinitionRepo{
 		createErr: errors.New("create failed"),
+		updateErr: errors.New("update failed"),
 		upsertErr: errors.New("upsert failed"),
 		deleteErr: errors.New("delete failed"),
 		getErr:    errors.New("get failed"),
@@ -130,6 +155,7 @@ func TestTemplateDefinitionServicePropagatesRepoErrors(t *testing.T) {
 	tpl := &domain.TemplateDefinition{ID: "tpl-1", Name: "标题模板", Type: "prompt", Version: "v1", Content: "标题：{{title}}"}
 
 	require.ErrorIs(t, svc.Create(t.Context(), tpl), repo.createErr)
+	require.ErrorIs(t, svc.Update(t.Context(), tpl), repo.updateErr)
 	require.ErrorIs(t, svc.Upsert(t.Context(), tpl), repo.upsertErr)
 	require.ErrorIs(t, svc.Delete(t.Context(), tpl.ID), repo.deleteErr)
 	_, err := svc.GetByID(t.Context(), tpl.ID)

@@ -19,7 +19,9 @@ type workflowDefinitionRepoStub struct {
 	stored    *domain.WorkflowDefinition
 	list      []domain.WorkflowDefinition
 	created   *domain.WorkflowDefinition
+	updated   *domain.WorkflowDefinition
 	createErr error
+	updateErr error
 	upsertErr error
 	getErr    error
 	listErr   error
@@ -51,6 +53,31 @@ func (r *workflowDefinitionRepoStub) Create(_ context.Context, workflow *domain.
 func (r *workflowDefinitionRepoStub) Upsert(_ context.Context, workflow *domain.WorkflowDefinition) error {
 	if r.upsertErr != nil {
 		return r.upsertErr
+	}
+	r.stored = workflow
+	if workflow != nil {
+		replaced := false
+		for i := range r.list {
+			if r.list[i].ID == workflow.ID {
+				r.list[i] = *workflow
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			r.list = append(r.list, *workflow)
+		}
+	}
+	return nil
+}
+
+func (r *workflowDefinitionRepoStub) Update(_ context.Context, workflow *domain.WorkflowDefinition) error {
+	r.updated = workflow
+	if r.updateErr != nil {
+		return r.updateErr
+	}
+	if r.stored == nil || r.stored.ID != workflow.ID {
+		return domain.NewNotFoundErr("workflow_definition", workflow.ID)
 	}
 	r.stored = workflow
 	if workflow != nil {
