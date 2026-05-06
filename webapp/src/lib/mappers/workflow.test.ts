@@ -200,4 +200,149 @@ describe('workflow mapper contract', () => {
 
     expect(api.edges[0]?.condition).toBe('always');
   });
+
+  it('keeps same-pair backend edges distinct after mapping to frontend state', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'wf-duplicate-pair',
+      name: 'Duplicate Pair Workflow',
+      description: 'verifies edge identity for same source and target',
+      version: 'v1',
+      enabled: true,
+      entry_node_id: 'node-1',
+      updated_by: 'tester',
+      updated_at: '2026-05-07T00:00:00Z',
+      nodes: [
+        {
+          id: 'node-1',
+          type: 'input',
+          name: 'Start',
+          config_json: JSON.stringify({ label: 'Start', type: 'input' }),
+        },
+        {
+          id: 'node-2',
+          type: 'rewrite',
+          name: 'Decision',
+          config_json: JSON.stringify({ label: 'Decision', type: 'rewrite' }),
+        },
+      ],
+      edges: [
+        {
+          from_node_id: 'node-1',
+          to_node_id: 'node-2',
+          condition: 'retry',
+          priority: 0,
+        },
+        {
+          from_node_id: 'node-1',
+          to_node_id: 'node-2',
+          condition: 'fallback',
+          priority: 1,
+        },
+      ],
+    };
+
+    const form = mapApiWorkflowToForm(workflow);
+
+    expect(form.edges).toHaveLength(2);
+    expect(form.edges[0]?.id).not.toBe(form.edges[1]?.id);
+    expect(form.edges.map((edge) => edge.label)).toEqual(['retry', 'fallback']);
+  });
+
+  it('round-trips same-pair edges with different conditions without collapsing them', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'wf-duplicate-round-trip',
+      name: 'Duplicate Round Trip Workflow',
+      description: 'verifies same-pair edge round-trip',
+      version: 'v1',
+      enabled: true,
+      entry_node_id: 'node-1',
+      updated_by: 'tester',
+      updated_at: '2026-05-07T00:00:00Z',
+      nodes: [
+        {
+          id: 'node-1',
+          type: 'input',
+          name: 'Start',
+          config_json: JSON.stringify({ label: 'Start', type: 'input' }),
+        },
+        {
+          id: 'node-2',
+          type: 'rewrite',
+          name: 'Decision',
+          config_json: JSON.stringify({ label: 'Decision', type: 'rewrite' }),
+        },
+      ],
+      edges: [
+        {
+          from_node_id: 'node-1',
+          to_node_id: 'node-2',
+          condition: 'retry',
+          priority: 0,
+        },
+        {
+          from_node_id: 'node-1',
+          to_node_id: 'node-2',
+          condition: 'fallback',
+          priority: 1,
+        },
+      ],
+    };
+
+    const form = mapApiWorkflowToForm(workflow);
+    const api = mapWorkflowFormToApi(form);
+
+    expect(api.edges).toHaveLength(2);
+    expect(api.edges.map((edge) => edge.condition)).toEqual(['retry', 'fallback']);
+  });
+
+  it('does not rely on source-target alone for local edge identity', () => {
+    const api = mapWorkflowFormToApi({
+      id: 'wf-local-edges',
+      name: 'Local Edge Workflow',
+      description: 'verifies local edge identity can represent same-pair edges',
+      version: 'v1',
+      enabled: true,
+      updatedBy: 'tester',
+      updatedAt: '2026-05-07T00:00:00Z',
+      entryNodeId: 'node-1',
+      nodeCount: 2,
+      nodes: [
+        {
+          id: 'node-1',
+          type: 'default',
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'Start',
+            type: 'input',
+            rawType: 'input',
+            template: '',
+            model: '',
+            context: '',
+            isEntry: true,
+          },
+        },
+        {
+          id: 'node-2',
+          type: 'default',
+          position: { x: 100, y: 0 },
+          data: {
+            label: 'Next',
+            type: 'rewrite',
+            rawType: 'rewrite',
+            template: '',
+            model: '',
+            context: '',
+            isEntry: false,
+          },
+        },
+      ],
+      edges: [
+        { id: 'edge-node-1-node-2-retry-0', source: 'node-1', target: 'node-2', label: 'retry' },
+        { id: 'edge-node-1-node-2-fallback-1', source: 'node-1', target: 'node-2', label: 'fallback' },
+      ],
+    });
+
+    expect(api.edges).toHaveLength(2);
+    expect(api.edges.map((edge) => edge.condition)).toEqual(['retry', 'fallback']);
+  });
 });

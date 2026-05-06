@@ -20,6 +20,7 @@ import {
 } from 'reactflow';
 import { ApiError, createWorkflow, deleteWorkflow, listWorkflows, updateWorkflow } from '../../lib/api/client';
 import {
+  buildWorkflowEdgeId,
   getWorkflowNodeDisplayType,
   mapApiWorkflowToForm,
   mapWorkflowFormToApi,
@@ -406,19 +407,24 @@ export default function WorkflowTemplatesPage() {
     }
 
     updateSelectedTemplate((template) => {
-      const duplicate = template.edges.some((edge) => edge.source === source && edge.target === target);
-      if (duplicate) {
-        return template;
-      }
+      const samePairCount = template.edges.filter((edge) => edge.source === source && edge.target === target).length;
+      const nextPriority = samePairCount;
+      const defaultCondition = 'always';
 
       return {
         ...template,
         updatedAt: '刚刚',
         edges: addEdge(
           {
-            id: `edge-${source}-${target}`,
+            id: buildWorkflowEdgeId({
+              source,
+              target,
+              condition: defaultCondition,
+              priority: nextPriority,
+            }),
             source,
             target,
+            label: defaultCondition,
             markerEnd: { type: MarkerType.ArrowClosed, color: '#0f62fe' },
             style: { stroke: '#0f62fe', strokeWidth: 2 },
           },

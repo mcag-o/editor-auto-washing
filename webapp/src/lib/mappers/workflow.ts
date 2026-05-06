@@ -10,6 +10,22 @@ import type { WorkflowCanvasNodeData } from '../../features/workflows/components
 
 const supportedWorkflowNodeTypes = new Set(['input', 'rewrite', 'review', 'render']);
 
+function normalizeEdgeCondition(condition: string | undefined): string {
+  const trimmed = condition?.trim();
+  return trimmed ? trimmed : 'always';
+}
+
+export function buildWorkflowEdgeId(input: {
+  source: string;
+  target: string;
+  condition?: string;
+  priority?: number;
+}): string {
+  const condition = normalizeEdgeCondition(input.condition);
+  const priority = input.priority ?? 0;
+  return `edge-${input.source}-${input.target}-${condition}-${priority}`;
+}
+
 export type WorkflowFormTemplate = {
   id: string;
   name: string;
@@ -90,7 +106,12 @@ export function mapApiWorkflowToForm(workflow: WorkflowDefinition): WorkflowForm
   });
 
   const edges: Edge[] = workflow.edges.map((edge) => ({
-    id: `edge-${edge.from_node_id}-${edge.to_node_id}`,
+    id: buildWorkflowEdgeId({
+      source: edge.from_node_id,
+      target: edge.to_node_id,
+      condition: edge.condition,
+      priority: edge.priority,
+    }),
     source: edge.from_node_id,
     target: edge.to_node_id,
     label: edge.condition,
