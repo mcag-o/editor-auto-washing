@@ -1,0 +1,140 @@
+import type { PropsWithChildren } from 'react';
+import AppsRoundedIcon from '@mui/icons-material/AppsRounded';
+import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
+import DescriptionRoundedIcon from '@mui/icons-material/DescriptionRounded';
+import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
+import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
+import AppBar from '@mui/material/AppBar';
+import Avatar from '@mui/material/Avatar';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Container from '@mui/material/Container';
+import Divider from '@mui/material/Divider';
+import Drawer from '@mui/material/Drawer';
+import List from '@mui/material/List';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import ListItemText from '@mui/material/ListItemText';
+import Stack from '@mui/material/Stack';
+import Toolbar from '@mui/material/Toolbar';
+import Typography from '@mui/material/Typography';
+import { alpha } from '@mui/material/styles';
+
+const drawerWidth = 248;
+
+const navigationItems = [
+  { key: 'overview', label: '控制台总览', icon: <AppsRoundedIcon fontSize="small" />, active: true },
+  { key: 'articles', label: '文章队列', icon: <DescriptionRoundedIcon fontSize="small" /> },
+  { key: 'workflows', label: '流程模板', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
+  { key: 'audit', label: '操作审计', icon: <HistoryRoundedIcon fontSize="small" /> },
+  { key: 'settings', label: '系统配置', icon: <SettingsRoundedIcon fontSize="small" /> },
+];
+
+export default function AppShell({ children }: PropsWithChildren) {
+  return (
+    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+      <AppBar position="fixed">
+        <Toolbar sx={{ minHeight: 72, px: { xs: 2, md: 3 } }}>
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ flexGrow: 1 }}>
+            <Avatar
+              variant="rounded"
+              sx={{
+                width: 44,
+                height: 44,
+                bgcolor: alpha('#ffffff', 0.12),
+                color: '#ffffff',
+              }}
+            >
+              <AutoAwesomeRoundedIcon />
+            </Avatar>
+            <Box>
+              <Typography variant="subtitle1" sx={{ color: '#ffffff' }}>
+                Content Hub 控制台
+              </Typography>
+              <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.72) }}>
+                自动改写、草稿生成与运维管理
+              </Typography>
+            </Box>
+          </Stack>
+          <Stack direction="row" spacing={1.25} alignItems="center">
+            <Button variant="contained" color="secondary">
+              新建任务
+            </Button>
+          </Stack>
+        </Toolbar>
+      </AppBar>
+
+      <Drawer
+        variant="permanent"
+        sx={{
+          width: drawerWidth,
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: drawerWidth,
+            boxSizing: 'border-box',
+          },
+        }}
+      >
+        <Toolbar sx={{ minHeight: 72 }} />
+        <Box sx={{ px: 2, py: 2.5 }}>
+          <Stack
+            spacing={1}
+            sx={{
+              p: 2,
+              borderRadius: 4,
+              background: 'linear-gradient(135deg, rgba(91, 61, 245, 0.26), rgba(15, 98, 254, 0.12))',
+              border: `1px solid ${alpha('#ffffff', 0.08)}`,
+            }}
+          >
+            <Typography variant="overline" sx={{ color: alpha('#ffffff', 0.64) }}>
+              Operator Mode
+            </Typography>
+            <Typography variant="h4" sx={{ color: '#ffffff' }}>
+              控制面板
+            </Typography>
+            <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
+              后续页面将在同一外壳中接入文章、模板与审计视图。
+            </Typography>
+          </Stack>
+        </Box>
+        <Divider sx={{ borderColor: alpha('#ffffff', 0.08) }} />
+        <List sx={{ px: 1.5, py: 2 }}>
+          {navigationItems.map((item) => (
+            <ListItemButton
+              key={item.key}
+              selected={item.active}
+              sx={{
+                mb: 0.75,
+                borderRadius: 3,
+                color: item.active ? '#ffffff' : alpha('#ffffff', 0.74),
+                bgcolor: item.active ? alpha('#ffffff', 0.1) : 'transparent',
+                '&.Mui-selected': {
+                  bgcolor: alpha('#ffffff', 0.1),
+                },
+                '&.Mui-selected:hover, &:hover': {
+                  bgcolor: alpha('#ffffff', 0.14),
+                },
+              }}
+            >
+              <ListItemIcon sx={{ color: 'inherit', minWidth: 36 }}>{item.icon}</ListItemIcon>
+              <ListItemText primary={item.label} />
+            </ListItemButton>
+          ))}
+        </List>
+      </Drawer>
+
+      <Box
+        component="main"
+        sx={{
+          ml: { md: `${drawerWidth}px` },
+          pt: '88px',
+          pb: 5,
+        }}
+      >
+        <Container maxWidth="xl" sx={{ px: { xs: 2, md: 3 } }}>
+          {children}
+        </Container>
+      </Box>
+    </Box>
+  );
+}
