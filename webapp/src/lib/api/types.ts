@@ -4,6 +4,11 @@ export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue
 
 export type JsonObject = { [key: string]: JsonValue };
 
+export type SelectOption = {
+  id: string;
+  label: string;
+};
+
 export type ApiErrorPayload = {
   error?: string;
   message?: string;
@@ -110,6 +115,20 @@ export type SystemControlState = {
   updated_at: string;
 };
 
+export type ControlPlaneConfigPayload = {
+  target_type?: string;
+  source_profile?: string;
+  render_platform?: string;
+  default_workflow_template?: string;
+  concurrency?: number;
+  operator_name?: string;
+  review_enabled?: boolean;
+  draft_auto_render?: boolean;
+  audit_retention_days?: number;
+  notification_channel?: string;
+  operator_note?: string;
+};
+
 export type AuditLog = {
   id: string;
   actor: string;
@@ -127,6 +146,20 @@ export type WorkflowNodeDefinition = {
   type: string;
   name: string;
   config_json: string;
+};
+
+export type WorkflowNodePosition = {
+  x: number;
+  y: number;
+};
+
+export type WorkflowNodeConfigPayload = {
+  label?: string;
+  type?: string;
+  template?: string;
+  model?: string;
+  context?: string;
+  position?: WorkflowNodePosition;
 };
 
 export type WorkflowEdgeDefinition = {
@@ -171,6 +204,16 @@ export type TemplateDefinition = {
   variables_json: string;
   updated_by: string;
   updated_at: string;
+};
+
+export type TemplateStagePayload = {
+  label: string;
+  note: string;
+};
+
+export type TemplateVariablesPayload = {
+  summary?: string;
+  stages?: TemplateStagePayload[];
 };
 
 export type TemplateDefinitionInput = {

@@ -19,7 +19,7 @@ import {
   type NodeChange,
 } from 'reactflow';
 import { ApiError, createWorkflow, deleteWorkflow, listWorkflows, updateWorkflow } from '../../lib/api/client';
-import type { WorkflowDefinition, WorkflowDefinitionInput, WorkflowEdgeDefinition, WorkflowNodeDefinition } from '../../lib/api/types';
+import { mapApiWorkflowToForm, mapWorkflowFormToApi, type WorkflowFormTemplate } from '../../lib/mappers/workflow';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
 import WorkflowEdgePanel, { type WorkflowEdgeSummary } from './components/WorkflowEdgePanel';
@@ -28,14 +28,7 @@ import WorkflowListPanel, { type WorkflowTemplateSummary } from './components/Wo
 import WorkflowNodeDrawer, { type WorkflowNodeFormValue, type WorkflowNodeType } from './components/WorkflowNodeDrawer';
 import WorkflowToolbar from './components/WorkflowToolbar';
 
-type WorkflowTemplate = WorkflowTemplateSummary & {
-  version: string;
-  enabled: boolean;
-  updatedBy: string;
-  entryNodeId: string | null;
-  edges: Edge[];
-  nodes: Array<Node<WorkflowCanvasNodeData>>;
-};
+type WorkflowTemplate = WorkflowFormTemplate & { updatedAtLabel: string };
 
 function createLocalId(prefix: string) {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -130,80 +123,28 @@ function workflowNodeType(type: string): WorkflowNodeType {
   return 'rewrite';
 }
 
-function mapWorkflow(workflow: WorkflowDefinition): WorkflowTemplate {
-  const nodes = workflow.nodes.map((node, index) => {
-    let config: Partial<WorkflowNodeFormValue> = {};
-    try {
-      config = JSON.parse(node.config_json || '{}') as Partial<WorkflowNodeFormValue>;
-    } catch {
-      config = {};
-    }
-    return createNode(
-      node.id,
-      config.label || node.name,
-      workflowNodeType(node.type),
-      80 + (index % 3) * 240,
-      120 + Math.floor(index / 3) * 180,
-      node.id === workflow.entry_node_id,
-      config.template || '',
-      config.model || '',
-      config.context || '',
-    );
-  });
-
-  const edges: Edge[] = workflow.edges.map((edge) => ({
-    id: `edge-${edge.from_node_id}-${edge.to_node_id}`,
-    source: edge.from_node_id,
-    target: edge.to_node_id,
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#0f62fe' },
-    style: { stroke: '#0f62fe', strokeWidth: 2 },
-  }));
-
+function decorateWorkflowTemplate(template: WorkflowFormTemplate): WorkflowTemplate {
   return {
-    id: workflow.id,
-    name: workflow.name,
-    description: workflow.description,
-    version: workflow.version,
-    enabled: workflow.enabled,
-    updatedBy: workflow.updated_by,
-    updatedAt: workflow.updated_at ? new Date(workflow.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未记录',
-    entryNodeId: workflow.entry_node_id,
-    nodes,
-    edges,
-    nodeCount: nodes.length,
-  };
-}
-
-function toWorkflowPayload(template: WorkflowTemplate): WorkflowDefinitionInput {
-  const nodes: WorkflowNodeDefinition[] = template.nodes.map((node) => ({
-    id: node.id,
-    type: node.data.type,
-    name: node.data.label,
-    config_json: JSON.stringify({
-      label: node.data.label,
-      type: node.data.type,
-      template: node.data.template,
-      model: node.data.model,
-      context: node.data.context,
-    }),
-  }));
-
-  const edges: WorkflowEdgeDefinition[] = template.edges.map((edge, index) => ({
-    from_node_id: edge.source,
-    to_node_id: edge.target,
-    condition: '',
-    priority: index,
-  }));
-
-  return {
-    name: template.name,
-    description: template.description,
-    version: template.version,
-    enabled: template.enabled,
-    entry_node_id: template.entryNodeId || template.nodes[0]?.id || '',
-    nodes,
-    edges,
-    updated_by: 'react-webapp',
+    ...template,
+    updatedAtLabel: template.updatedAt ? new Date(template.updatedAt).toLocaleString('zh-CN', { hour12: false }) : '未记录',
+    nodes: template.nodes.map((node) =>
+      createNode(
+        node.id,
+        node.data.label,
+        workflowNodeType(node.data.type),
+        node.position.x,
+        node.position.y,
+        node.id === template.entryNodeId,
+        node.data.template,
+        node.data.model,
+        node.data.context,
+      ),
+    ),
+    edges: template.edges.map((edge) => ({
+      ...edge,
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#0f62fe' },
+      style: { stroke: '#0f62fe', strokeWidth: 2 },
+    })),
   };
 }
 
@@ -223,7 +164,7 @@ export default function WorkflowTemplatesPage() {
 
     try {
       const items = await listWorkflows();
-      const mapped = items.map(mapWorkflow);
+      const mapped = items.map(mapApiWorkflowToForm).map(decorateWorkflowTemplate);
       setTemplates(mapped);
       const nextId = selectedTemplateId || mapped[0]?.id || '';
       setSelectedTemplateId(nextId);
@@ -264,7 +205,7 @@ export default function WorkflowTemplatesPage() {
     name: template.name,
     description: template.description,
     nodeCount: template.nodes.length,
-    updatedAt: template.updatedAt,
+    updatedAt: template.updatedAtLabel,
   }));
 
   const selectedEdgeSummary: WorkflowEdgeSummary | null = selectedEdge && selectedTemplate
@@ -294,19 +235,19 @@ export default function WorkflowTemplatesPage() {
     const nextLabelIndex = templates.length + 1;
     const nextId = createLocalId('workflow-local');
     const seedNodeId = createLocalId('node-local');
-    const newTemplate: WorkflowTemplate = {
+    const newTemplate = decorateWorkflowTemplate({
       id: nextId,
       name: `本地模板 ${nextLabelIndex}`,
       description: '用于验证工作流模板图编辑和 API 保存。',
       version: `v${nextLabelIndex}.0.0`,
       enabled: true,
       updatedBy: 'react-webapp',
-      updatedAt: '刚刚',
+      updatedAt: new Date().toISOString(),
       entryNodeId: seedNodeId,
       nodes: [createNode(seedNodeId, '起始节点', 'input', 120, 220, true)],
       edges: [],
       nodeCount: 1,
-    };
+    });
 
     setTemplates((current) => [...current, newTemplate]);
     setSelectedTemplateId(nextId);
@@ -481,11 +422,14 @@ export default function WorkflowTemplatesPage() {
     setSuccessMessage(null);
 
     try {
-      const payload = toWorkflowPayload(selectedTemplate);
+      const payload = mapWorkflowFormToApi({
+        ...selectedTemplate,
+        updatedBy: 'react-webapp',
+      });
       const saved = selectedTemplate.id.startsWith('workflow-local')
         ? await createWorkflow(payload)
         : await updateWorkflow(selectedTemplate.id, payload);
-      const mapped = mapWorkflow(saved);
+      const mapped = decorateWorkflowTemplate(mapApiWorkflowToForm(saved));
       setTemplates((current) => current.map((template) => (template.id === selectedTemplate.id ? mapped : template)));
       setSelectedTemplateId(mapped.id);
       setSelectedNodeId(mapped.entryNodeId ?? mapped.nodes[0]?.id ?? null);

@@ -9,7 +9,13 @@ import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { ApiError, createTemplate, deleteTemplate, listTemplates, updateTemplate } from '../../lib/api/client';
-import type { TemplateDefinition, TemplateDefinitionInput } from '../../lib/api/types';
+import {
+  buildTemplateDraft,
+  mapApiTemplateToForm,
+  mapTemplateFormToApi,
+  type TemplateFormDraft,
+  type TemplateFormRecord,
+} from '../../lib/mappers/template';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
 import TemplateEditorDrawer from './components/TemplateEditorDrawer';
@@ -22,63 +28,8 @@ export type TemplateStage = {
   note: string;
 };
 
-export type TemplateRecord = {
-  id: string;
-  name: string;
-  version: string;
-  enabled: boolean;
-  summary: string;
-  prompt: string;
-  stages: TemplateStage[];
-  updatedAt: string;
-  updatedBy: string;
-  type: string;
-};
-
-export type TemplateDraft = {
-  name: string;
-  version: string;
-  enabled: boolean;
-  summary: string;
-  prompt: string;
-  stagesText: string;
-  type: string;
-};
-
-function buildDraft(template: TemplateRecord): TemplateDraft {
-  return {
-    name: template.name,
-    version: template.version,
-    enabled: template.enabled,
-    summary: template.summary,
-    prompt: template.prompt,
-    stagesText: template.stages.map((stage) => `${stage.label}: ${stage.note}`).join('\n'),
-    type: template.type,
-  };
-}
-
-function draftToStages(stagesText: string): TemplateStage[] {
-  return stagesText
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => {
-      const separatorIndex = line.indexOf(':');
-      if (separatorIndex === -1) {
-        return {
-          key: `stage-${index + 1}`,
-          label: line,
-          note: '未填写说明。',
-        };
-      }
-
-      return {
-        key: `stage-${index + 1}`,
-        label: line.slice(0, separatorIndex).trim(),
-        note: line.slice(separatorIndex + 1).trim() || '未填写说明。',
-      };
-    });
-}
+export type TemplateRecord = TemplateFormRecord;
+export type TemplateDraft = TemplateFormDraft;
 
 function createEmptyDraft(templateCount: number): TemplateDraft {
   return {
@@ -92,36 +43,10 @@ function createEmptyDraft(templateCount: number): TemplateDraft {
   };
 }
 
-function mapTemplate(template: TemplateDefinition): TemplateRecord {
-  const prompt = template.content ?? '';
-  let summary = template.type;
-  let stages = [{ key: 'stage-1', label: '模板内容', note: '当前模板未提供分阶段结构。' }];
-
-  try {
-    const parsed = JSON.parse(template.variables_json || '{}') as { summary?: string; stages?: Array<{ label?: string; note?: string }> };
-    summary = parsed.summary || summary;
-    if (Array.isArray(parsed.stages) && parsed.stages.length > 0) {
-      stages = parsed.stages.map((stage, index) => ({
-        key: `stage-${index + 1}`,
-        label: stage.label?.trim() || `阶段 ${index + 1}`,
-        note: stage.note?.trim() || '未填写说明。',
-      }));
-    }
-  } catch {
-    summary = template.type;
-  }
-
+function decorateTemplate(template: TemplateFormRecord): TemplateRecord {
   return {
-    id: template.id,
-    name: template.name,
-    version: template.version,
-    enabled: template.enabled,
-    summary,
-    prompt,
-    stages,
-    updatedAt: template.updated_at ? new Date(template.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未记录',
-    updatedBy: template.updated_by || 'system',
-    type: template.type,
+    ...template,
+    updatedAt: template.updatedAt ? new Date(template.updatedAt).toLocaleString('zh-CN', { hour12: false }) : '未记录',
   };
 }
 
@@ -142,7 +67,7 @@ export default function TemplatesPage() {
 
     try {
       const items = await listTemplates();
-      const mapped = items.map(mapTemplate);
+      const mapped = items.map(mapApiTemplateToForm).map(decorateTemplate);
       setTemplates(mapped);
       setSelectedId((current) => current || mapped[0]?.id || '');
     } catch (apiError) {
@@ -183,7 +108,7 @@ export default function TemplatesPage() {
 
     setSelectedId(templateId);
     setEditingId(templateId);
-    setDraft(buildDraft(template));
+    setDraft(buildTemplateDraft(template));
     setEditorOpen(true);
   };
 
@@ -196,22 +121,11 @@ export default function TemplatesPage() {
     setError(null);
     setSuccessMessage(null);
 
-    const payload: TemplateDefinitionInput = {
-      name: draft.name.trim() || '未命名模板',
-      version: draft.version.trim() || 'v0.0.0',
-      enabled: draft.enabled,
-      type: draft.type.trim() || 'prompt',
-      content: draft.prompt.trim(),
-      variables_json: {
-        summary: draft.summary.trim(),
-        stages: draftToStages(draft.stagesText).map((stage) => ({ label: stage.label, note: stage.note })),
-      },
-      updated_by: 'react-webapp',
-    };
+    const payload = mapTemplateFormToApi(draft, { updatedBy: 'react-webapp' });
 
     try {
       const saved = editingId ? await updateTemplate(editingId, payload) : await createTemplate(payload);
-      const nextTemplate = mapTemplate(saved);
+      const nextTemplate = decorateTemplate(mapApiTemplateToForm(saved));
       setTemplates((currentTemplates) => {
         if (editingId) {
           return currentTemplates.map((template) => (template.id === editingId ? nextTemplate : template));
@@ -238,19 +152,17 @@ export default function TemplatesPage() {
     setSuccessMessage(null);
 
     try {
-      const saved = await updateTemplate(templateId, {
-        name: template.name,
-        version: template.version,
-        enabled: !template.enabled,
-        type: template.type,
-        content: template.prompt,
-        variables_json: {
-          summary: template.summary,
-          stages: template.stages.map((stage) => ({ label: stage.label, note: stage.note })),
-        },
-        updated_by: 'react-webapp',
-      });
-      const nextTemplate = mapTemplate(saved);
+      const saved = await updateTemplate(
+        templateId,
+        mapTemplateFormToApi(
+          {
+            ...buildTemplateDraft(template),
+            enabled: !template.enabled,
+          },
+          { updatedBy: 'react-webapp' },
+        ),
+      );
+      const nextTemplate = decorateTemplate(mapApiTemplateToForm(saved));
       setTemplates((currentTemplates) => currentTemplates.map((item) => (item.id === templateId ? nextTemplate : item)));
       setSelectedId(templateId);
       setSuccessMessage(nextTemplate.enabled ? '模板已启用。' : '模板已停用。');
@@ -267,7 +179,7 @@ export default function TemplatesPage() {
 
     setEditingId(null);
     setDraft({
-      ...buildDraft(template),
+      ...buildTemplateDraft(template),
       name: `${template.name} 副本`,
       enabled: false,
     });

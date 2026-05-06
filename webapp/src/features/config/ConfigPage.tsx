@@ -10,7 +10,13 @@ import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { ApiError, getConfig, listTemplates, listWorkflows, updateConfig } from '../../lib/api/client';
-import type { JsonObject, TemplateDefinition, WorkflowDefinition } from '../../lib/api/types';
+import type { ControlPlaneConfigPayload, TemplateDefinition, WorkflowDefinition } from '../../lib/api/types';
+import {
+  defaultControlPlaneConfigForm,
+  mapApiConfigToForm,
+  mapConfigFormToApi,
+  type ControlPlaneConfigForm,
+} from '../../lib/mappers/config';
 import PageCard from '../../components/PageCard';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
@@ -20,36 +26,8 @@ type ConfigPageProps = {
   onNavigate?: (page: AppPage) => void;
 };
 
-type ConfigState = {
-  workspaceName: string;
-  defaultTemplate: string;
-  concurrentJobs: string;
-  reviewEnabled: boolean;
-  draftAutoRender: boolean;
-  auditRetentionDays: string;
-  notificationChannel: string;
-  operatorNote: string;
-};
-
-function toStringValue(value: unknown, fallback = '') {
-  return typeof value === 'string' ? value : fallback;
-}
-
-function toBooleanValue(value: unknown, fallback = false) {
-  return typeof value === 'boolean' ? value : fallback;
-}
-
 export default function ConfigPage({ onNavigate }: ConfigPageProps) {
-  const [config, setConfig] = useState<ConfigState>({
-    workspaceName: '主运营空间',
-    defaultTemplate: '',
-    concurrentJobs: '2',
-    reviewEnabled: true,
-    draftAutoRender: true,
-    auditRetentionDays: '90',
-    notificationChannel: '站内提醒',
-    operatorNote: '',
-  });
+  const [config, setConfig] = useState<ControlPlaneConfigForm>(defaultControlPlaneConfigForm);
   const [workflowOptions, setWorkflowOptions] = useState<WorkflowDefinition[]>([]);
   const [templateOptions, setTemplateOptions] = useState<TemplateDefinition[]>([]);
   const [saveMessage, setSaveMessage] = useState('尚未提交配置变更');
@@ -66,7 +44,7 @@ export default function ConfigPage({ onNavigate }: ConfigPageProps) {
 
       try {
         const [payload, workflows, templates] = await Promise.all([
-          getConfig({ signal: controller.signal }),
+          getConfig({ signal: controller.signal }) as Promise<ControlPlaneConfigPayload>,
           listWorkflows({ signal: controller.signal }),
           listTemplates({ signal: controller.signal }),
         ]);
@@ -74,19 +52,10 @@ export default function ConfigPage({ onNavigate }: ConfigPageProps) {
         if (controller.signal.aborted) {
           return;
         }
-
+        
         setWorkflowOptions(workflows);
         setTemplateOptions(templates);
-        setConfig({
-          workspaceName: toStringValue(payload.workspace_name, '主运营空间'),
-          defaultTemplate: toStringValue(payload.default_template, workflows[0]?.id ?? ''),
-          concurrentJobs: String(payload.concurrent_jobs ?? payload.concurrency_limit ?? 2),
-          reviewEnabled: toBooleanValue(payload.review_enabled, true),
-          draftAutoRender: toBooleanValue(payload.draft_auto_render, true),
-          auditRetentionDays: String(payload.audit_retention_days ?? 90),
-          notificationChannel: toStringValue(payload.notification_channel, '站内提醒'),
-          operatorNote: toStringValue(payload.operator_note, ''),
-        });
+        setConfig(mapApiConfigToForm(payload, { defaultWorkflowTemplate: workflows[0]?.id ?? '' }));
         setSaveMessage('已从真实配置接口加载当前设置');
       } catch (apiError) {
         if (controller.signal.aborted) {
@@ -104,25 +73,12 @@ export default function ConfigPage({ onNavigate }: ConfigPageProps) {
     return () => controller.abort();
   }, []);
 
-  const handleFieldChange = <K extends keyof ConfigState>(key: K, value: ConfigState[K]) => {
+  const handleFieldChange = <K extends keyof ControlPlaneConfigForm>(key: K, value: ControlPlaneConfigForm[K]) => {
     setConfig((current) => ({ ...current, [key]: value }));
     setSaveMessage('检测到未保存修改');
   };
 
-  const payload = useMemo<JsonObject>(
-    () => ({
-      workspace_name: config.workspaceName,
-      default_template: config.defaultTemplate,
-      default_prompt_template: templateOptions.find((item) => item.id === config.defaultTemplate)?.id ?? '',
-      concurrent_jobs: Number(config.concurrentJobs) || 1,
-      review_enabled: config.reviewEnabled,
-      draft_auto_render: config.draftAutoRender,
-      audit_retention_days: Number(config.auditRetentionDays) || 0,
-      notification_channel: config.notificationChannel,
-      operator_note: config.operatorNote,
-    }),
-    [config, templateOptions],
-  );
+  const payload = useMemo(() => mapConfigFormToApi(config), [config]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -174,15 +130,30 @@ export default function ConfigPage({ onNavigate }: ConfigPageProps) {
             action={<StatusChip status="active" label="可编辑" />}
           >
             <Stack spacing={2}>
-              <TextField label="工作空间名称" value={config.workspaceName} onChange={(event) => handleFieldChange('workspaceName', event.target.value)} disabled={loading} />
-              <TextField select label="默认流程模板" value={config.defaultTemplate} onChange={(event) => handleFieldChange('defaultTemplate', event.target.value)} disabled={loading}>
+              <TextField select label="目标类型" value={config.targetType} onChange={(event) => handleFieldChange('targetType', event.target.value)} disabled={loading}>
+                <MenuItem value="wechat-longform">wechat-longform</MenuItem>
+                <MenuItem value="wechat-shortform">wechat-shortform</MenuItem>
+                <MenuItem value="xiaohongshu">xiaohongshu</MenuItem>
+              </TextField>
+              <TextField select label="来源画像" value={config.sourceProfile} onChange={(event) => handleFieldChange('sourceProfile', event.target.value)} disabled={loading}>
+                <MenuItem value="sspai">sspai</MenuItem>
+                <MenuItem value="generic">generic</MenuItem>
+                <MenuItem value="news">news</MenuItem>
+              </TextField>
+              <TextField select label="渲染平台" value={config.renderPlatform} onChange={(event) => handleFieldChange('renderPlatform', event.target.value)} disabled={loading}>
+                <MenuItem value="wechat">wechat</MenuItem>
+                <MenuItem value="web">web</MenuItem>
+                <MenuItem value="markdown">markdown</MenuItem>
+              </TextField>
+              <TextField select label="默认流程模板" value={config.defaultWorkflowTemplate} onChange={(event) => handleFieldChange('defaultWorkflowTemplate', event.target.value)} disabled={loading}>
                 {workflowOptions.map((option) => (
                   <MenuItem key={option.id} value={option.id}>
                     {option.name}
                   </MenuItem>
                 ))}
               </TextField>
-              <TextField label="并发任务上限" value={config.concurrentJobs} onChange={(event) => handleFieldChange('concurrentJobs', event.target.value)} disabled={loading} />
+              <TextField label="并发任务上限" value={config.concurrency} onChange={(event) => handleFieldChange('concurrency', event.target.value)} disabled={loading} />
+              <TextField label="默认操作人" value={config.operatorName} onChange={(event) => handleFieldChange('operatorName', event.target.value)} disabled={loading} />
               <FormControlLabel control={<Switch checked={config.draftAutoRender} onChange={(event) => handleFieldChange('draftAutoRender', event.target.checked)} disabled={loading} />} label="草稿完成后自动进入渲染结果" />
             </Stack>
           </PageCard>
@@ -219,6 +190,9 @@ export default function ConfigPage({ onNavigate }: ConfigPageProps) {
                 当前页面面向数据库配置模型，控件布局保持不变，但会读取 /api/config 并将变更写回后端。
               </Typography>
               <TextField multiline minRows={8} label="运维备注" value={config.operatorNote} onChange={(event) => handleFieldChange('operatorNote', event.target.value)} disabled={loading} />
+              <Typography variant="body2" color="text.secondary">
+                当前字段由显式表单模型承接，并通过 mapper 转换为 `/api/config` 负载。
+              </Typography>
             </Stack>
           </PageCard>
         </Stack>
