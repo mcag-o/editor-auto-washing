@@ -271,7 +271,13 @@ func (s *Server) registerRoutes() {
 				c.Status(http.StatusNotFound)
 				return
 			}
-			serveFSAsset(frontendFS, path.Join("assets", assetPath))(c)
+			for _, candidate := range []string{path.Join("ui", "assets", assetPath), path.Join("assets", assetPath)} {
+				if _, err := fs.ReadFile(frontendFS, candidate); err == nil {
+					serveFSAsset(frontendFS, candidate)(c)
+					return
+				}
+			}
+			c.Status(http.StatusNotFound)
 		})
 	} else {
 		s.engine.GET("/", serveAdminAsset("text/html; charset=utf-8", legacyIndexHTML))
