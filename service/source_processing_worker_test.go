@@ -97,14 +97,18 @@ func (r *stubSourceProcessingRenderRunner) Render(_ context.Context, workspaceAr
 
 type stubSourceProcessingArticleIntake struct {
 	called        bool
+	intakeCalls   int
+	resumeCalls   int
 	lastWorkspace string
 	lastArticle   domain.IntakeArticle
 	result        *ArticleIntakeResult
+	resumeResult  *SourceProcessingRewriteResult
 	err           error
 }
 
 func (s *stubSourceProcessingArticleIntake) IntakeResult(_ context.Context, article domain.IntakeArticle) (*ArticleIntakeResult, error) {
 	s.called = true
+	s.intakeCalls++
 	s.lastArticle = article
 	if s.err != nil {
 		return nil, s.err
@@ -114,12 +118,28 @@ func (s *stubSourceProcessingArticleIntake) IntakeResult(_ context.Context, arti
 
 func (s *stubSourceProcessingArticleIntake) IntakeResultIntoWorkspace(_ context.Context, workspaceArticleID string, article domain.IntakeArticle) (*ArticleIntakeResult, error) {
 	s.called = true
+	s.intakeCalls++
 	s.lastWorkspace = workspaceArticleID
 	s.lastArticle = article
 	if s.err != nil {
 		return nil, s.err
 	}
 	return s.result, nil
+}
+
+func (s *stubSourceProcessingArticleIntake) ResumeResult(_ context.Context, rewriteRunID string, article domain.IntakeArticle) (*SourceProcessingRewriteResult, error) {
+	s.called = true
+	s.resumeCalls++
+	s.lastArticle = article
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.resumeResult == nil {
+		return nil, nil
+	}
+	result := *s.resumeResult
+	result.RewriteRunID = rewriteRunID
+	return &result, nil
 }
 
 func TestSourceProcessingWorkerStopsAfterRender(t *testing.T) {
@@ -307,6 +327,52 @@ func TestArticleIntakeSourceProcessingRewriteRunnerRejectsMissingExplicitDraftID
 	require.Nil(t, result)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "draft id")
+}
+
+func TestArticleIntakeSourceProcessingRewriteRunnerResumeKeepsExistingRewriteRunID(t *testing.T) {
+	doc := validClaimedSourceProcessingDocument()
+	doc.WorkspaceArticleID = "workspace-existing"
+	doc.RewriteRunID = "rewrite-existing"
+	intake := &stubSourceProcessingArticleIntake{resumeResult: &SourceProcessingRewriteResult{
+		WorkspaceArticleID: "workspace-existing",
+		DraftID:            "draft-existing",
+		RewriteRunID:       "rewrite-should-be-overridden",
+	}}
+	runner := NewArticleIntakeSourceProcessingRewriteRunner(intake)
+
+	result, err := runner.Run(t.Context(), doc)
+
+	require.NoError(t, err)
+	require.Equal(t, 0, intake.intakeCalls)
+	require.Equal(t, 1, intake.resumeCalls)
+	require.Equal(t, "workspace-existing", result.WorkspaceArticleID)
+	require.Equal(t, "rewrite-existing", result.RewriteRunID)
+	require.Equal(t, "draft-existing", result.DraftID)
+}
+
+func TestSourceProcessingWorkerResumeDoesNotCreateSecondRewriteRun(t *testing.T) {
+	doc := validClaimedSourceProcessingDocument()
+	doc.WorkspaceArticleID = "workspace-existing"
+	doc.RewriteRunID = "rewrite-existing"
+	intake := &stubSourceProcessingArticleIntake{resumeResult: &SourceProcessingRewriteResult{
+		WorkspaceArticleID: "workspace-existing",
+		DraftID:            "draft-existing",
+		RewriteRunID:       "rewrite-existing",
+	}}
+	rewrite := NewArticleIntakeSourceProcessingRewriteRunner(intake)
+	render := &stubSourceProcessingRenderRunner{}
+	repo := &stubSourceProcessingRepo{stored: cloneSourceDocument(doc)}
+	worker := NewSourceProcessingWorker(repo, rewrite, render)
+
+	require.NoError(t, worker.Process(t.Context(), doc))
+	require.Equal(t, 0, intake.intakeCalls)
+	require.Equal(t, 1, intake.resumeCalls)
+	require.True(t, render.called)
+	require.Equal(t, "workspace-existing", render.lastWork)
+	require.Equal(t, "draft-existing", render.lastDraft)
+	require.Len(t, repo.updated, 2)
+	require.Equal(t, domain.SourceDocumentStatusCompleted, repo.updated[1].Status)
+	require.Equal(t, "rewrite-existing", repo.updated[1].RewriteRunID)
 }
 
 func validClaimedSourceProcessingDocument() *domain.SourceDocument {

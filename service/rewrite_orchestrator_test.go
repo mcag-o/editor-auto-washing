@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -369,6 +370,86 @@ func TestRewriteOrchestratorRoutesToRepairStageAndContinues(t *testing.T) {
 	require.NoError(t, draftErr)
 	require.Equal(t, "Repaired Title", draft.Headline["title"])
 	require.Equal(t, []string{"This repaired body is long enough."}, draft.Headline["body"])
+}
+
+func TestRewriteOrchestratorResumeReusesExistingRunAndContinuesFromSavedState(t *testing.T) {
+	provider := memory.NewProvider()
+	workspace := domain.NewArticleWorkspaceRecord("article-resume", "Title", "Summary", domain.ArticleWorkspaceSource{SourceType: "collector"}, nil)
+	require.NoError(t, provider.WorkspaceRepo().Create(t.Context(), workspace))
+
+	promptRepo := &stubRewritePromptRegistry{prompt: &domain.PromptTemplate{
+		Key:            "rewrite_stage",
+		Version:        "v1",
+		SystemTemplate: "sys",
+		UserTemplate:   "Title: {{title}}",
+	}}
+	profileRepo := &stubRewritePipelineProfileRepo{profile: &domain.RewritePipelineProfile{
+		ID:            "profile-resume",
+		TargetType:    "wechat-longform",
+		SourceProfile: "sspai",
+		Version:       "v1",
+		Enabled:       true,
+		Stages: []domain.RewriteStageDefinition{
+			{Name: "generate_draft", Type: "generate_draft", PromptRef: "rewrite_stage@v1", Enabled: true},
+			{Name: "finalize", Type: "finalize", PromptRef: "rewrite_stage@v1", Enabled: true},
+		},
+	}}
+	client := &sequentialLLMClient{responses: []*llminfra.GenerateResponse{{Response: &domain.LLMResponse{
+		Content: `{"title":"Final Title","body":"Final body","template":"daily-intelligence"}`,
+		Model:   "mock-1",
+	}}}}
+	orchestrator := NewRewriteOrchestrator(
+		NewRewriteProfileRegistry(profileRepo),
+		provider.RewritePipelineRunRepo(),
+		provider.RewriteStageRunRepo(),
+		provider.WorkspaceRepo(),
+		NewRewriteStageExecutor(promptRepo, client, NewQualityGateEngine()),
+		NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo()),
+	)
+
+	run := domain.NewRewritePipelineRun("profile-resume", "v1", workspace.ID, "collector-1", "wechat-longform", "sspai")
+	run.ID = "run-resume"
+	run.Status = domain.RewriteRunRunning
+	run.CurrentStage = "finalize"
+	run.Metadata = map[string]any{"title": "Source"}
+	require.NoError(t, provider.RewritePipelineRunRepo().Create(t.Context(), run))
+
+	now := time.Now().UTC()
+	require.NoError(t, provider.RewriteStageRunRepo().Create(t.Context(), &domain.RewriteStageRun{
+		ID:            "stage-1",
+		PipelineRunID: run.ID,
+		StageName:     "generate_draft",
+		StageType:     "generate_draft",
+		Status:        domain.RewriteStageSucceeded,
+		Attempt:       1,
+		OutputJSON:    `{"title":"Draft Title","body":"Draft body","template":"daily-intelligence"}`,
+		StartedAt:     now,
+		CompletedAt:   &now,
+	}))
+
+	resumed, err := orchestrator.Resume(t.Context(), run.ID, "Source")
+
+	require.NoError(t, err)
+	require.Equal(t, run.ID, resumed.ID)
+	require.Equal(t, domain.RewriteRunSucceeded, resumed.Status)
+	require.Equal(t, "finalize", resumed.CurrentStage)
+	require.NotEmpty(t, resumed.FinalDraftID)
+	require.Equal(t, 1, client.callCount)
+
+	runs, listErr := provider.RewritePipelineRunRepo().List(t.Context(), 10)
+	require.NoError(t, listErr)
+	require.Len(t, runs, 1)
+	require.Equal(t, run.ID, runs[0].ID)
+
+	stageRuns, stageErr := provider.RewriteStageRunRepo().ListByPipelineRunID(t.Context(), run.ID)
+	require.NoError(t, stageErr)
+	require.Len(t, stageRuns, 2)
+	require.Equal(t, []string{"generate_draft", "finalize"}, []string{stageRuns[0].StageName, stageRuns[1].StageName})
+
+	draft, draftErr := provider.DraftRepo().GetByID(t.Context(), workspace.ID)
+	require.NoError(t, draftErr)
+	require.Equal(t, "Final Title", draft.Headline["title"])
+	require.Equal(t, []string{"Final body"}, draft.Headline["body"])
 }
 
 func TestRewriteOrchestratorDoesNotRepairWithoutRepairPolicyAction(t *testing.T) {

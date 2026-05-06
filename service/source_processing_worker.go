@@ -12,6 +12,7 @@ import (
 type sourceProcessingRewriteEntryPoint interface {
 	IntakeResult(ctx context.Context, article domain.IntakeArticle) (*ArticleIntakeResult, error)
 	IntakeResultIntoWorkspace(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*ArticleIntakeResult, error)
+	ResumeResult(ctx context.Context, rewriteRunID string, article domain.IntakeArticle) (*SourceProcessingRewriteResult, error)
 }
 
 type sourceProcessingRenderRunner interface {
@@ -147,6 +148,9 @@ func (r *ArticleIntakeSourceProcessingRewriteRunner) Run(ctx context.Context, do
 		SourceProfile:         requiredSourceDocumentMetadataString(doc, "source_profile"),
 		RewriteProfileVersion: sourceDocumentRewriteProfileVersion(doc),
 		Metadata:              sourceDocumentIntakeMetadata(doc),
+	}
+	if rewriteRunID := strings.TrimSpace(doc.RewriteRunID); rewriteRunID != "" {
+		return r.intake.ResumeResult(ctx, rewriteRunID, article)
 	}
 
 	workspaceID := strings.TrimSpace(doc.WorkspaceArticleID)

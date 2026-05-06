@@ -13,6 +13,10 @@ type rewriteRunner interface {
 	Run(ctx context.Context, req RewriteRunRequest) (*domain.RewritePipelineRun, error)
 }
 
+type rewriteResumeRunner interface {
+	Resume(ctx context.Context, rewriteRunID string, title string) (*domain.RewritePipelineRun, error)
+}
+
 type ArticleIntakeResult struct {
 	WorkspaceArticle *domain.ArticleWorkspaceRecord
 	RewriteRun       *domain.RewritePipelineRun
@@ -60,6 +64,41 @@ func (s *ArticleIntakeService) IntakeResult(ctx context.Context, article domain.
 
 func (s *ArticleIntakeService) IntakeResultIntoWorkspace(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*ArticleIntakeResult, error) {
 	return s.intake(ctx, strings.TrimSpace(workspaceArticleID), article)
+}
+
+func (s *ArticleIntakeService) ResumeResult(ctx context.Context, rewriteRunID string, article domain.IntakeArticle) (*SourceProcessingRewriteResult, error) {
+	if err := article.Validate(); err != nil {
+		return nil, err
+	}
+	if s.rewrite == nil {
+		return nil, domain.NewInternalErr("article intake service is not configured", nil)
+	}
+	resumeRunner, ok := s.rewrite.(rewriteResumeRunner)
+	if !ok {
+		return nil, domain.NewInternalErr("article intake resume is not configured", nil)
+	}
+	run, err := resumeRunner.Resume(ctx, strings.TrimSpace(rewriteRunID), article.Title)
+	if err != nil {
+		return nil, fmt.Errorf("resume rewrite orchestrator: %w", err)
+	}
+	if run == nil {
+		return nil, domain.NewInternalErr("article intake resume did not return a rewrite run", nil)
+	}
+	if strings.TrimSpace(run.WorkspaceArticleID) == "" {
+		return nil, domain.NewInternalErr("article intake resume did not return a workspace article id", nil)
+	}
+	if strings.TrimSpace(run.ID) == "" {
+		return nil, domain.NewInternalErr("article intake resume did not return a rewrite run id", nil)
+	}
+	draftID := strings.TrimSpace(run.FinalDraftID)
+	if draftID == "" {
+		return nil, domain.NewInternalErr("article intake resume did not return a draft id", nil)
+	}
+	return &SourceProcessingRewriteResult{
+		WorkspaceArticleID: strings.TrimSpace(run.WorkspaceArticleID),
+		DraftID:            draftID,
+		RewriteRunID:       strings.TrimSpace(run.ID),
+	}, nil
 }
 
 func (s *ArticleIntakeService) intake(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*ArticleIntakeResult, error) {
