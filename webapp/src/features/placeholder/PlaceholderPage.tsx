@@ -24,7 +24,7 @@ export default function PlaceholderPage({ title, moduleName, description, onNavi
         leading={<StatusChip status="disabled" label="本里程碑未接入" />}
         actions={
           <>
-            <Button variant="outlined" onClick={() => onNavigate?.('dashboard')}>
+            <Button variant="outlined" onClick={() => onNavigate?.('overview')}>
               返回总览
             </Button>
             <Button variant="contained" startIcon={<LaunchRoundedIcon />} onClick={() => onNavigate?.('articles')}>

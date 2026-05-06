@@ -12,9 +12,10 @@ import MetricCards from '../../components/MetricCards';
 import PageCard from '../../components/PageCard';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
+import type { AppPage } from '../../layout/AppShell';
 
 type DashboardPageProps = {
-  onNavigate?: (page: 'dashboard' | 'intake' | 'articles') => void;
+  onNavigate?: (page: AppPage) => void;
 };
 
 const metrics = [

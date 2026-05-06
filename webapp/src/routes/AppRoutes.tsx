@@ -7,7 +7,7 @@ import ControlPage from '../features/control/ControlPage';
 import ConfigPage from '../features/config/ConfigPage';
 import AuditPage from '../features/audit/AuditPage';
 
-const defaultPage: AppPage = 'dashboard';
+const defaultPage: AppPage = 'overview';
 
 function parsePageFromHash(hash: string): AppPage {
   const normalized = hash.replace(/^#/, '');
@@ -17,14 +17,17 @@ function parsePageFromHash(hash: string): AppPage {
   if (normalized === '/articles' || normalized === 'articles') {
     return 'articles';
   }
-  if (normalized === '/workflows' || normalized === 'workflows') {
-    return 'workflows';
+  if (normalized === '/overview' || normalized === 'overview') {
+    return 'overview';
+  }
+  if (normalized === '/control' || normalized === 'control') {
+    return 'control';
   }
   if (normalized === '/audit' || normalized === 'audit') {
     return 'audit';
   }
-  if (normalized === '/settings' || normalized === 'settings') {
-    return 'settings';
+  if (normalized === '/config' || normalized === 'config') {
+    return 'config';
   }
   return defaultPage;
 }
@@ -42,19 +45,19 @@ export default function AppRoutes() {
   }, []);
 
   const handleNavigate = (page: AppPage) => {
-    const nextHash = page === 'dashboard' ? '#/' : `#/${page}`;
+    const nextHash = page === 'overview' ? '#/' : `#/${page}`;
     window.location.hash = nextHash;
     setCurrentPage(page);
   };
 
   return (
     <AppShell currentPage={currentPage} onNavigate={handleNavigate}>
-      {currentPage === 'dashboard' ? <DashboardPage onNavigate={handleNavigate} /> : null}
+      {currentPage === 'overview' ? <DashboardPage onNavigate={handleNavigate} /> : null}
       {currentPage === 'intake' ? <IntakePage onNavigate={handleNavigate} /> : null}
       {currentPage === 'articles' ? <ArticlesPage onNavigate={handleNavigate} /> : null}
-      {currentPage === 'workflows' ? <ControlPage onNavigate={handleNavigate} /> : null}
+      {currentPage === 'control' ? <ControlPage onNavigate={handleNavigate} /> : null}
       {currentPage === 'audit' ? <AuditPage onNavigate={handleNavigate} /> : null}
-      {currentPage === 'settings' ? <ConfigPage onNavigate={handleNavigate} /> : null}
+      {currentPage === 'config' ? <ConfigPage onNavigate={handleNavigate} /> : null}
     </AppShell>
   );
 }

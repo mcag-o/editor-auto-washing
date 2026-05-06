@@ -20,6 +20,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import PageCard from '../../components/PageCard';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
+import type { AppPage } from '../../layout/AppShell';
 
 type ArticleStatus = '未处理' | '处理中' | '已处理';
 type ArticleAction = '再处理' | '删除' | '停止';
@@ -34,7 +35,7 @@ type ArticleRow = {
 };
 
 type ArticlesPageProps = {
-  onNavigate?: (page: 'dashboard' | 'intake' | 'articles') => void;
+  onNavigate?: (page: AppPage) => void;
 };
 
 const rows: ArticleRow[] = [
@@ -89,7 +90,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
           leading={<StatusChip status="active" label="本地队列视图" />}
           actions={
             <>
-              <Button variant="outlined" onClick={() => onNavigate?.('dashboard')}>
+              <Button variant="outlined" onClick={() => onNavigate?.('overview')}>
                 返回总览
               </Button>
               <Button variant="contained" onClick={() => onNavigate?.('intake')}>

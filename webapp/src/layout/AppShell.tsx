@@ -27,15 +27,15 @@ import { useTheme } from '@mui/material/styles';
 
 const drawerWidth = 248;
 
-export type AppPage = 'dashboard' | 'intake' | 'articles' | 'workflows' | 'audit' | 'settings';
+export type AppPage = 'overview' | 'intake' | 'articles' | 'control' | 'config' | 'audit';
 
 const navigationItems = [
-  { key: 'dashboard' as const, label: '控制台总览', icon: <AppsRoundedIcon fontSize="small" /> },
+  { key: 'overview' as const, label: '控制台总览', icon: <AppsRoundedIcon fontSize="small" /> },
   { key: 'intake' as const, label: '文章导入', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
   { key: 'articles' as const, label: '文章队列', icon: <DescriptionRoundedIcon fontSize="small" /> },
-  { key: 'workflows', label: '流程模板', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
+  { key: 'control' as const, label: '流程控制', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
   { key: 'audit', label: '操作审计', icon: <HistoryRoundedIcon fontSize="small" /> },
-  { key: 'settings', label: '系统配置', icon: <SettingsRoundedIcon fontSize="small" /> },
+  { key: 'config' as const, label: '配置管理', icon: <SettingsRoundedIcon fontSize="small" /> },
 ];
 
 type AppShellProps = PropsWithChildren<{
@@ -88,12 +88,12 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
             selected={item.key === currentPage}
             onClick={() => {
               if (
-                item.key === 'dashboard' ||
+                item.key === 'overview' ||
                 item.key === 'intake' ||
                 item.key === 'articles' ||
-                item.key === 'workflows' ||
+                item.key === 'control' ||
                 item.key === 'audit' ||
-                item.key === 'settings'
+                item.key === 'config'
               ) {
                 onNavigate(item.key);
               }

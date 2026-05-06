@@ -77,10 +77,10 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
         leading={<StatusChip status={stateSummary.chipStatus} label={stateSummary.chipLabel} />}
         actions={
           <>
-            <Button variant="outlined" onClick={() => onNavigate?.('dashboard')}>
+            <Button variant="outlined" onClick={() => onNavigate?.('overview')}>
               返回总览
             </Button>
-            <Button variant="text" onClick={() => onNavigate?.('settings')}>
+            <Button variant="text" onClick={() => onNavigate?.('config')}>
               查看配置
             </Button>
           </>

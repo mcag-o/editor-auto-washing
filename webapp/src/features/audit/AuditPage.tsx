@@ -65,10 +65,10 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
         leading={<StatusChip status="pending" label="本地审计视图" />}
         actions={
           <>
-            <Button variant="outlined" onClick={() => onNavigate?.('dashboard')}>
+            <Button variant="outlined" onClick={() => onNavigate?.('overview')}>
               返回总览
             </Button>
-            <Button variant="contained" onClick={() => onNavigate?.('settings')}>
+            <Button variant="contained" onClick={() => onNavigate?.('config')}>
               查看配置
             </Button>
           </>

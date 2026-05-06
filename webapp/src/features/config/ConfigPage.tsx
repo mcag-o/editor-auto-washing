@@ -56,7 +56,7 @@ export default function ConfigPage({ onNavigate }: ConfigPageProps) {
         leading={<StatusChip status="pending" label="本地编辑壳层" />}
         actions={
           <>
-            <Button variant="outlined" onClick={() => onNavigate?.('workflows')}>
+            <Button variant="outlined" onClick={() => onNavigate?.('control')}>
               返回流程控制
             </Button>
             <Button

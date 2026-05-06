@@ -14,11 +14,12 @@ import Typography from '@mui/material/Typography';
 import PageCard from '../../components/PageCard';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
+import type { AppPage } from '../../layout/AppShell';
 
 const acceptedExtensions = ['txt', 'md', 'json'] as const;
 
 type IntakePageProps = {
-  onNavigate?: (page: 'dashboard' | 'intake' | 'articles') => void;
+  onNavigate?: (page: AppPage) => void;
 };
 
 export default function IntakePage({ onNavigate }: IntakePageProps) {
@@ -67,7 +68,7 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
         leading={<StatusChip status="active" label="浏览器导入" />}
         actions={
           <>
-            <Button variant="outlined" onClick={() => onNavigate?.('dashboard')}>
+            <Button variant="outlined" onClick={() => onNavigate?.('overview')}>
               返回总览
             </Button>
             <Button variant="contained" startIcon={<SendRoundedIcon />} onClick={() => onNavigate?.('articles')}>
