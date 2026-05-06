@@ -46,10 +46,11 @@
 
 ### 2. Web Intake 与文章工作区
 
-- 浏览器 upload / paste workflow 是当前 active runtime 默认 intake 主路径
+- 浏览器 upload / paste workflow 是当前 active runtime 唯一对操作人员文档化的 intake 主路径
 - 上传或粘贴 source document 后会进入 intake、rewrite、draft materialize、render 组成的默认自动化处理链
 - 默认自动化链在 render 结束；review / publish 保持可选，由后续人工或显式调用触发
 - article workspace record 与状态流转仍由当前 Go runtime 持久化
+- workflow/template 管理通过 `8123` 上的 web control plane 完成，CLI 只保留开发/调试支持
 
 相关代码：
 
@@ -61,7 +62,7 @@
 - `infra/sqlite/source_document_repo.go`
 - `infra/sqlite/article_workspace_repo.go`
 
-说明：旧的 RSS 与 collector / ingestion 相关实现仅作为迁移参考或历史上下文保留；当前文档中的唯一 active/default intake 叙述是 browser upload / paste workflow。
+说明：folder-intake、RSS 与 collector / ingestion 相关实现仍保留为后端兼容、作业编排和迁移参考；当前文档中的唯一 active/default intake 叙述是 browser upload / paste workflow。
 
 ### 2.6. AI Rewrite Pipeline
 
@@ -143,7 +144,7 @@ go mod download
 go run ./cmd/server
 ```
 
-默认监听 `http://localhost:8123`，浏览器操作以 web control plane 为主。业务配置在运行时由数据库持久化，日常 intake 通过浏览器上传或粘贴进入。启动后可检查：
+默认监听 `http://localhost:8123`，浏览器操作以 web control plane 为主。业务配置、workflow/template 管理与日常 intake 都通过该浏览器 UI 完成；CLI 仅用于开发/调试支持。启动后可检查：
 
 ```bash
 curl http://localhost:8123/health
@@ -164,7 +165,7 @@ go run ./cmd/tui --api http://localhost:8123
 
 CLI 入口：`cmd/cli/main.go`
 
-说明：CLI 不再是默认产品操作面，当前仅保留为开发/调试支持工具。日常操作以浏览器访问 `http://localhost:8123` 的 web control plane 为主。
+说明：CLI 不再是默认产品操作面，当前仅保留为开发/调试支持工具。日常操作以浏览器访问 `http://localhost:8123` 的 web control plane 为主，并在其中完成 upload/paste intake 与 workflow/template 管理。
 
 ### Workspace
 
@@ -181,7 +182,7 @@ go run ./cmd/cli workspace doctor --root .
 go run ./cmd/cli automation run-once --root .
 ```
 
-说明：当前运行时的唯一文档化 intake 路径是 web control plane 中的 browser upload / paste workflow；这里的 `automation` 命令仅用于开发/调试支持，不是默认操作面。默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。旧的 RSS、`ingestion ...` 与 `collector ...` CLI 入口不再作为当前运行时文档化接口。
+说明：当前运行时的唯一文档化 intake 路径是 web control plane 中的 browser upload / paste workflow；这里的 `automation` 命令仅用于开发/调试支持，不是默认操作面。默认自动处理结果停在 draft + render。review / publish 是后续可选人工步骤，不属于默认自动链路。folder-intake 与旧的 RSS、`ingestion ...`、`collector ...` CLI 入口不再作为当前运行时的操作人员工作流指引。
 
 ### Formatting
 
@@ -228,7 +229,7 @@ go run ./cmd/cli automation stop --root .
 
 核心路由定义在：`transport/http/server.go`
 
-说明：HTTP server 同时承载 web control plane 与 API，当前默认操作入口是根路径 `/` 提供的 browser UI，默认端口为 `8123`。
+说明：HTTP server 同时承载 web control plane 与 API，当前默认操作入口是根路径 `/` 提供的 browser UI，默认端口为 `8123`。该 UI 是操作人员管理 intake、workflow 与 template 的主入口。
 
 ### 基础
 
@@ -279,7 +280,7 @@ go run ./cmd/cli automation stop --root .
 - `GET /automation/health`
 - `POST /automation/stop`
 
-说明：browser upload / paste workflow 是当前 active runtime 唯一文档化且默认的 intake 路径；当前 HTTP server 通过 web control plane 承载该主操作面，并继续暴露 automation、rewrite、workspace article、review/publish 等可调用 API。review 与 publish API 仍可单独调用，但不会由默认自动化链自动进入。旧的 `/ingestion/*` 与 `/collector/*` 路径不再作为支持中的运行时入口。
+说明：browser upload / paste workflow 是当前 active runtime 唯一文档化且默认的 intake 路径；当前 HTTP server 通过 web control plane 承载该主操作面，并继续暴露 automation、rewrite、workspace article、review/publish 等可调用 API。review 与 publish API 仍可单独调用，但不会由默认自动化链自动进入。folder-intake 与旧的 `/ingestion/*`、`/collector/*` 路径仅保留为后端兼容或历史参考，不再作为支持中的操作人员入口。
 
 ---
 
@@ -325,7 +326,7 @@ go test ./...
 ## 当前限制与边界
 
 - Go 版已经可以替代 Python 主链路，但不是历史兼容层逐字复刻
-- web control plane（`http://localhost:8123`）是当前默认主操作面；browser upload / paste workflow 是当前唯一文档化且默认的 intake 路径；CLI 仅作为开发/调试支持保留，对外可调用入口以该 browser UI 与现有 automation、rewrite、workspace/review/publish 接口为主
+- web control plane（`http://localhost:8123`）是当前默认主操作面；browser upload / paste workflow 是当前唯一文档化且默认的 intake 路径；workflow/template 管理也以该 browser UI 为主；CLI 仅作为开发/调试支持保留，对外可调用入口以该 browser UI 与现有 automation、rewrite、workspace/review/publish 接口为主
 - 默认自动化结果停在 draft + render；review / publish 作为后续可选人工步骤保留
 - 归档项目里的采集/ingestion 文档仍保留历史语义，不代表根目录 Go runtime 的当前对外接口
 - automation daemon 目前是单进程内模型，不是外部 supervisor 模型
@@ -380,4 +381,4 @@ go test ./...
 - 根目录 Go runtime 当前以 browser upload / paste 作为默认 intake 主路径
 - 业务配置以数据库中的 runtime state 为准
 - 默认自动化链产物为 draft + render，review / publish 不会自动触发
-- 旧的 RSS、collector、ingestion surface 已从 active runtime 对外接口集合中移除
+- folder-intake 已下沉为后端兼容能力，不再作为 active operator surface 对外呈现；旧的 RSS、collector、ingestion surface 已从 active runtime 对外接口集合中移除

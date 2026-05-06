@@ -29,6 +29,11 @@ func (r *stubSourceDocumentRepo) Update(_ context.Context, doc *domain.SourceDoc
 	return nil
 }
 
+func (r *stubSourceDocumentRepo) Delete(_ context.Context, id string) error {
+	delete(r.storedByID, id)
+	return nil
+}
+
 func (r *stubSourceDocumentRepo) GetByID(_ context.Context, id string) (*domain.SourceDocument, error) {
 	doc, ok := r.storedByID[id]
 	if !ok {
@@ -93,7 +98,9 @@ type stubSystemControlStateRepo struct{}
 func (r *stubSystemControlStateRepo) Get(context.Context) (*domain.SystemControlState, error) {
 	return nil, domain.NewNotFoundErr("system_control_state", "singleton")
 }
-func (r *stubSystemControlStateRepo) Upsert(context.Context, *domain.SystemControlState) error { return nil }
+func (r *stubSystemControlStateRepo) Upsert(context.Context, *domain.SystemControlState) error {
+	return nil
+}
 
 type stubAuditLogRepo struct{}
 

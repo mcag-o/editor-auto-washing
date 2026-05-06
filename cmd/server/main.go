@@ -25,11 +25,15 @@ var newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serve
 }
 
 func main() {
-	fmt.Println("content-hub server starting...")
+	fmt.Println(startupMessage())
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func startupMessage() string {
+	return fmt.Sprintf("content-hub server starting: web control plane on http://localhost:%d with browser upload/paste as the active operator intake", webControlPlanePort)
 }
 
 func run() error {

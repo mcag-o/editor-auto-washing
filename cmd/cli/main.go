@@ -159,7 +159,7 @@ var runtimeAutomationServiceFactory = func(root string) (automationCLIService, f
 	return &runtimeAutomationCLIService{root: root, svc: automationSvc}, cleanup, nil
 }
 
-const usageText = "web control plane is the primary operator surface: http://localhost:8123\ncli is retained for development/debug support: workspace <...> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> [--root PATH]"
+const usageText = "web control plane is the primary operator surface: http://localhost:8123\nactive intake is browser upload/paste with workflow/template management in the browser UI\ncli is retained for development/debug support: workspace <...> | formatting <render|validate> | rewrite <run> | automation <run-once|daemon|retry-failed|status|health|stop> [--root PATH]"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
