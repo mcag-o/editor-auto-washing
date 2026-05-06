@@ -153,6 +153,40 @@ func TestRewriteStageRunRepo_CreateAndListByPipelineRunID(t *testing.T) {
 	require.Equal(t, "draft_rewrite", runs[1].PromptRef)
 }
 
+func TestRewriteStageRunRepo_Update(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	pipelineRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "collector-1", "wechat-longform", "sspai")
+	require.NoError(t, provider.RewritePipelineRunRepo().Create(t.Context(), pipelineRun))
+
+	stage := &domain.RewriteStageRun{
+		ID:            "stage-1",
+		PipelineRunID: pipelineRun.ID,
+		StageName:     "draft",
+		StageType:     "generation",
+		Status:        domain.RewriteStageRunning,
+		Attempt:       2,
+		OutputJSON:    `{"body":"old"}`,
+		ErrorSummary:  "failed",
+		StartedAt:     time.Now().UTC().Truncate(time.Second),
+	}
+	require.NoError(t, provider.RewriteStageRunRepo().Create(t.Context(), stage))
+
+	stage.Status = domain.RewriteStagePending
+	stage.Attempt = 0
+	stage.OutputJSON = ""
+	stage.ErrorSummary = ""
+	stage.CompletedAt = nil
+	require.NoError(t, provider.RewriteStageRunRepo().Update(t.Context(), stage))
+
+	runs, err := provider.RewriteStageRunRepo().ListByPipelineRunID(t.Context(), pipelineRun.ID)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	require.Equal(t, domain.RewriteStagePending, runs[0].Status)
+	require.Equal(t, 0, runs[0].Attempt)
+	require.Empty(t, runs[0].OutputJSON)
+	require.Empty(t, runs[0].ErrorSummary)
+}
+
 func TestPromptTemplateRepo_CreateAndResolveVersion(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	tpl := domain.PromptTemplate{

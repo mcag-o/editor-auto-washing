@@ -123,6 +123,21 @@ func TestSourceDocumentRepoListReturnsDocumentsAcrossStatuses(t *testing.T) {
 	require.Contains(t, ids, completed.ID)
 }
 
+func TestSourceDocumentRepoDelete(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	doc := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-delete")
+	doc.Status = domain.SourceDocumentStatusPending
+	require.NoError(t, provider.SourceDocumentRepo().Create(t.Context(), doc))
+
+	require.NoError(t, provider.SourceDocumentRepo().Delete(t.Context(), doc.ID))
+
+	_, err := provider.SourceDocumentRepo().GetByID(t.Context(), doc.ID)
+	require.Error(t, err)
+	appErr, ok := err.(*domain.AppError)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrNotFound, appErr.Code)
+}
+
 func TestImportRunRepoCreateUpdateAndList(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	run := domain.NewImportRun("folder")

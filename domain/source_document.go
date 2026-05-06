@@ -7,14 +7,15 @@ import (
 )
 
 const (
-	SourceDocumentStatusDiscovered = "discovered"
-	SourceDocumentStatusImported   = "imported"
+	SourceDocumentStatusDiscovered     = "discovered"
+	SourceDocumentStatusImported       = "imported"
 	SourceDocumentStatusImportDiverged = "import_diverged"
-	SourceDocumentStatusPending    = "pending"
-	SourceDocumentStatusClaimed    = "claimed"
-	SourceDocumentStatusProcessing = "processing"
-	SourceDocumentStatusCompleted  = "completed"
-	SourceDocumentStatusFailed     = "failed"
+	SourceDocumentStatusPending        = "pending"
+	SourceDocumentStatusClaimed        = "claimed"
+	SourceDocumentStatusProcessing     = "processing"
+	SourceDocumentStatusPaused         = "paused"
+	SourceDocumentStatusCompleted      = "completed"
+	SourceDocumentStatusFailed         = "failed"
 
 	ImportRunStatusPending   = "pending"
 	ImportRunStatusRunning   = "running"
@@ -23,14 +24,15 @@ const (
 )
 
 var validSourceDocumentStatuses = map[string]struct{}{
-	SourceDocumentStatusDiscovered: {},
-	SourceDocumentStatusImported:   {},
+	SourceDocumentStatusDiscovered:     {},
+	SourceDocumentStatusImported:       {},
 	SourceDocumentStatusImportDiverged: {},
-	SourceDocumentStatusPending:    {},
-	SourceDocumentStatusClaimed:    {},
-	SourceDocumentStatusProcessing: {},
-	SourceDocumentStatusCompleted:  {},
-	SourceDocumentStatusFailed:     {},
+	SourceDocumentStatusPending:        {},
+	SourceDocumentStatusClaimed:        {},
+	SourceDocumentStatusProcessing:     {},
+	SourceDocumentStatusPaused:         {},
+	SourceDocumentStatusCompleted:      {},
+	SourceDocumentStatusFailed:         {},
 }
 
 var validImportRunStatuses = map[string]struct{}{
@@ -130,6 +132,10 @@ func (d SourceDocument) Validate() error {
 			return NewValidationErr("claimed at is required", nil)
 		}
 	case SourceDocumentStatusProcessing:
+		if d.ProcessingStartedAt == nil {
+			return NewValidationErr("processing started at is required", nil)
+		}
+	case SourceDocumentStatusPaused:
 		if d.ProcessingStartedAt == nil {
 			return NewValidationErr("processing started at is required", nil)
 		}

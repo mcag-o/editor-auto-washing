@@ -20,6 +20,7 @@ type stubSourceDocumentRepo struct {
 	storedByID map[string]*domain.SourceDocument
 	createErr  error
 	updateErr  error
+	deleteErr  error
 }
 
 func (r *stubSourceDocumentRepo) Create(_ context.Context, doc *domain.SourceDocument) error {
@@ -53,6 +54,17 @@ func (r *stubSourceDocumentRepo) GetByID(_ context.Context, id string) (*domain.
 		return cloneSourceDocument(doc), nil
 	}
 	return nil, domain.NewNotFoundErr("source_document", id)
+}
+
+func (r *stubSourceDocumentRepo) Delete(_ context.Context, id string) error {
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
+	if _, ok := r.storedByID[id]; !ok {
+		return domain.NewNotFoundErr("source_document", id)
+	}
+	delete(r.storedByID, id)
+	return nil
 }
 
 func (r *stubSourceDocumentRepo) List(_ context.Context, limit int) ([]domain.SourceDocument, error) {

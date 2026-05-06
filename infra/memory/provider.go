@@ -706,6 +706,20 @@ func (r *memRewriteStageRunRepo) Create(_ context.Context, run *domain.RewriteSt
 	return nil
 }
 
+func (r *memRewriteStageRunRepo) Update(_ context.Context, run *domain.RewriteStageRun) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	for pipelineRunID, runs := range r.p.rewriteStageRuns {
+		for i := range runs {
+			if runs[i].ID == run.ID {
+				r.p.rewriteStageRuns[pipelineRunID][i] = cloneRewriteStageRun(run)
+				return nil
+			}
+		}
+	}
+	return domain.NewNotFoundErr("rewrite_stage_run", run.ID)
+}
+
 func (r *memRewriteStageRunRepo) ListByPipelineRunID(_ context.Context, pipelineRunID string) ([]domain.RewriteStageRun, error) {
 	r.p.mu.RLock()
 	defer r.p.mu.RUnlock()

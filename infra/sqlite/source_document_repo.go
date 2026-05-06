@@ -63,6 +63,21 @@ func (r *sourceDocumentRepo) GetByID(ctx context.Context, id string) (*domain.So
 	return doc, nil
 }
 
+func (r *sourceDocumentRepo) Delete(ctx context.Context, id string) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM source_documents WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete source document: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check delete source document result: %w", err)
+	}
+	if rows == 0 {
+		return domain.NewNotFoundErr("source_document", id)
+	}
+	return nil
+}
+
 func (r *sourceDocumentRepo) List(ctx context.Context, limit int) ([]domain.SourceDocument, error) {
 	if limit <= 0 {
 		limit = 50

@@ -96,6 +96,7 @@ type RewritePipelineRunRepo interface {
 
 type RewriteStageRunRepo interface {
 	Create(ctx context.Context, run *domain.RewriteStageRun) error
+	Update(ctx context.Context, run *domain.RewriteStageRun) error
 	ListByPipelineRunID(ctx context.Context, pipelineRunID string) ([]domain.RewriteStageRun, error)
 }
 
@@ -126,6 +127,7 @@ type RSSItemRepo interface {
 type SourceDocumentRepo interface {
 	Create(ctx context.Context, doc *domain.SourceDocument) error
 	Update(ctx context.Context, doc *domain.SourceDocument) error
+	Delete(ctx context.Context, id string) error
 	GetByID(ctx context.Context, id string) (*domain.SourceDocument, error)
 	List(ctx context.Context, limit int) ([]domain.SourceDocument, error)
 	FindByHash(ctx context.Context, hash string) (*domain.SourceDocument, error)

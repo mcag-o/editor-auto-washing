@@ -463,6 +463,40 @@ func TestAPIRoutesAreRegistered(t *testing.T) {
 	s.engine.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
+	doc.Status = domain.SourceDocumentStatusProcessing
+	now := time.Now().UTC()
+	doc.ClaimedBy = "worker-1"
+	doc.ClaimedAt = &now
+	doc.ProcessingStartedAt = &now
+	require.NoError(t, repos.SourceDocuments.Update(t.Context(), doc))
+
+	req = httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/stop", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusAccepted, w.Code)
+
+	storedDoc, err := repos.SourceDocuments.GetByID(t.Context(), doc.ID)
+	require.NoError(t, err)
+	storedDoc.Status = "paused"
+	require.NoError(t, repos.SourceDocuments.Update(t.Context(), storedDoc))
+
+	req = httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/resume", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusAccepted, w.Code)
+
+	storedDoc, err = repos.SourceDocuments.GetByID(t.Context(), doc.ID)
+	require.NoError(t, err)
+	storedDoc.Status = domain.SourceDocumentStatusCompleted
+	require.NoError(t, repos.SourceDocuments.Update(t.Context(), storedDoc))
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/articles/"+doc.ID, nil)
+	w = httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNoContent, w.Code)
+
 	req = httptest.NewRequest(http.MethodGet, "/api/config", nil)
 	w = httptest.NewRecorder()
 	s.engine.ServeHTTP(w, req)

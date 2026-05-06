@@ -43,6 +43,25 @@ func (r *rewriteStageRunRepo) ListByPipelineRunID(ctx context.Context, pipelineR
 	return runs, rows.Err()
 }
 
+func (r *rewriteStageRunRepo) Update(ctx context.Context, run *domain.RewriteStageRun) error {
+	metadataJSON, err := json.Marshal(run.Metadata)
+	if err != nil {
+		return fmt.Errorf("marshal rewrite stage run metadata: %w", err)
+	}
+	result, err := r.db.ExecContext(ctx, `UPDATE rewrite_stage_runs SET pipeline_run_id = ?, stage_name = ?, stage_type = ?, prompt_ref = ?, llm_profile_ref = ?, status = ?, attempt = ?, input_json = ?, output_json = ?, error_summary = ?, metadata_json = ?, started_at = ?, completed_at = ? WHERE id = ?`, run.PipelineRunID, run.StageName, run.StageType, run.PromptRef, run.LLMProfileRef, run.Status, run.Attempt, run.InputJSON, run.OutputJSON, run.ErrorSummary, string(metadataJSON), run.StartedAt.Format(time.RFC3339), nullableTime(run.CompletedAt), run.ID)
+	if err != nil {
+		return fmt.Errorf("update rewrite stage run: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check update rewrite stage run result: %w", err)
+	}
+	if rows == 0 {
+		return domain.NewNotFoundErr("rewrite_stage_run", run.ID)
+	}
+	return nil
+}
+
 type rewriteStageRunScanner interface{ Scan(dest ...any) error }
 
 func scanRewriteStageRun(row rewriteStageRunScanner) (*domain.RewriteStageRun, error) {

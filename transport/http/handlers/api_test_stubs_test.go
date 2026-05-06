@@ -13,6 +13,7 @@ type stubSourceDocumentRepo struct {
 	storedByID map[string]*domain.SourceDocument
 	createErr  error
 	updateErr  error
+	deleteErr  error
 }
 
 func (r *stubSourceDocumentRepo) Create(_ context.Context, doc *domain.SourceDocument) error {
@@ -46,6 +47,17 @@ func (r *stubSourceDocumentRepo) GetByID(_ context.Context, id string) (*domain.
 		return cloneSourceDocument(doc), nil
 	}
 	return nil, domain.NewNotFoundErr("source_document", id)
+}
+
+func (r *stubSourceDocumentRepo) Delete(_ context.Context, id string) error {
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
+	if _, ok := r.storedByID[id]; !ok {
+		return domain.NewNotFoundErr("source_document", id)
+	}
+	delete(r.storedByID, id)
+	return nil
 }
 
 func (r *stubSourceDocumentRepo) List(_ context.Context, limit int) ([]domain.SourceDocument, error) {
@@ -280,4 +292,20 @@ func (r *stubRewriteStageRunRepo) ListByPipelineRunID(_ context.Context, pipelin
 		out = append(out, *run)
 	}
 	return out, nil
+}
+
+func (r *stubRewriteStageRunRepo) Update(_ context.Context, run *domain.RewriteStageRun) error {
+	if r.stages == nil {
+		r.stages = map[string][]*domain.RewriteStageRun{}
+	}
+	for pipelineRunID, stageRuns := range r.stages {
+		for i := range stageRuns {
+			if stageRuns[i].ID == run.ID {
+				copyRun := *run
+				r.stages[pipelineRunID][i] = &copyRun
+				return nil
+			}
+		}
+	}
+	return domain.NewNotFoundErr("rewrite_stage_run", run.ID)
 }
