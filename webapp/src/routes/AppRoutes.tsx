@@ -7,6 +7,7 @@ import ControlPage from '../features/control/ControlPage';
 import ConfigPage from '../features/config/ConfigPage';
 import AuditPage from '../features/audit/AuditPage';
 
+const WorkflowTemplatesPage = lazy(() => import('../features/workflows/WorkflowTemplatesPage'));
 const TemplatesPage = lazy(() => import('../features/templates/TemplatesPage'));
 
 const defaultPage: AppPage = 'overview';
@@ -27,6 +28,9 @@ function parsePageFromHash(hash: string): AppPage {
   }
   if (normalized === '/workflows' || normalized === 'workflows') {
     return 'workflows';
+  }
+  if (normalized === '/templates' || normalized === 'templates') {
+    return 'templates';
   }
   if (normalized === '/audit' || normalized === 'audit') {
     return 'audit';
@@ -62,6 +66,11 @@ export default function AppRoutes() {
       {currentPage === 'articles' ? <ArticlesPage onNavigate={handleNavigate} /> : null}
       {currentPage === 'control' ? <ControlPage onNavigate={handleNavigate} /> : null}
       {currentPage === 'workflows' ? (
+        <Suspense fallback={null}>
+          <WorkflowTemplatesPage />
+        </Suspense>
+      ) : null}
+      {currentPage === 'templates' ? (
         <Suspense fallback={null}>
           <TemplatesPage />
         </Suspense>
