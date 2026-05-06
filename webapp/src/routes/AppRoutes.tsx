@@ -7,7 +7,7 @@ import ControlPage from '../features/control/ControlPage';
 import ConfigPage from '../features/config/ConfigPage';
 import AuditPage from '../features/audit/AuditPage';
 
-const WorkflowTemplatesPage = lazy(() => import('../features/workflows/WorkflowTemplatesPage'));
+const TemplatesPage = lazy(() => import('../features/templates/TemplatesPage'));
 
 const defaultPage: AppPage = 'overview';
 
@@ -63,7 +63,7 @@ export default function AppRoutes() {
       {currentPage === 'control' ? <ControlPage onNavigate={handleNavigate} /> : null}
       {currentPage === 'workflows' ? (
         <Suspense fallback={null}>
-          <WorkflowTemplatesPage />
+          <TemplatesPage />
         </Suspense>
       ) : null}
       {currentPage === 'audit' ? <AuditPage onNavigate={handleNavigate} /> : null}
