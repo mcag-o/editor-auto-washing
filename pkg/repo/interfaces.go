@@ -90,6 +90,7 @@ type RewritePipelineProfileRepo interface {
 type RewritePipelineRunRepo interface {
 	Create(ctx context.Context, run *domain.RewritePipelineRun) error
 	Update(ctx context.Context, run *domain.RewritePipelineRun) error
+	Delete(ctx context.Context, id string) error
 	GetByID(ctx context.Context, id string) (*domain.RewritePipelineRun, error)
 	List(ctx context.Context, limit int) ([]domain.RewritePipelineRun, error)
 }
@@ -97,6 +98,7 @@ type RewritePipelineRunRepo interface {
 type RewriteStageRunRepo interface {
 	Create(ctx context.Context, run *domain.RewriteStageRun) error
 	Update(ctx context.Context, run *domain.RewriteStageRun) error
+	DeleteByPipelineRunID(ctx context.Context, pipelineRunID string) error
 	ListByPipelineRunID(ctx context.Context, pipelineRunID string) ([]domain.RewriteStageRun, error)
 }
 

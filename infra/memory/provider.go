@@ -670,6 +670,14 @@ func (r *memRewritePipelineRunRepo) Update(_ context.Context, run *domain.Rewrit
 	return nil
 }
 
+func (r *memRewritePipelineRunRepo) Delete(_ context.Context, id string) error {
+	if _, ok := r.p.rewritePipelineRuns[id]; !ok {
+		return domain.NewNotFoundErr("rewrite_pipeline_run", id)
+	}
+	delete(r.p.rewritePipelineRuns, id)
+	return nil
+}
+
 func (r *memRewritePipelineRunRepo) GetByID(_ context.Context, id string) (*domain.RewritePipelineRun, error) {
 	r.p.mu.RLock()
 	defer r.p.mu.RUnlock()
@@ -718,6 +726,11 @@ func (r *memRewriteStageRunRepo) Update(_ context.Context, run *domain.RewriteSt
 		}
 	}
 	return domain.NewNotFoundErr("rewrite_stage_run", run.ID)
+}
+
+func (r *memRewriteStageRunRepo) DeleteByPipelineRunID(_ context.Context, pipelineRunID string) error {
+	delete(r.p.rewriteStageRuns, pipelineRunID)
+	return nil
 }
 
 func (r *memRewriteStageRunRepo) ListByPipelineRunID(_ context.Context, pipelineRunID string) ([]domain.RewriteStageRun, error) {

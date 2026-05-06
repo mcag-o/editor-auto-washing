@@ -337,6 +337,14 @@ func (r *stubRewritePipelineRunRepo) Update(_ context.Context, run *domain.Rewri
 	return nil
 }
 
+func (r *stubRewritePipelineRunRepo) Delete(_ context.Context, id string) error {
+	if _, ok := r.runs[id]; !ok {
+		return domain.NewNotFoundErr("rewrite_pipeline_run", id)
+	}
+	delete(r.runs, id)
+	return nil
+}
+
 func (r *stubRewritePipelineRunRepo) GetByID(_ context.Context, id string) (*domain.RewritePipelineRun, error) {
 	run, ok := r.runs[id]
 	if !ok {
@@ -376,6 +384,14 @@ func (r *stubRewriteStageRunRepo) ListByPipelineRunID(_ context.Context, pipelin
 		out = append(out, *run)
 	}
 	return out, nil
+}
+
+func (r *stubRewriteStageRunRepo) DeleteByPipelineRunID(_ context.Context, pipelineRunID string) error {
+	if r.stages == nil {
+		return nil
+	}
+	delete(r.stages, pipelineRunID)
+	return nil
 }
 
 func (r *stubRewriteStageRunRepo) Update(_ context.Context, run *domain.RewriteStageRun) error {

@@ -62,6 +62,14 @@ func (r *rewriteStageRunRepo) Update(ctx context.Context, run *domain.RewriteSta
 	return nil
 }
 
+func (r *rewriteStageRunRepo) DeleteByPipelineRunID(ctx context.Context, pipelineRunID string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM rewrite_stage_runs WHERE pipeline_run_id = ?`, pipelineRunID)
+	if err != nil {
+		return fmt.Errorf("delete rewrite stage runs by pipeline run id: %w", err)
+	}
+	return nil
+}
+
 type rewriteStageRunScanner interface{ Scan(dest ...any) error }
 
 func scanRewriteStageRun(row rewriteStageRunScanner) (*domain.RewriteStageRun, error) {

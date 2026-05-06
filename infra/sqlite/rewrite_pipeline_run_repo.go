@@ -45,6 +45,21 @@ func (r *rewritePipelineRunRepo) Update(ctx context.Context, run *domain.Rewrite
 	return nil
 }
 
+func (r *rewritePipelineRunRepo) Delete(ctx context.Context, id string) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM rewrite_pipeline_runs WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete rewrite pipeline run: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check delete rewrite pipeline run result: %w", err)
+	}
+	if rows == 0 {
+		return domain.NewNotFoundErr("rewrite_pipeline_run", id)
+	}
+	return nil
+}
+
 func (r *rewritePipelineRunRepo) GetByID(ctx context.Context, id string) (*domain.RewritePipelineRun, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT id, profile_id, profile_version, workspace_article_id, collector_article_id, target_type, source_profile, status, current_stage, started_at, completed_at, final_draft_id, error_summary, metadata_json FROM rewrite_pipeline_runs WHERE id = ?`, id)
 	run, err := scanRewritePipelineRun(row)

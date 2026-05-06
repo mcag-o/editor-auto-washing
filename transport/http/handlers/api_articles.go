@@ -13,15 +13,15 @@ import (
 )
 
 type APIArticlesHandler struct {
-	articles *service.ArticleQueryService
-	runs     repo.RewritePipelineRunRepo
-	stages   repo.RewriteStageRunRepo
-	source   repo.SourceDocumentRepo
+	articles  *service.ArticleQueryService
+	runs      repo.RewritePipelineRunRepo
+	stages    repo.RewriteStageRunRepo
+	source    repo.SourceDocumentRepo
 	workflows interface {
 		GetByID(context.Context, string) (*domain.WorkflowDefinition, error)
 	}
-	audit     repo.AuditLogRepo
-	control  interface {
+	audit   repo.AuditLogRepo
+	control interface {
 		Get(context.Context) (*domain.SystemControlState, error)
 	}
 }
@@ -33,6 +33,8 @@ type sourceDocumentDeleteRepo interface {
 type rewriteStageRunUpdater interface {
 	Update(context.Context, *domain.RewriteStageRun) error
 }
+
+const articleOperationsActor = "local-admin"
 
 func NewAPIArticlesHandler(articles *service.ArticleQueryService, runs repo.RewritePipelineRunRepo, stages repo.RewriteStageRunRepo, source repo.SourceDocumentRepo, workflows interface {
 	GetByID(context.Context, string) (*domain.WorkflowDefinition, error)
@@ -96,10 +98,13 @@ func (h *APIArticlesHandler) Retry(c *gin.Context) {
 		return
 	}
 	if item.Status != domain.SourceDocumentStatusFailed {
-		HandleError(c, domain.NewValidationErr("retry is only allowed from failed state", nil))
+		err := domain.NewValidationErr("retry is only allowed from failed state", nil)
+		h.recordArticleAudit(c.Request.Context(), item, "retry", "failure", err.Error(), nil)
+		HandleError(c, err)
 		return
 	}
 	previousRunID := item.RewriteRunID
+	workflowStateReset := false
 
 	item.Status = domain.SourceDocumentStatusPending
 	item.ErrorSummary = ""
@@ -109,11 +114,21 @@ func (h *APIArticlesHandler) Retry(c *gin.Context) {
 	item.CompletedAt = nil
 	item.RewriteRunID = previousRunID
 
-	if err := h.resetWorkflowExecution(c.Request.Context(), item); err != nil {
+	workflowChanged, err := h.workflowExecutionChanged(c.Request.Context(), item)
+	if err != nil {
 		HandleError(c, err)
 		return
 	}
-	item.RewriteRunID = ""
+	if workflowChanged {
+		workflowStateReset = true
+		if err := h.resetWorkflowExecution(c.Request.Context(), item); err != nil {
+			HandleError(c, err)
+			return
+		}
+	}
+	if workflowStateReset {
+		item.RewriteRunID = ""
+	}
 
 	if err := h.source.Update(c.Request.Context(), item); err != nil {
 		HandleError(c, err)
@@ -133,6 +148,14 @@ func (h *APIArticlesHandler) Retry(c *gin.Context) {
 	if !workerRunning {
 		message = "article re-queued, but the worker is not actively running"
 	}
+	if err := h.recordArticleAudit(c.Request.Context(), item, "retry", "success", message, map[string]any{
+		"workflow_state_reset": workflowStateReset,
+		"worker_running":       workerRunning,
+		"system_state":         systemState,
+	}); err != nil {
+		HandleError(c, err)
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":         "requeued",
@@ -150,12 +173,23 @@ func (h *APIArticlesHandler) Stop(c *gin.Context) {
 		return
 	}
 	if item.Status != domain.SourceDocumentStatusProcessing {
-		HandleError(c, domain.NewValidationErr("stop is only allowed from processing state", nil))
+		err := domain.NewValidationErr("stop is only allowed from processing state", nil)
+		h.recordArticleAudit(c.Request.Context(), item, "stop", "failure", err.Error(), nil)
+		HandleError(c, err)
 		return
 	}
 
 	item.Status = domain.SourceDocumentStatusPaused
+	item.ClaimedBy = ""
+	item.ClaimedAt = nil
 	if err := h.source.Update(c.Request.Context(), item); err != nil {
+		HandleError(c, err)
+		return
+	}
+	message := "pause requested; the current worker step is not synchronously interrupted"
+	if err := h.recordArticleAudit(c.Request.Context(), item, "stop", "success", message, map[string]any{
+		"workflow_position_preserved": strings.TrimSpace(item.RewriteRunID) != "",
+	}); err != nil {
 		HandleError(c, err)
 		return
 	}
@@ -163,7 +197,7 @@ func (h *APIArticlesHandler) Stop(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{
 		"status":          domain.SourceDocumentStatusPaused,
 		"requested_pause": true,
-		"message":         "pause requested; the current worker step is not synchronously interrupted",
+		"message":         message,
 		"article":         item,
 	})
 }
@@ -175,11 +209,15 @@ func (h *APIArticlesHandler) Resume(c *gin.Context) {
 		return
 	}
 	if item.Status != domain.SourceDocumentStatusPaused {
-		HandleError(c, domain.NewValidationErr("resume is only allowed from paused state", nil))
+		err := domain.NewValidationErr("resume is only allowed from paused state", nil)
+		h.recordArticleAudit(c.Request.Context(), item, "resume", "failure", err.Error(), nil)
+		HandleError(c, err)
 		return
 	}
-	if strings.TrimSpace(item.ClaimedBy) != "" || item.ClaimedAt != nil || item.ProcessingStartedAt != nil {
-		HandleError(c, domain.NewValidationErr("resume is not allowed while prior processing markers are still active", nil))
+	if strings.TrimSpace(item.ClaimedBy) != "" || item.ClaimedAt != nil {
+		err := domain.NewValidationErr("resume is not allowed while prior processing markers are still active", nil)
+		h.recordArticleAudit(c.Request.Context(), item, "resume", "failure", err.Error(), nil)
+		HandleError(c, err)
 		return
 	}
 
@@ -205,6 +243,14 @@ func (h *APIArticlesHandler) Resume(c *gin.Context) {
 	if !workerRunning {
 		message = "article queued to resume, but the worker is not actively running"
 	}
+	if err := h.recordArticleAudit(c.Request.Context(), item, "resume", "success", message, map[string]any{
+		"workflow_position_preserved": strings.TrimSpace(item.RewriteRunID) != "",
+		"worker_running":              workerRunning,
+		"system_state":                systemState,
+	}); err != nil {
+		HandleError(c, err)
+		return
+	}
 
 	c.JSON(http.StatusAccepted, gin.H{
 		"status":         "requeued",
@@ -222,11 +268,15 @@ func (h *APIArticlesHandler) Delete(c *gin.Context) {
 		return
 	}
 	if item.Status == domain.SourceDocumentStatusProcessing {
-		HandleError(c, domain.NewValidationErr("delete is not allowed while article is processing", nil))
+		err := domain.NewValidationErr("delete is not allowed while article is processing", nil)
+		h.recordArticleAudit(c.Request.Context(), item, "delete", "failure", err.Error(), nil)
+		HandleError(c, err)
 		return
 	}
 	if item.Status != domain.SourceDocumentStatusPending && item.Status != domain.SourceDocumentStatusPaused && item.Status != domain.SourceDocumentStatusCompleted {
-		HandleError(c, domain.NewValidationErr("delete is only allowed from pending, paused, or completed state", nil))
+		err := domain.NewValidationErr("delete is only allowed from pending, paused, or completed state", nil)
+		h.recordArticleAudit(c.Request.Context(), item, "delete", "failure", err.Error(), nil)
+		HandleError(c, err)
 		return
 	}
 
@@ -235,7 +285,21 @@ func (h *APIArticlesHandler) Delete(c *gin.Context) {
 		HandleError(c, domain.NewInternalErr("source document delete is not configured", nil))
 		return
 	}
+	workflowRecordsDeleted := false
+	if strings.TrimSpace(item.RewriteRunID) != "" {
+		if err := h.deleteWorkflowExecution(c.Request.Context(), item.RewriteRunID); err != nil {
+			HandleError(c, err)
+			return
+		}
+		workflowRecordsDeleted = true
+	}
 	if err := deleteRepo.Delete(c.Request.Context(), item.ID); err != nil {
+		HandleError(c, err)
+		return
+	}
+	if err := h.recordArticleAudit(c.Request.Context(), item, "delete", "success", "deleted article", map[string]any{
+		"workflow_records_deleted": workflowRecordsDeleted,
+	}); err != nil {
 		HandleError(c, err)
 		return
 	}
@@ -279,7 +343,7 @@ func (h *APIArticlesHandler) AssignWorkflowTemplate(c *gin.Context) {
 		return
 	}
 	if _, err := service.NewAuditLogService(h.audit).Create(c.Request.Context(), service.AuditLogCreateInput{
-		Actor:      "local-admin",
+		Actor:      articleOperationsActor,
 		Action:     "web_control.article.workflow_template_assigned",
 		Resource:   "source_document",
 		ResourceID: item.ID,
@@ -293,6 +357,56 @@ func (h *APIArticlesHandler) AssignWorkflowTemplate(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, item)
+}
+
+func (h *APIArticlesHandler) recordArticleAudit(ctx context.Context, item *domain.SourceDocument, action, result, message string, metadata map[string]any) error {
+	if h == nil || h.audit == nil || item == nil {
+		return nil
+	}
+	_, err := service.NewAuditLogService(h.audit).Create(ctx, service.AuditLogCreateInput{
+		Actor:      articleOperationsActor,
+		Action:     "web_control.article." + strings.TrimSpace(action),
+		Resource:   "source_document",
+		ResourceID: item.ID,
+		Result:     strings.TrimSpace(result),
+		Message:    strings.TrimSpace(message),
+		Metadata:   metadata,
+	})
+	return err
+}
+
+func (h *APIArticlesHandler) workflowExecutionChanged(ctx context.Context, item *domain.SourceDocument) (bool, error) {
+	if item == nil || strings.TrimSpace(item.RewriteRunID) == "" {
+		return false, nil
+	}
+	run, err := h.runs.GetByID(ctx, item.RewriteRunID)
+	if err != nil {
+		return false, err
+	}
+	return workflowMetadataValue(item.Metadata, "workflow_template_id") != workflowMetadataValue(run.Metadata, "workflow_template_id") ||
+		workflowMetadataValue(item.Metadata, "workflow_template_version") != workflowMetadataValue(run.Metadata, "workflow_template_version") ||
+		workflowMetadataValue(item.Metadata, "workflow_template_name") != workflowMetadataValue(run.Metadata, "workflow_template_name"), nil
+}
+
+func workflowMetadataValue(metadata map[string]any, key string) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	value, _ := metadata[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func (h *APIArticlesHandler) deleteWorkflowExecution(ctx context.Context, runID string) error {
+	if strings.TrimSpace(runID) == "" {
+		return nil
+	}
+	if err := h.stages.DeleteByPipelineRunID(ctx, runID); err != nil {
+		return err
+	}
+	if err := h.runs.Delete(ctx, runID); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (h *APIArticlesHandler) resetWorkflowExecution(ctx context.Context, item *domain.SourceDocument) error {

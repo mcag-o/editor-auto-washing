@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -170,6 +171,218 @@ func TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t *testing.T)
 	require.Contains(t, actions, "web_control.article.workflow_template_assigned")
 	require.Equal(t, createdDoc.ID, actions["web_control.article.workflow_template_assigned"].ResourceID)
 	require.Equal(t, "workflow-template-mainline", actions["web_control.article.workflow_template_assigned"].Metadata["workflow_template_id"])
+}
+
+func TestWebControlPlaneArticleOperationsAuditAndWorkflowSemantics(t *testing.T) {
+	_, repos, serverURL := newWebControlPlaneIntegrationServer(t)
+
+	workflowV1Resp := postJSON(t, serverURL+"/api/workflows", map[string]any{
+		"id":            "workflow-ops",
+		"name":          "Ops Workflow",
+		"description":   "Operations workflow",
+		"version":       "v1",
+		"enabled":       true,
+		"entry_node_id": "generate_draft",
+		"nodes": []map[string]any{{
+			"id":          "generate_draft",
+			"type":        "rewrite_stage",
+			"name":        "generate_draft",
+			"config_json": `{"stage_name":"generate_draft","prompt_ref":"generate_draft@v1"}`,
+		}},
+		"edges":      []map[string]any{},
+		"updated_by": "integration-test",
+	})
+	defer workflowV1Resp.Body.Close()
+	require.Equal(t, http.StatusCreated, workflowV1Resp.StatusCode)
+
+	pauseResp := postJSON(t, serverURL+"/api/intake/paste", map[string]any{
+		"title": "Pause Target",
+		"body":  "Pause body.",
+	})
+	defer pauseResp.Body.Close()
+	require.Equal(t, http.StatusCreated, pauseResp.StatusCode)
+	var pauseDoc domain.SourceDocument
+	require.NoError(t, json.NewDecoder(pauseResp.Body).Decode(&pauseDoc))
+	storedPauseDoc, err := repos.SourceDocumentRepo.GetByID(t.Context(), pauseDoc.ID)
+	require.NoError(t, err)
+	started := time.Now().UTC()
+	storedPauseDoc.Status = domain.SourceDocumentStatusProcessing
+	storedPauseDoc.RewriteRunID = "run-pause"
+	storedPauseDoc.ClaimedBy = "worker-1"
+	storedPauseDoc.ClaimedAt = &started
+	storedPauseDoc.ProcessingStartedAt = &started
+	require.NoError(t, repos.SourceDocumentRepo.Update(t.Context(), storedPauseDoc))
+	pauseRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", storedPauseDoc.ID, "wechat-longform", "web-paste")
+	pauseRun.ID = "run-pause"
+	pauseRun.Status = domain.RewriteRunRunning
+	pauseRun.CurrentStage = "generate_draft"
+	pauseRun.Metadata["workflow_template_id"] = "workflow-ops"
+	pauseRun.Metadata["workflow_template_version"] = "v1"
+	require.NoError(t, repos.RewritePipelineRunRepo.Create(t.Context(), pauseRun))
+
+	stopReq, err := http.NewRequest(http.MethodPost, serverURL+"/api/articles/"+storedPauseDoc.ID+"/stop", nil)
+	require.NoError(t, err)
+	stopResp, err := http.DefaultClient.Do(stopReq)
+	require.NoError(t, err)
+	defer stopResp.Body.Close()
+	require.Equal(t, http.StatusAccepted, stopResp.StatusCode)
+	stoppedDoc, err := repos.SourceDocumentRepo.GetByID(t.Context(), storedPauseDoc.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.SourceDocumentStatusPaused, stoppedDoc.Status)
+	require.Equal(t, "run-pause", stoppedDoc.RewriteRunID)
+	require.Empty(t, stoppedDoc.ClaimedBy)
+	require.Nil(t, stoppedDoc.ClaimedAt)
+	require.NotNil(t, stoppedDoc.ProcessingStartedAt)
+
+	require.NoError(t, repos.SourceDocumentRepo.Update(t.Context(), stoppedDoc))
+	resumeReq, err := http.NewRequest(http.MethodPost, serverURL+"/api/articles/"+stoppedDoc.ID+"/resume", nil)
+	require.NoError(t, err)
+	resumeResp, err := http.DefaultClient.Do(resumeReq)
+	require.NoError(t, err)
+	defer resumeResp.Body.Close()
+	require.Equal(t, http.StatusAccepted, resumeResp.StatusCode)
+	resumedDoc, err := repos.SourceDocumentRepo.GetByID(t.Context(), stoppedDoc.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.SourceDocumentStatusPending, resumedDoc.Status)
+	require.Equal(t, "run-pause", resumedDoc.RewriteRunID)
+
+	deleteResp := postJSON(t, serverURL+"/api/intake/paste", map[string]any{
+		"title": "Delete Target",
+		"body":  "Delete body.",
+	})
+	defer deleteResp.Body.Close()
+	require.Equal(t, http.StatusCreated, deleteResp.StatusCode)
+	var deleteDoc domain.SourceDocument
+	require.NoError(t, json.NewDecoder(deleteResp.Body).Decode(&deleteDoc))
+	storedDeleteDoc, err := repos.SourceDocumentRepo.GetByID(t.Context(), deleteDoc.ID)
+	require.NoError(t, err)
+	storedDeleteDoc.Status = domain.SourceDocumentStatusPaused
+	storedDeleteDoc.RewriteRunID = "run-delete"
+	storedDeleteDoc.ClaimedBy = "worker-2"
+	storedDeleteDoc.ClaimedAt = &started
+	storedDeleteDoc.ProcessingStartedAt = &started
+	require.NoError(t, repos.SourceDocumentRepo.Update(t.Context(), storedDeleteDoc))
+	deleteRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", storedDeleteDoc.ID, "wechat-longform", "web-paste")
+	deleteRun.ID = "run-delete"
+	deleteRun.Metadata["workflow_template_id"] = "workflow-ops"
+	deleteRun.Metadata["workflow_template_version"] = "v1"
+	require.NoError(t, repos.RewritePipelineRunRepo.Create(t.Context(), deleteRun))
+	require.NoError(t, repos.RewriteStageRunRepo.Create(t.Context(), &domain.RewriteStageRun{
+		ID:            "stage-delete",
+		PipelineRunID: deleteRun.ID,
+		StageName:     "generate_draft",
+		StageType:     "generate_draft",
+		Status:        domain.RewriteStageRunning,
+		Attempt:       1,
+		StartedAt:     started,
+	}))
+	deleteReq, err := http.NewRequest(http.MethodDelete, serverURL+"/api/articles/"+storedDeleteDoc.ID, nil)
+	require.NoError(t, err)
+	deleteOpResp, err := http.DefaultClient.Do(deleteReq)
+	require.NoError(t, err)
+	defer deleteOpResp.Body.Close()
+	require.Equal(t, http.StatusNoContent, deleteOpResp.StatusCode)
+	_, err = repos.SourceDocumentRepo.GetByID(t.Context(), storedDeleteDoc.ID)
+	require.Error(t, err)
+	_, err = repos.RewritePipelineRunRepo.GetByID(t.Context(), deleteRun.ID)
+	require.Error(t, err)
+	deleteStages, err := repos.RewriteStageRunRepo.ListByPipelineRunID(t.Context(), deleteRun.ID)
+	require.NoError(t, err)
+	require.Len(t, deleteStages, 0)
+
+	retryResp := postJSON(t, serverURL+"/api/intake/paste", map[string]any{
+		"title": "Retry Target",
+		"body":  "Retry body.",
+	})
+	defer retryResp.Body.Close()
+	require.Equal(t, http.StatusCreated, retryResp.StatusCode)
+	var retryDoc domain.SourceDocument
+	require.NoError(t, json.NewDecoder(retryResp.Body).Decode(&retryDoc))
+	storedRetryDoc, err := repos.SourceDocumentRepo.GetByID(t.Context(), retryDoc.ID)
+	require.NoError(t, err)
+	storedRetryDoc.Status = domain.SourceDocumentStatusFailed
+	storedRetryDoc.ErrorSummary = "broken"
+	storedRetryDoc.RewriteRunID = "run-retry"
+	storedRetryDoc.Metadata["workflow_template_id"] = "workflow-ops"
+	storedRetryDoc.Metadata["workflow_template_version"] = "v2"
+	require.NoError(t, repos.SourceDocumentRepo.Update(t.Context(), storedRetryDoc))
+	retryRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", storedRetryDoc.ID, "wechat-longform", "web-paste")
+	retryRun.ID = "run-retry"
+	retryRun.Status = domain.RewriteRunFailed
+	retryRun.CurrentStage = "generate_draft"
+	retryRun.CompletedAt = &started
+	retryRun.ErrorSummary = "broken"
+	retryRun.Metadata["workflow_template_id"] = "workflow-ops"
+	retryRun.Metadata["workflow_template_version"] = "v1"
+	require.NoError(t, repos.RewritePipelineRunRepo.Create(t.Context(), retryRun))
+	require.NoError(t, repos.RewriteStageRunRepo.Create(t.Context(), &domain.RewriteStageRun{
+		ID:            "stage-retry",
+		PipelineRunID: retryRun.ID,
+		StageName:     "generate_draft",
+		StageType:     "generate_draft",
+		Status:        domain.RewriteStageFailed,
+		Attempt:       2,
+		StartedAt:     started,
+		CompletedAt:   &started,
+		ErrorSummary:  "bad output",
+	}))
+	retryReq, err := http.NewRequest(http.MethodPost, serverURL+"/api/articles/"+storedRetryDoc.ID+"/retry", nil)
+	require.NoError(t, err)
+	retryOpResp, err := http.DefaultClient.Do(retryReq)
+	require.NoError(t, err)
+	defer retryOpResp.Body.Close()
+	require.Equal(t, http.StatusOK, retryOpResp.StatusCode)
+	updatedRetryRun, err := repos.RewritePipelineRunRepo.GetByID(t.Context(), retryRun.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.RewriteRunPending, updatedRetryRun.Status)
+	require.Empty(t, updatedRetryRun.CurrentStage)
+	retryStages, err := repos.RewriteStageRunRepo.ListByPipelineRunID(t.Context(), retryRun.ID)
+	require.NoError(t, err)
+	require.Len(t, retryStages, 1)
+	require.Equal(t, domain.RewriteStagePending, retryStages[0].Status)
+	require.Equal(t, 0, retryStages[0].Attempt)
+
+	auditResp, err := http.Get(serverURL + "/api/audit")
+	require.NoError(t, err)
+	defer auditResp.Body.Close()
+	require.Equal(t, http.StatusOK, auditResp.StatusCode)
+	var auditList struct {
+		Data []domain.AuditLog `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(auditResp.Body).Decode(&auditList))
+
+	var stopAudit, resumeAudit, deleteAudit, retryAudit *domain.AuditLog
+	for i := range auditList.Data {
+		entry := auditList.Data[i]
+		switch entry.Action {
+		case "web_control.article.stop":
+			if entry.ResourceID == storedPauseDoc.ID {
+				stopAudit = &entry
+			}
+		case "web_control.article.resume":
+			if entry.ResourceID == storedPauseDoc.ID {
+				resumeAudit = &entry
+			}
+		case "web_control.article.delete":
+			if entry.ResourceID == storedDeleteDoc.ID {
+				deleteAudit = &entry
+			}
+		case "web_control.article.retry":
+			if entry.ResourceID == storedRetryDoc.ID {
+				retryAudit = &entry
+			}
+		}
+	}
+	require.NotNil(t, stopAudit)
+	require.Equal(t, "success", stopAudit.Result)
+	require.NotNil(t, resumeAudit)
+	require.Equal(t, "success", resumeAudit.Result)
+	require.NotNil(t, deleteAudit)
+	require.Equal(t, "success", deleteAudit.Result)
+	require.Equal(t, true, deleteAudit.Metadata["workflow_records_deleted"])
+	require.NotNil(t, retryAudit)
+	require.Equal(t, "success", retryAudit.Result)
+	require.Equal(t, true, retryAudit.Metadata["workflow_state_reset"])
 }
 
 func newWebControlPlaneIntegrationServer(t *testing.T) (string, *service.RuntimeRepos, string) {
