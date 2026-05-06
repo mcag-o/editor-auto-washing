@@ -171,6 +171,10 @@ func (h *APIArticlesHandler) Resume(c *gin.Context) {
 		HandleError(c, domain.NewValidationErr("resume is only allowed from paused state", nil))
 		return
 	}
+	if strings.TrimSpace(item.ClaimedBy) != "" || item.ClaimedAt != nil || item.ProcessingStartedAt != nil {
+		HandleError(c, domain.NewValidationErr("resume is not allowed while prior processing markers are still active", nil))
+		return
+	}
 
 	item.Status = domain.SourceDocumentStatusPending
 	item.ClaimedBy = ""

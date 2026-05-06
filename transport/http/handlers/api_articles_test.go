@@ -363,12 +363,8 @@ func TestAPIArticlesResumeReturnsAccepted(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	sourceRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
 	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-1")
-	now := time.Now().UTC()
 	doc.Status = "paused"
 	doc.RewriteRunID = "run-1"
-	doc.ClaimedBy = "worker-1"
-	doc.ClaimedAt = &now
-	doc.ProcessingStartedAt = &now
 	require.NoError(t, sourceRepo.Create(t.Context(), doc))
 
 	handler := NewAPIArticlesHandler(
@@ -400,6 +396,46 @@ func TestAPIArticlesResumeReturnsAccepted(t *testing.T) {
 	require.Empty(t, stored.ClaimedBy)
 	require.Nil(t, stored.ClaimedAt)
 	require.Nil(t, stored.ProcessingStartedAt)
+}
+
+func TestAPIArticlesResumeRejectsPausedArticleWithActiveProcessingMarkers(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	sourceRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
+	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-1")
+	now := time.Now().UTC()
+	doc.Status = "paused"
+	doc.RewriteRunID = "run-1"
+	doc.ClaimedBy = "worker-1"
+	doc.ClaimedAt = &now
+	doc.ProcessingStartedAt = &now
+	require.NoError(t, sourceRepo.Create(t.Context(), doc))
+
+	handler := NewAPIArticlesHandler(
+		service.NewArticleQueryService(sourceRepo),
+		&stubRewritePipelineRunRepo{},
+		&stubRewriteStageRunRepo{},
+		sourceRepo,
+		&stubSystemControlStateRepo{state: startedControlState("runner", domain.SystemStateRunning, "started", 2)},
+	)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/articles/:id/resume", handler.Resume)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/resume", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "resume is not allowed while prior processing markers are still active")
+	stored, err := sourceRepo.GetByID(t.Context(), doc.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.SourceDocumentStatusPaused, stored.Status)
+	require.Equal(t, "run-1", stored.RewriteRunID)
+	require.Equal(t, "worker-1", stored.ClaimedBy)
+	require.NotNil(t, stored.ClaimedAt)
+	require.NotNil(t, stored.ProcessingStartedAt)
 }
 
 func TestAPIArticlesDeleteRejectsProcessingArticle(t *testing.T) {
