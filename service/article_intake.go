@@ -134,6 +134,7 @@ func (s *ArticleIntakeService) intake(ctx context.Context, workspaceArticleID st
 		TargetType:         article.TargetType,
 		SourceProfile:      article.SourceProfile,
 		Version:            normalizeRewriteProfileVersion(article.RewriteProfileVersion),
+		Metadata:           buildIntakeRewriteMetadata(article),
 	})
 	result := &ArticleIntakeResult{WorkspaceArticle: workspace}
 	if run != nil {
@@ -145,6 +146,17 @@ func (s *ArticleIntakeService) intake(ctx context.Context, workspaceArticleID st
 	}
 
 	return result, nil
+}
+
+func buildIntakeRewriteMetadata(article domain.IntakeArticle) map[string]any {
+	if len(article.Metadata) == 0 {
+		return nil
+	}
+	metadata := map[string]any{}
+	for key, value := range article.Metadata {
+		metadata[key] = value
+	}
+	return metadata
 }
 
 func buildIntakeWorkspaceMetadata(article domain.IntakeArticle) map[string]any {

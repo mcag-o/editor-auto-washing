@@ -27,6 +27,8 @@ func TestAPIArticlesListReturnsSourceDocuments(t *testing.T) {
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		&stubAuditLogRepo{},
 		&stubSystemControlStateRepo{state: startedControlState("runner", domain.SystemStateRunning, "started", 2)},
 	)
 
@@ -59,6 +61,8 @@ func TestAPIArticlesGetDetailReturnsSourceDocument(t *testing.T) {
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		&stubAuditLogRepo{},
 		&stubSystemControlStateRepo{},
 	)
 
@@ -109,6 +113,8 @@ func TestAPIArticlesStagesReturnsSourceAndRewriteStages(t *testing.T) {
 		runRepo,
 		stageRepo,
 		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		&stubAuditLogRepo{},
 		&stubSystemControlStateRepo{},
 	)
 
@@ -147,6 +153,8 @@ func TestAPIArticlesRetryRequeuesFailedDocumentWhenSystemRunning(t *testing.T) {
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		&stubAuditLogRepo{},
 		&stubSystemControlStateRepo{state: startedControlState("runner", domain.SystemStateRunning, "started", 2)},
 	)
 
@@ -185,6 +193,8 @@ func TestAPIArticlesRetryFromNonRetryableStateFails(t *testing.T) {
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		&stubAuditLogRepo{},
 		&stubSystemControlStateRepo{},
 	)
 
@@ -217,6 +227,8 @@ func TestAPIArticlesRetryWhenSystemPausedSignalsQueuedNotRunning(t *testing.T) {
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		&stubAuditLogRepo{},
 		&stubSystemControlStateRepo{state: startedControlState("operator", domain.SystemStatePaused, "paused", 2)},
 	)
 
@@ -279,6 +291,8 @@ func TestAPIArticlesRetryResetsPreviousWorkflowExecutionForFreshRun(t *testing.T
 		runRepo,
 		stageRepo,
 		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		&stubAuditLogRepo{},
 		&stubSystemControlStateRepo{state: startedControlState("runner", domain.SystemStateRunning, "started", 2)},
 	)
 
@@ -333,6 +347,8 @@ func TestAPIArticlesStopReturnsAccepted(t *testing.T) {
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		&stubAuditLogRepo{},
 		&stubSystemControlStateRepo{},
 	)
 
@@ -372,6 +388,8 @@ func TestAPIArticlesResumeReturnsAccepted(t *testing.T) {
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		&stubAuditLogRepo{},
 		&stubSystemControlStateRepo{state: startedControlState("runner", domain.SystemStateRunning, "started", 2)},
 	)
 
@@ -415,6 +433,8 @@ func TestAPIArticlesResumeRejectsPausedArticleWithActiveProcessingMarkers(t *tes
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		&stubAuditLogRepo{},
 		&stubSystemControlStateRepo{state: startedControlState("runner", domain.SystemStateRunning, "started", 2)},
 	)
 
@@ -454,6 +474,8 @@ func TestAPIArticlesDeleteRejectsProcessingArticle(t *testing.T) {
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		&stubAuditLogRepo{},
 		&stubSystemControlStateRepo{},
 	)
 
@@ -489,6 +511,8 @@ func TestAPIArticlesDeleteRemovesPausedArticle(t *testing.T) {
 		&stubRewritePipelineRunRepo{},
 		&stubRewriteStageRunRepo{},
 		sourceRepo,
+		&stubWorkflowDefinitionRepo{},
+		&stubAuditLogRepo{},
 		&stubSystemControlStateRepo{},
 	)
 

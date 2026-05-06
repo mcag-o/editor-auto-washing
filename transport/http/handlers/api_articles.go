@@ -16,6 +16,10 @@ type APIArticlesHandler struct {
 	runs     repo.RewritePipelineRunRepo
 	stages   repo.RewriteStageRunRepo
 	source   repo.SourceDocumentRepo
+	workflows interface {
+		GetByID(context.Context, string) (*domain.WorkflowDefinition, error)
+	}
+	audit     repo.AuditLogRepo
 	control  interface {
 		Get(context.Context) (*domain.SystemControlState, error)
 	}
@@ -29,10 +33,12 @@ type rewriteStageRunUpdater interface {
 	Update(context.Context, *domain.RewriteStageRun) error
 }
 
-func NewAPIArticlesHandler(articles *service.ArticleQueryService, runs repo.RewritePipelineRunRepo, stages repo.RewriteStageRunRepo, source repo.SourceDocumentRepo, control interface {
+func NewAPIArticlesHandler(articles *service.ArticleQueryService, runs repo.RewritePipelineRunRepo, stages repo.RewriteStageRunRepo, source repo.SourceDocumentRepo, workflows interface {
+	GetByID(context.Context, string) (*domain.WorkflowDefinition, error)
+}, audit repo.AuditLogRepo, control interface {
 	Get(context.Context) (*domain.SystemControlState, error)
 }) *APIArticlesHandler {
-	return &APIArticlesHandler{articles: articles, runs: runs, stages: stages, source: source, control: control}
+	return &APIArticlesHandler{articles: articles, runs: runs, stages: stages, source: source, workflows: workflows, audit: audit, control: control}
 }
 
 func (h *APIArticlesHandler) List(c *gin.Context) {
@@ -233,6 +239,55 @@ func (h *APIArticlesHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (h *APIArticlesHandler) AssignWorkflowTemplate(c *gin.Context) {
+	var req struct {
+		WorkflowTemplateID string `json:"workflow_template_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if h.workflows == nil || h.audit == nil {
+		HandleError(c, domain.NewInternalErr("workflow template assignment is not configured", nil))
+		return
+	}
+	item, err := h.source.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		HandleError(c, err)
+		return
+	}
+	workflow, err := h.workflows.GetByID(c.Request.Context(), strings.TrimSpace(req.WorkflowTemplateID))
+	if err != nil {
+		HandleError(c, err)
+		return
+	}
+	if item.Metadata == nil {
+		item.Metadata = map[string]any{}
+	}
+	item.Metadata["workflow_template_id"] = workflow.ID
+	item.Metadata["workflow_template_name"] = workflow.Name
+	item.Metadata["workflow_template_version"] = workflow.Version
+	if err := h.source.Update(c.Request.Context(), item); err != nil {
+		HandleError(c, err)
+		return
+	}
+	if _, err := service.NewAuditLogService(h.audit).Create(c.Request.Context(), service.AuditLogCreateInput{
+		Actor:      "local-admin",
+		Action:     "web_control.article.workflow_template_assigned",
+		Resource:   "source_document",
+		ResourceID: item.ID,
+		Result:     "success",
+		Message:    "assigned workflow template to article",
+		Metadata: map[string]any{
+			"workflow_template_id": workflow.ID,
+		},
+	}); err != nil {
+		HandleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, item)
 }
 
 func (h *APIArticlesHandler) resetWorkflowExecution(ctx context.Context, item *domain.SourceDocument) error {

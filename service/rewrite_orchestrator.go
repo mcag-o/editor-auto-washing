@@ -24,6 +24,7 @@ type RewriteRunRequest struct {
 	TargetType         string `json:"target_type" binding:"required"`
 	SourceProfile      string `json:"source_profile" binding:"required"`
 	Version            string `json:"version" binding:"required"`
+	Metadata           map[string]any `json:"metadata"`
 }
 
 type RewriteOrchestrator struct {
@@ -66,6 +67,9 @@ func (o *RewriteOrchestrator) Run(ctx context.Context, req RewriteRunRequest) (*
 	run.Status = domain.RewriteRunRunning
 	run.Metadata = map[string]any{
 		"title": req.Title,
+	}
+	for key, value := range req.Metadata {
+		run.Metadata[key] = value
 	}
 	if err := o.runs.Create(ctx, run); err != nil {
 		return nil, err
