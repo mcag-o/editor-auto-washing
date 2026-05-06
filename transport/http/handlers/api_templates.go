@@ -5,6 +5,7 @@ import (
 	"content-hub/pkg/id"
 	"content-hub/service"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -38,6 +39,17 @@ func (h *APITemplatesHandler) Create(c *gin.Context) {
 	}
 	if strings.TrimSpace(template.ID) == "" {
 		template.ID = id.New()
+	} else {
+		if _, err := h.svc.GetByID(c.Request.Context(), template.ID); err == nil {
+			HandleError(c, domain.NewConflictErr("template definition already exists"))
+			return
+		} else {
+			var appErr *domain.AppError
+			if !errors.As(err, &appErr) || appErr.Code != domain.ErrNotFound {
+				HandleError(c, err)
+				return
+			}
+		}
 	}
 	if err := h.svc.Upsert(c.Request.Context(), template); err != nil {
 		HandleError(c, err)

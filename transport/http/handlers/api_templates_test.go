@@ -144,6 +144,60 @@ func TestAPITemplatesCreateWithoutIDGeneratesNonEmptyID(t *testing.T) {
 	require.NotEqual(t, "", repo.stored.ID)
 }
 
+func TestAPITemplatesCreateWithExistingExplicitIDReturnsConflict(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	repo := &templateDefinitionRepoStub{}
+	require.NoError(t, repo.Upsert(t.Context(), &domain.TemplateDefinition{
+		ID:            "tpl-1",
+		Name:          "Existing template",
+		Type:          "prompt",
+		Version:       "v1",
+		Enabled:       true,
+		Content:       "Write a draft for {{title}}",
+		VariablesJSON: []byte(`{"title":"string"}`),
+	}))
+	svc := service.NewTemplateDefinitionService(repo)
+	handler := NewAPITemplatesHandler(svc)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/templates", handler.Create)
+
+	body := `{"id":"tpl-1","name":"Replacement template","type":"prompt","version":"v2","enabled":false,"content":"Repair the draft for {{title}}","variables_json":{"title":"string"},"updated_by":"editor"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/templates", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusConflict, w.Code)
+	require.Contains(t, w.Body.String(), domain.ErrConflict)
+	require.Equal(t, "Existing template", repo.stored.Name)
+	require.Len(t, repo.list, 1)
+}
+
+func TestAPITemplatesCreateWithExplicitNewIDStillSucceeds(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	repo := &templateDefinitionRepoStub{}
+	svc := service.NewTemplateDefinitionService(repo)
+	handler := NewAPITemplatesHandler(svc)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/templates", handler.Create)
+
+	body := `{"id":"tpl-new","name":"Draft prompt","type":"prompt","version":"v1","enabled":true,"content":"Write a draft for {{title}}","variables_json":{"title":"string"},"updated_by":"tester"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/templates", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	var created domain.TemplateDefinition
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
+	require.Equal(t, "tpl-new", created.ID)
+	require.Equal(t, "tpl-new", repo.stored.ID)
+}
+
 func TestAPITemplatesGetAndUpdate(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	repo := &templateDefinitionRepoStub{}
