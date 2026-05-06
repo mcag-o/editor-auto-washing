@@ -55,7 +55,7 @@ func TestTemplateDefinitionValidateAcceptsMinimalDefinition(t *testing.T) {
 		Version:       "v1",
 		Enabled:       true,
 		Content:       "You are a rewriter.",
-		VariablesJSON: "{\"tone\":\"formal\"}",
+		VariablesJSON: []byte("{\"tone\":\"formal\"}"),
 		UpdatedBy:     "tester",
 		UpdatedAt:     time.Now().UTC(),
 	}

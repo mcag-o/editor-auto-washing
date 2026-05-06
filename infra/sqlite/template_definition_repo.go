@@ -5,6 +5,7 @@ import (
 	"content-hub/pkg/repo"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -17,8 +18,13 @@ func (r *templateDefinitionRepo) Upsert(ctx context.Context, template *domain.Te
 	if err := template.Validate(); err != nil {
 		return err
 	}
+	variablesJSON, err := normalizeTemplateVariablesJSON(template.VariablesJSON)
+	if err != nil {
+		return err
+	}
+	template.VariablesJSON = variablesJSON
 	template.UpdatedAt = time.Now().UTC()
-	_, err := r.db.ExecContext(ctx, `
+	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO template_definitions (id, name, type, version, enabled, content, variables_json, updated_by, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
@@ -78,6 +84,11 @@ func scanTemplateDefinition(row templateDefinitionScanner) (*domain.TemplateDefi
 	if err := row.Scan(&template.ID, &template.Name, &template.Type, &template.Version, &enabled, &template.Content, &template.VariablesJSON, &template.UpdatedBy, &updatedAt); err != nil {
 		return nil, err
 	}
+	variablesJSON, err := normalizeTemplateVariablesJSON(template.VariablesJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decode template definition variables_json: %w", err)
+	}
+	template.VariablesJSON = variablesJSON
 	template.Enabled = enabled == 1
 	parsedUpdatedAt, err := time.Parse(time.RFC3339Nano, updatedAt)
 	if err != nil {
@@ -85,4 +96,14 @@ func scanTemplateDefinition(row templateDefinitionScanner) (*domain.TemplateDefi
 	}
 	template.UpdatedAt = parsedUpdatedAt
 	return &template, nil
+}
+
+func normalizeTemplateVariablesJSON(value []byte) ([]byte, error) {
+	if len(value) == 0 {
+		return []byte(`{}`), nil
+	}
+	if !json.Valid(value) {
+		return nil, domain.NewValidationErr("template variables json must be valid json", nil)
+	}
+	return value, nil
 }

@@ -81,7 +81,24 @@ func TestWorkflowDefinitionRepoListOrdersLatestUpdateFirst(t *testing.T) {
 	require.Equal(t, older.ID, list[1].ID)
 }
 
-func TestTemplateDefinitionRepoCreateAndList(t *testing.T) {
+func TestTemplateDefinitionRepoUpsertRejectsInvalidVariablesJSON(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	tpl := &domain.TemplateDefinition{
+		ID:            id.New(),
+		Name:          "无效变量模板",
+		Type:          "prompt",
+		Version:       "v1",
+		Enabled:       true,
+		Content:       "标题：{{title}}",
+		VariablesJSON: []byte(`{"required":[}`),
+		UpdatedBy:     "tester",
+	}
+
+	err := provider.TemplateDefinitionRepo().Upsert(t.Context(), tpl)
+	require.Error(t, err)
+}
+
+func TestTemplateDefinitionRepoRoundTripsValidVariablesJSON(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	tpl := &domain.TemplateDefinition{
 		ID:            id.New(),
@@ -90,7 +107,7 @@ func TestTemplateDefinitionRepoCreateAndList(t *testing.T) {
 		Version:       "v1",
 		Enabled:       true,
 		Content:       "标题：{{title}}",
-		VariablesJSON: `{"required":["title"]}`,
+		VariablesJSON: []byte(`{"required":["title"]}`),
 		UpdatedBy:     "tester",
 	}
 
@@ -107,4 +124,24 @@ func TestTemplateDefinitionRepoCreateAndList(t *testing.T) {
 	require.Len(t, list, 1)
 	require.Equal(t, tpl.ID, list[0].ID)
 	require.Equal(t, tpl.Name, list[0].Name)
+}
+
+func TestTemplateDefinitionRepoNormalizesEmptyVariablesJSON(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	tpl := &domain.TemplateDefinition{
+		ID:        id.New(),
+		Name:      "空变量模板",
+		Type:      "prompt",
+		Version:   "v1",
+		Enabled:   true,
+		Content:   "正文：{{body}}",
+		UpdatedBy: "tester",
+	}
+
+	require.NoError(t, provider.TemplateDefinitionRepo().Upsert(t.Context(), tpl))
+	require.Equal(t, []byte(`{}`), tpl.VariablesJSON)
+
+	stored, err := provider.TemplateDefinitionRepo().GetByID(t.Context(), tpl.ID)
+	require.NoError(t, err)
+	require.Equal(t, []byte(`{}`), stored.VariablesJSON)
 }

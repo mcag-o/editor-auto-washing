@@ -12,7 +12,7 @@ type TemplateDefinition struct {
 	Version       string    `json:"version"`
 	Enabled       bool      `json:"enabled"`
 	Content       string    `json:"content"`
-	VariablesJSON string    `json:"variables_json"`
+	VariablesJSON []byte    `json:"variables_json"`
 	UpdatedBy     string    `json:"updated_by"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
