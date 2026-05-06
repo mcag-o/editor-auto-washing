@@ -110,6 +110,18 @@ export default function TemplateList({
               </TableRow>
             </TableHead>
             <TableBody>
+              {items.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7}>
+                    <Stack spacing={0.75} sx={{ py: 4, alignItems: 'center' }}>
+                      <Typography variant="subtitle2">当前没有本地模板</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        点击右上角“新建模板”即可开始搭建新的提示词或阶段模板。
+                      </Typography>
+                    </Stack>
+                  </TableCell>
+                </TableRow>
+              ) : null}
               {items.map((item) => {
                 const isSelected = item.id === selectedId;
 

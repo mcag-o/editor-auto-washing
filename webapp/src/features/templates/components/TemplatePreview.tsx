@@ -3,6 +3,7 @@ import DataObjectRoundedIcon from '@mui/icons-material/DataObjectRounded';
 import LayersRoundedIcon from '@mui/icons-material/LayersRounded';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
+import Divider from '@mui/material/Divider';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -41,6 +42,27 @@ export default function TemplatePreview({ template }: TemplatePreviewProps) {
               </Stack>
             </Stack>
           </Box>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} useFlexGap>
+            <Box sx={{ flex: 1, p: 1.5, borderRadius: 2.5, border: '1px solid', borderColor: 'divider', bgcolor: 'background.default' }}>
+              <Typography variant="caption" color="text.secondary">
+                模板类型
+              </Typography>
+              <Typography variant="subtitle2" sx={{ mt: 0.5 }}>
+                {template.type}
+              </Typography>
+            </Box>
+            <Box sx={{ flex: 1, p: 1.5, borderRadius: 2.5, border: '1px solid', borderColor: 'divider', bgcolor: 'background.default' }}>
+              <Typography variant="caption" color="text.secondary">
+                阶段数量
+              </Typography>
+              <Typography variant="subtitle2" sx={{ mt: 0.5 }}>
+                {template.stages.length} 个阶段
+              </Typography>
+            </Box>
+          </Stack>
+
+          <Divider />
 
           <Stack spacing={1.5}>
             <Stack direction="row" spacing={1} alignItems="center">

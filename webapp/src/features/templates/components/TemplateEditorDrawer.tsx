@@ -22,7 +22,7 @@ type TemplateEditorDrawerProps = {
   onSave: () => void;
 };
 
-const versionOptions = ['v1.0.0', 'v1.1.0', 'v1.2.0', 'v1.3.0', 'v2.0.0', 'v2.0.1'];
+const versionOptions = ['v1.0.0', 'v1.0.3', 'v1.1.0', 'v1.2.0', 'v1.3.0', 'v1.4.2', 'v2.0.0', 'v2.0.1', 'v2.1.0', 'v4.0.0'];
 
 export default function TemplateEditorDrawer({
   open,
@@ -44,9 +44,9 @@ export default function TemplateEditorDrawer({
         <Stack direction="row" spacing={1.5} alignItems="flex-start" justifyContent="space-between">
           <Box>
             <Typography variant="h5">{editingTemplate ? '编辑模板' : '新建模板'}</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-               保留当前简化编辑器，保存时会按后端模板定义结构提交。
-              </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              先用本地抽屉整理提示词、摘要和阶段说明，后续再接入真实模板保存能力。
+            </Typography>
           </Box>
           <Button variant="text" onClick={onClose} startIcon={<CloseRoundedIcon />}>
             关闭
@@ -90,7 +90,7 @@ export default function TemplateEditorDrawer({
             label="模板类型"
             value={draft.type}
             onChange={(event) => onChange('type', event.target.value)}
-            helperText="按后端原样保存类型标识，例如 prompt、rewrite、review、stage。"
+            helperText="预留 prompt、rewrite、review、stage 等类型输入，当前仅做本地编辑展示。"
             fullWidth
           />
 
