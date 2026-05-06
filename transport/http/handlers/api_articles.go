@@ -122,18 +122,20 @@ func (h *APIArticlesHandler) Retry(c *gin.Context) {
 	}
 	if workflowChanged {
 		workflowStateReset = true
-		if err := h.deleteWorkflowExecution(c.Request.Context(), item.RewriteRunID); err != nil {
-			HandleError(c, err)
-			return
-		}
 	}
 	if workflowStateReset {
 		item.RewriteRunID = ""
 	}
 
-	if err := h.source.Update(c.Request.Context(), item); err != nil {
+	if err := h.source.UpdateIfStatus(c.Request.Context(), item, domain.SourceDocumentStatusFailed); err != nil {
 		HandleError(c, err)
 		return
+	}
+	if workflowStateReset {
+		if err := h.deleteWorkflowExecution(c.Request.Context(), previousRunID); err != nil {
+			HandleError(c, err)
+			return
+		}
 	}
 
 	workerRunning := false
@@ -180,7 +182,7 @@ func (h *APIArticlesHandler) Stop(c *gin.Context) {
 	item.Status = domain.SourceDocumentStatusPaused
 	item.ClaimedBy = ""
 	item.ClaimedAt = nil
-	if err := h.source.Update(c.Request.Context(), item); err != nil {
+	if err := h.source.UpdateIfStatus(c.Request.Context(), item, domain.SourceDocumentStatusProcessing); err != nil {
 		HandleError(c, err)
 		return
 	}
@@ -220,7 +222,7 @@ func (h *APIArticlesHandler) Resume(c *gin.Context) {
 	item.ClaimedBy = ""
 	item.ClaimedAt = nil
 	item.ProcessingStartedAt = nil
-	if err := h.source.Update(c.Request.Context(), item); err != nil {
+	if err := h.source.UpdateIfStatus(c.Request.Context(), item, domain.SourceDocumentStatusPaused); err != nil {
 		HandleError(c, err)
 		return
 	}
@@ -272,22 +274,18 @@ func (h *APIArticlesHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	deleteRepo, ok := h.source.(sourceDocumentDeleteRepo)
-	if !ok {
-		HandleError(c, domain.NewInternalErr("source document delete is not configured", nil))
+	workflowRecordsDeleted := false
+	runID := strings.TrimSpace(item.RewriteRunID)
+	if err := h.source.DeleteIfStatus(c.Request.Context(), item.ID, domain.SourceDocumentStatusPending, domain.SourceDocumentStatusPaused, domain.SourceDocumentStatusCompleted); err != nil {
+		HandleError(c, err)
 		return
 	}
-	workflowRecordsDeleted := false
-	if strings.TrimSpace(item.RewriteRunID) != "" {
-		if err := h.deleteWorkflowExecution(c.Request.Context(), item.RewriteRunID); err != nil {
+	if runID != "" {
+		if err := h.deleteWorkflowExecution(c.Request.Context(), runID); err != nil {
 			HandleError(c, err)
 			return
 		}
 		workflowRecordsDeleted = true
-	}
-	if err := deleteRepo.Delete(c.Request.Context(), item.ID); err != nil {
-		HandleError(c, err)
-		return
 	}
 	h.recordArticleAuditBestEffort(c.Request.Context(), item, "delete", "success", "deleted article", map[string]any{
 		"workflow_records_deleted": workflowRecordsDeleted,

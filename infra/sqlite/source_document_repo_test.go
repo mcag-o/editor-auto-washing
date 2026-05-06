@@ -138,6 +138,43 @@ func TestSourceDocumentRepoDelete(t *testing.T) {
 	require.Equal(t, domain.ErrNotFound, appErr.Code)
 }
 
+func TestSourceDocumentRepoUpdateIfStatusRejectsStaleState(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	doc := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-update-if-status")
+	doc.Status = domain.SourceDocumentStatusPending
+	require.NoError(t, provider.SourceDocumentRepo().Create(t.Context(), doc))
+
+	startedAt := time.Now().UTC().Truncate(time.Second)
+	doc.Status = domain.SourceDocumentStatusProcessing
+	doc.ProcessingStartedAt = &startedAt
+	err := provider.SourceDocumentRepo().UpdateIfStatus(t.Context(), doc, domain.SourceDocumentStatusProcessing)
+	require.Error(t, err)
+	appErr, ok := err.(*domain.AppError)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrConflict, appErr.Code)
+
+	stored, getErr := provider.SourceDocumentRepo().GetByID(t.Context(), doc.ID)
+	require.NoError(t, getErr)
+	require.Equal(t, domain.SourceDocumentStatusPending, stored.Status)
+}
+
+func TestSourceDocumentRepoDeleteIfStatusRejectsStaleState(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	doc := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-delete-if-status")
+	doc.Status = domain.SourceDocumentStatusPending
+	require.NoError(t, provider.SourceDocumentRepo().Create(t.Context(), doc))
+
+	err := provider.SourceDocumentRepo().DeleteIfStatus(t.Context(), doc.ID, domain.SourceDocumentStatusPaused)
+	require.Error(t, err)
+	appErr, ok := err.(*domain.AppError)
+	require.True(t, ok)
+	require.Equal(t, domain.ErrConflict, appErr.Code)
+
+	stored, getErr := provider.SourceDocumentRepo().GetByID(t.Context(), doc.ID)
+	require.NoError(t, getErr)
+	require.Equal(t, doc.ID, stored.ID)
+}
+
 func TestImportRunRepoCreateUpdateAndList(t *testing.T) {
 	provider := newRuntimeProvider(t)
 	run := domain.NewImportRun("folder")

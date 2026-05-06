@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -51,6 +52,38 @@ func (r *sourceDocumentRepo) Update(ctx context.Context, doc *domain.SourceDocum
 	return nil
 }
 
+func (r *sourceDocumentRepo) UpdateIfStatus(ctx context.Context, doc *domain.SourceDocument, expectedStatuses ...string) error {
+	if err := doc.Validate(); err != nil {
+		return err
+	}
+	if len(expectedStatuses) == 0 {
+		return domain.NewValidationErr("expected source document statuses are required", nil)
+	}
+	metadataJSON, err := json.Marshal(doc.Metadata)
+	if err != nil {
+		return fmt.Errorf("marshal source document metadata: %w", err)
+	}
+	args := []any{doc.SourceType, doc.OriginalFilename, doc.OriginalPath, doc.ArchivedPath, doc.FileType, doc.Title, doc.Body, doc.Summary, string(metadataJSON), doc.Hash, nullableTimeNano(doc.ImportedAt), doc.Status, doc.WorkspaceArticleID, doc.RewriteRunID, doc.ClaimedBy, nullableTimeNano(doc.ClaimedAt), nullableTimeNano(doc.ProcessingStartedAt), nullableTimeNano(doc.CompletedAt), doc.ErrorSummary, doc.ID}
+	placeholders := make([]string, 0, len(expectedStatuses))
+	for _, status := range expectedStatuses {
+		placeholders = append(placeholders, "?")
+		args = append(args, status)
+	}
+	query := fmt.Sprintf(`UPDATE source_documents SET source_type = ?, original_filename = ?, original_path = ?, archived_path = ?, file_type = ?, title = ?, body = ?, summary = ?, metadata_json = ?, hash = ?, imported_at = ?, status = ?, workspace_article_id = ?, rewrite_run_id = ?, claimed_by = ?, claimed_at = ?, processing_started_at = ?, completed_at = ?, error_summary = ? WHERE id = ? AND status IN (%s)`, strings.Join(placeholders, ", "))
+	result, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("guarded update source document: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check guarded update source document result: %w", err)
+	}
+	if rows == 0 {
+		return domain.NewConflictErr(fmt.Sprintf("source document %s state changed", doc.ID))
+	}
+	return nil
+}
+
 func (r *sourceDocumentRepo) GetByID(ctx context.Context, id string) (*domain.SourceDocument, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT id, source_type, original_filename, original_path, archived_path, file_type, title, body, summary, metadata_json, hash, imported_at, status, workspace_article_id, rewrite_run_id, claimed_by, claimed_at, processing_started_at, completed_at, error_summary FROM source_documents WHERE id = ?`, id)
 	doc, err := scanSourceDocument(row)
@@ -74,6 +107,31 @@ func (r *sourceDocumentRepo) Delete(ctx context.Context, id string) error {
 	}
 	if rows == 0 {
 		return domain.NewNotFoundErr("source_document", id)
+	}
+	return nil
+}
+
+func (r *sourceDocumentRepo) DeleteIfStatus(ctx context.Context, id string, expectedStatuses ...string) error {
+	if len(expectedStatuses) == 0 {
+		return domain.NewValidationErr("expected source document statuses are required", nil)
+	}
+	args := []any{id}
+	placeholders := make([]string, 0, len(expectedStatuses))
+	for _, status := range expectedStatuses {
+		placeholders = append(placeholders, "?")
+		args = append(args, status)
+	}
+	query := fmt.Sprintf(`DELETE FROM source_documents WHERE id = ? AND status IN (%s)`, strings.Join(placeholders, ", "))
+	result, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("guarded delete source document: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check guarded delete source document result: %w", err)
+	}
+	if rows == 0 {
+		return domain.NewConflictErr(fmt.Sprintf("source document %s state changed", id))
 	}
 	return nil
 }

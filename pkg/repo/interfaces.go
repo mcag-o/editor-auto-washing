@@ -129,7 +129,9 @@ type RSSItemRepo interface {
 type SourceDocumentRepo interface {
 	Create(ctx context.Context, doc *domain.SourceDocument) error
 	Update(ctx context.Context, doc *domain.SourceDocument) error
+	UpdateIfStatus(ctx context.Context, doc *domain.SourceDocument, expectedStatuses ...string) error
 	Delete(ctx context.Context, id string) error
+	DeleteIfStatus(ctx context.Context, id string, expectedStatuses ...string) error
 	GetByID(ctx context.Context, id string) (*domain.SourceDocument, error)
 	List(ctx context.Context, limit int) ([]domain.SourceDocument, error)
 	FindByHash(ctx context.Context, hash string) (*domain.SourceDocument, error)
