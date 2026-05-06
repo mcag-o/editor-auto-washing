@@ -49,6 +49,14 @@ type stubArticleIntakeRewriteRunner struct {
 	err     error
 }
 
+type stubArticleIntakeResumeRewriteRunner struct {
+	called        bool
+	lastRewriteID string
+	lastTitle     string
+	result        *domain.RewritePipelineRun
+	err           error
+}
+
 type stubArticleIntakeWorkflowRepo struct {
 	workflow *domain.WorkflowDefinition
 	err      error
@@ -73,6 +81,25 @@ func (r *stubArticleIntakeRewriteRunner) Run(_ context.Context, req RewriteRunRe
 		return nil, r.err
 	}
 	return &domain.RewritePipelineRun{ID: "run-1"}, nil
+}
+
+func (r *stubArticleIntakeResumeRewriteRunner) Run(_ context.Context, _ RewriteRunRequest) (*domain.RewritePipelineRun, error) {
+	return nil, errors.New("unexpected run call")
+}
+
+func (r *stubArticleIntakeResumeRewriteRunner) Resume(_ context.Context, rewriteRunID string, title string) (*domain.RewritePipelineRun, error) {
+	r.called = true
+	r.lastRewriteID = rewriteRunID
+	r.lastTitle = title
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.result == nil {
+		return nil, nil
+	}
+	copyRun := *r.result
+	copyRun.ID = rewriteRunID
+	return &copyRun, nil
 }
 
 func TestArticleIntakeServiceCreatesWorkspaceArticleAndTriggersRewrite(t *testing.T) {
@@ -276,4 +303,78 @@ func TestArticleIntakeServiceRejectsDisabledWorkflowReference(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "disabled")
 	require.False(t, rewrite.called)
+}
+
+func TestArticleIntakeServiceResumeRejectsDisabledWorkflowReference(t *testing.T) {
+	rewrite := &stubArticleIntakeRewriteRunner{}
+	workflows := &stubArticleIntakeWorkflowRepo{workflow: &domain.WorkflowDefinition{
+		ID:          "workflow-disabled",
+		Name:        "Disabled workflow",
+		Version:     "v1",
+		Enabled:     false,
+		EntryNodeID: "node-generate-draft",
+		Nodes:       []domain.WorkflowNode{{ID: "node-generate-draft", Type: "rewrite_stage", Name: "generate_draft"}},
+	}}
+	svc := NewArticleIntakeServiceWithWorkflows(&stubArticleIntakeWorkspaceRepo{}, rewrite, workflows)
+	resumeRunner := &stubArticleIntakeResumeRewriteRunner{}
+	svc.rewrite = resumeRunner
+	article := domain.IntakeArticle{
+		ExternalID:            "guid-1",
+		SourceType:            "rss",
+		SubscriptionID:        "sub-1",
+		Title:                 "Title",
+		Body:                  "Body",
+		Summary:               "Summary",
+		OriginalURL:           "https://example.com/a",
+		TargetType:            "wechat-longform",
+		SourceProfile:         "sspai",
+		RewriteProfileVersion: "latest",
+		Metadata: map[string]any{
+			"workflow_template_id": "workflow-disabled",
+		},
+	}
+
+	result, err := svc.ResumeResult(t.Context(), "rewrite-1", article)
+
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "disabled")
+	require.False(t, resumeRunner.called)
+}
+
+func TestArticleIntakeServiceResumeAllowsEnabledWorkflowReference(t *testing.T) {
+	workflows := &stubArticleIntakeWorkflowRepo{workflow: &domain.WorkflowDefinition{
+		ID:          "workflow-enabled",
+		Name:        "Enabled workflow",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "node-generate-draft",
+		Nodes:       []domain.WorkflowNode{{ID: "node-generate-draft", Type: "rewrite_stage", Name: "generate_draft"}},
+	}}
+	resumeRunner := &stubArticleIntakeResumeRewriteRunner{result: &domain.RewritePipelineRun{ID: "rewrite-1", WorkspaceArticleID: "workspace-1", FinalDraftID: "draft-1"}}
+	svc := NewArticleIntakeServiceWithWorkflows(&stubArticleIntakeWorkspaceRepo{}, resumeRunner, workflows)
+	article := domain.IntakeArticle{
+		ExternalID:            "guid-1",
+		SourceType:            "rss",
+		SubscriptionID:        "sub-1",
+		Title:                 "Title",
+		Body:                  "Body",
+		Summary:               "Summary",
+		OriginalURL:           "https://example.com/a",
+		TargetType:            "wechat-longform",
+		SourceProfile:         "sspai",
+		RewriteProfileVersion: "latest",
+		Metadata: map[string]any{
+			"workflow_template_id": "workflow-enabled",
+		},
+	}
+
+	result, err := svc.ResumeResult(t.Context(), "rewrite-1", article)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, resumeRunner.called)
+	require.Equal(t, "rewrite-1", result.RewriteRunID)
+	require.Equal(t, "workspace-1", result.WorkspaceArticleID)
+	require.Equal(t, "draft-1", result.DraftID)
 }

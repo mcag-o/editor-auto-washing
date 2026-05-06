@@ -86,6 +86,9 @@ func (s *ArticleIntakeService) ResumeResult(ctx context.Context, rewriteRunID st
 	if !ok {
 		return nil, domain.NewInternalErr("article intake resume is not configured", nil)
 	}
+	if _, err := s.buildRewriteMetadata(ctx, article); err != nil {
+		return nil, err
+	}
 	run, err := resumeRunner.Resume(ctx, strings.TrimSpace(rewriteRunID), article.Title)
 	if err != nil {
 		return nil, fmt.Errorf("resume rewrite orchestrator: %w", err)

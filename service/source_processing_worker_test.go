@@ -375,6 +375,29 @@ func TestSourceProcessingWorkerResumeDoesNotCreateSecondRewriteRun(t *testing.T)
 	require.Equal(t, "rewrite-existing", repo.updated[1].RewriteRunID)
 }
 
+func TestSourceProcessingWorkerResumeFailsWhenAssignedWorkflowWasDisabled(t *testing.T) {
+	doc := validClaimedSourceProcessingDocument()
+	doc.WorkspaceArticleID = "workspace-existing"
+	doc.RewriteRunID = "rewrite-existing"
+	doc.Metadata["workflow_template_id"] = "workflow-disabled"
+	intake := &stubSourceProcessingArticleIntake{err: domain.NewValidationErr("workflow template workflow-disabled is disabled", nil)}
+	rewrite := NewArticleIntakeSourceProcessingRewriteRunner(intake)
+	render := &stubSourceProcessingRenderRunner{}
+	repo := &stubSourceProcessingRepo{stored: cloneSourceDocument(doc)}
+	worker := NewSourceProcessingWorker(repo, rewrite, render)
+
+	err := worker.Process(t.Context(), doc)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "workflow-disabled")
+	require.Equal(t, 0, intake.intakeCalls)
+	require.Equal(t, 1, intake.resumeCalls)
+	require.False(t, render.called)
+	require.Len(t, repo.updated, 2)
+	require.Equal(t, domain.SourceDocumentStatusFailed, repo.updated[1].Status)
+	require.Contains(t, repo.updated[1].ErrorSummary, "workflow-disabled")
+}
+
 func validClaimedSourceProcessingDocument() *domain.SourceDocument {
 	doc := domain.NewSourceDocument("article.md", "/inbox/article.md", "md", "Title", "Body", "hash-1")
 	doc.Status = domain.SourceDocumentStatusClaimed
