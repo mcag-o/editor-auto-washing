@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,57 +11,95 @@
     <div class="topbar__inner">
       <div>
         <p class="eyebrow">Content Hub</p>
-        <h1>Admin Control Plane</h1>
+        <h1>图工作流控制台</h1>
       </div>
-      <div class="status-pill">Go-hosted frontend shell</div>
+      <div class="topbar__meta">
+        <span class="status-pill">嵌入式控制台</span>
+        <span class="status-pill status-pill--accent">静态壳层</span>
+      </div>
     </div>
   </header>
 
   <main class="layout">
     <section class="hero-card card">
-      <div>
-        <p class="eyebrow">Operations Overview</p>
-        <h2>Manage intake, workflows, configuration, and audits from one place</h2>
-        <p class="muted">This task ships the hosted admin shell only. Data wiring and richer interactions can be layered in without changing the page structure.</p>
+      <div class="hero-copy">
+        <p class="eyebrow">运营总览</p>
+        <h2>面向运营与审核团队的中文控制台壳层</h2>
+        <p class="muted">当前任务仅交付静态页面结构与轻量前端交互，用于承接后续工作流执行、模板配置、文章处理和审计能力。</p>
       </div>
       <div class="hero-stats">
         <div class="metric-card">
-          <span class="metric-label">Runtime</span>
-          <strong>Web Control Plane</strong>
+          <span class="metric-label">当前入口</span>
+          <strong>浏览器控制平面</strong>
+          <span class="muted">端口 8123</span>
         </div>
         <div class="metric-card">
-          <span class="metric-label">Delivery</span>
-          <strong>Embedded Static Assets</strong>
+          <span class="metric-label">默认链路</span>
+          <strong>导入 -> 改写 -> 草稿 -> 渲染</strong>
+          <span class="muted">审核与发布后续接入</span>
         </div>
       </div>
     </section>
 
-    <nav class="tabs card" aria-label="Admin sections">
-      <button class="tab is-active" type="button" data-tab="dashboard">Dashboard</button>
-      <button class="tab" type="button" data-tab="article-intake">Article Intake</button>
-      <button class="tab" type="button" data-tab="article-list">Article List</button>
-      <button class="tab" type="button" data-tab="workflow-control">Workflow Control</button>
-      <button class="tab" type="button" data-tab="configuration">Configuration</button>
-      <button class="tab" type="button" data-tab="audit-log">Audit Log</button>
+    <section class="summary-grid">
+      <article class="card summary-card">
+        <p class="eyebrow">待处理</p>
+        <strong>18</strong>
+        <span class="muted">待进入工作流的文章</span>
+      </article>
+      <article class="card summary-card">
+        <p class="eyebrow">处理中</p>
+        <strong>6</strong>
+        <span class="muted">当前运行中的节点任务</span>
+      </article>
+      <article class="card summary-card">
+        <p class="eyebrow">模板数</p>
+        <strong>12</strong>
+        <span class="muted">含工作流模板与输出模板</span>
+      </article>
+      <article class="card summary-card">
+        <p class="eyebrow">审计事件</p>
+        <strong>241</strong>
+        <span class="muted">近 24 小时操作留痕</span>
+      </article>
+    </section>
+
+    <nav class="tabs card" aria-label="控制台页面">
+      <button class="tab is-active" type="button" data-tab="overview">总览</button>
+      <button class="tab" type="button" data-tab="article-intake">文章导入</button>
+      <button class="tab" type="button" data-tab="article-list">文章列表</button>
+      <button class="tab" type="button" data-tab="workflow-control">工作流控制</button>
+      <button class="tab" type="button" data-tab="configuration">配置管理</button>
+      <button class="tab" type="button" data-tab="workflow-templates">工作流模板</button>
+      <button class="tab" type="button" data-tab="template-management">模板管理</button>
+      <button class="tab" type="button" data-tab="audit-log">审计日志</button>
     </nav>
 
     <section class="tab-panels">
-      <section class="tab-panel is-active" data-panel="dashboard">
-        <div class="grid grid--metrics">
+      <section class="tab-panel is-active" data-panel="overview">
+        <div class="grid grid--overview">
           <article class="card compact-card">
-            <p class="eyebrow">Pipeline State</p>
-            <h3>Dashboard</h3>
-            <p class="muted">Summary cards and live counters can mount here without reworking the layout shell.</p>
+            <p class="eyebrow">值班视图</p>
+            <h3>运行状态摘要</h3>
+            <p class="muted">集中展示导入、改写、渲染、审核等关键节点状态，适合作为运营值班首页。</p>
+            <div class="inline-pills">
+              <span class="badge">自动化主链路</span>
+              <span class="badge badge--muted">人工复核可扩展</span>
+            </div>
           </article>
           <article class="card compact-card">
-            <p class="eyebrow">Recent Activity</p>
-            <h3>Queue Snapshot</h3>
-            <p class="muted">Expose status, backlog, and operator notices in a compact SaaS-style card layout.</p>
+            <p class="eyebrow">待办提醒</p>
+            <h3>近期操作重点</h3>
+            <ul>
+              <li>补齐待处理文章的工作流绑定</li>
+              <li>核对高频模板的版本状态</li>
+              <li>确认异常停止任务的恢复策略</li>
+            </ul>
           </article>
           <article class="card compact-card">
-            <p class="eyebrow">Operational Health</p>
-            <h3>System Readiness</h3>
-            <p class="muted">Reserved for runtime health, worker heartbeat, and intake readiness indicators.</p>
+            <p class="eyebrow">结构预留</p>
+            <h3>后续数据位</h3>
+            <p class="muted">图节点监控、队列吞吐、失败重试统计等动态数据可直接挂载在此布局内。</p>
           </article>
         </div>
       </section>
@@ -70,28 +108,28 @@
         <article class="card section-card">
           <div class="section-card__header">
             <div>
-              <p class="eyebrow">Input Queue</p>
-              <h3>Article Intake</h3>
+              <p class="eyebrow">文章进入工作区</p>
+              <h3>文章导入</h3>
             </div>
-            <span class="badge">Shell Ready</span>
+            <span class="badge">仅保留受支持入口</span>
           </div>
           <div class="section-grid">
             <div class="input-surface">
-              <label for="source-url">Source URL</label>
-              <input id="source-url" type="url" placeholder="https://example.com/article">
-              <label for="source-text">Manual Paste</label>
-              <textarea id="source-text" rows="8" placeholder="Paste article content here"></textarea>
-              <div class="actions-row">
-                <button type="button" class="btn btn-primary">Queue Intake</button>
-                <button type="button" class="btn">Clear</button>
+              <label for="article-upload">文件上传（.txt/.md/.json）</label>
+              <input id="article-upload" type="file" accept=".txt,.md,.json">
+              <label for="source-text">粘贴全文</label>
+              <textarea id="source-text" rows="10" placeholder="在此粘贴需要导入的文章全文"></textarea>
+              <div class="actions-row actions-row--start">
+                <button type="button" class="btn btn-primary">加入导入队列</button>
+                <button type="button" class="btn">清空内容</button>
               </div>
             </div>
             <div class="helper-card">
-              <h4>Supported Shell Targets</h4>
+              <h4>导入说明</h4>
               <ul>
-                <li>Upload and paste entry points</li>
-                <li>Queued intake status summary</li>
-                <li>Operator notes and validation hints</li>
+                <li>支持本地文本文件与结构化 JSON 文件。</li>
+                <li>粘贴全文适用于临时录入或人工采集场景。</li>
+                <li>当前仅提供页面壳层，后续再接入真实导入接口。</li>
               </ul>
             </div>
           </div>
@@ -100,35 +138,71 @@
 
       <section class="tab-panel" data-panel="article-list">
         <article class="card section-card">
-          <div class="section-card__header">
+          <div class="section-card__header section-card__header--stacked">
             <div>
-              <p class="eyebrow">Content Inventory</p>
-              <h3>Article List</h3>
+              <p class="eyebrow">处理队列</p>
+              <h3>文章列表</h3>
             </div>
-            <input class="table-filter" type="search" placeholder="Filter articles">
+            <div class="toolbar-row">
+              <div class="quick-filters" role="tablist" aria-label="文章状态筛选">
+                <button class="quick-filter is-active" type="button" data-filter="all">全部</button>
+                <button class="quick-filter" type="button" data-filter="pending">未处理</button>
+                <button class="quick-filter" type="button" data-filter="running">处理中</button>
+                <button class="quick-filter" type="button" data-filter="done">已处理</button>
+              </div>
+              <input class="table-filter" type="search" placeholder="搜索标题、来源或模板">
+            </div>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Title</th>
-                  <th>Status</th>
-                  <th>Pipeline</th>
-                  <th>Updated</th>
+                  <th>文章标题</th>
+                  <th>处理状态</th>
+                  <th>当前模板</th>
+                  <th>更新时间</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td>Example source article</td>
-                  <td><span class="badge">Draft</span></td>
-                  <td>Rewrite</td>
-                  <td>Today</td>
+                <tr data-status="pending">
+                  <td>新能源行业周报</td>
+                  <td><span class="badge badge--pending">未处理</span></td>
+                  <td>长文改写流程 A</td>
+                  <td>今天 09:30</td>
+                  <td>
+                    <div class="row-actions">
+                      <button type="button" class="btn btn-link">再处理</button>
+                      <button type="button" class="btn btn-link btn-link--danger">删除</button>
+                      <button type="button" class="btn btn-link">停止</button>
+                    </div>
+                  </td>
                 </tr>
-                <tr>
-                  <td>Workspace article shell</td>
-                  <td><span class="badge badge--muted">Queued</span></td>
-                  <td>Intake</td>
-                  <td>Pending</td>
+                <tr data-status="running">
+                  <td>出海产品观察</td>
+                  <td><span class="badge badge--running">处理中</span></td>
+                  <td>标准图工作流</td>
+                  <td>今天 10:15</td>
+                  <td>
+                    <div class="row-actions">
+                      <button type="button" class="btn btn-link">再处理</button>
+                      <button type="button" class="btn btn-link btn-link--danger">删除</button>
+                      <button type="button" class="btn btn-link">停止</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr data-status="done">
+                  <td>零售品牌案例拆解</td>
+                  <td><span class="badge badge--done">已处理</span></td>
+                  <td>渠道精修模板</td>
+                  <td>昨天 18:40</td>
+                  <td>
+                    <div class="row-actions">
+                      <button type="button" class="btn btn-link">再处理</button>
+                      <button type="button" class="btn btn-link btn-link--danger">删除</button>
+                      <button type="button" class="btn btn-link">停止</button>
+                    </div>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -139,19 +213,33 @@
       <section class="tab-panel" data-panel="workflow-control">
         <div class="grid grid--two">
           <article class="card compact-card">
-            <p class="eyebrow">Execution</p>
-            <h3>Workflow Control</h3>
-            <p class="muted">Start, pause, resume, and retry controls can bind to the existing APIs in a later task.</p>
-            <div class="actions-row">
-              <button type="button" class="btn btn-primary">Start</button>
-              <button type="button" class="btn">Pause</button>
-              <button type="button" class="btn">Resume</button>
+            <p class="eyebrow">运行面板</p>
+            <h3>工作流控制</h3>
+            <p class="muted">此处保留启动、暂停、恢复、停止等控制入口，后续接入 API 后可直接复用当前结构。</p>
+            <div class="actions-row actions-row--start actions-row--wrap">
+              <button type="button" class="btn btn-primary">启动主工作流</button>
+              <button type="button" class="btn">暂停调度</button>
+              <button type="button" class="btn">恢复调度</button>
+              <button type="button" class="btn">停止</button>
             </div>
           </article>
           <article class="card compact-card">
-            <p class="eyebrow">Visibility</p>
-            <h3>Run State</h3>
-            <p class="muted">Structured status details, worker utilization, and retry history can render in this card area.</p>
+            <p class="eyebrow">执行可视化</p>
+            <h3>节点状态</h3>
+            <div class="timeline-list">
+              <div class="timeline-item">
+                <strong>导入节点</strong>
+                <span class="muted">等待新文章进入队列</span>
+              </div>
+              <div class="timeline-item">
+                <strong>改写节点</strong>
+                <span class="muted">2 个任务运行中</span>
+              </div>
+              <div class="timeline-item">
+                <strong>渲染节点</strong>
+                <span class="muted">上一轮已完成</span>
+              </div>
+            </div>
           </article>
         </div>
       </section>
@@ -160,24 +248,88 @@
         <article class="card section-card">
           <div class="section-card__header">
             <div>
-              <p class="eyebrow">System Settings</p>
-              <h3>Configuration</h3>
+              <p class="eyebrow">系统参数</p>
+              <h3>配置管理</h3>
             </div>
-            <button type="button" class="btn">Refresh</button>
+            <button type="button" class="btn">刷新配置</button>
           </div>
           <div class="config-list">
             <div class="config-item">
-              <span>Workspace root</span>
+              <span>工作区根目录</span>
               <code>/workspace</code>
             </div>
             <div class="config-item">
-              <span>Rewrite profile</span>
+              <span>默认改写配置</span>
               <code>wechat-longform</code>
             </div>
             <div class="config-item">
-              <span>Runtime mode</span>
-              <code>operator-preview</code>
+              <span>渲染输出策略</span>
+              <code>draft-and-render</code>
             </div>
+            <div class="config-item">
+              <span>运行时控制模式</span>
+              <code>web-control-plane</code>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="tab-panel" data-panel="workflow-templates">
+        <article class="card section-card">
+          <div class="section-card__header">
+            <div>
+              <p class="eyebrow">流程编排</p>
+              <h3>工作流模板</h3>
+            </div>
+            <span class="badge">图节点模板壳层</span>
+          </div>
+          <div class="grid grid--two">
+            <div class="helper-card">
+              <h4>标准改写链路</h4>
+              <p class="muted">导入校验 -> 内容清洗 -> 改写生成 -> 草稿渲染</p>
+            </div>
+            <div class="helper-card">
+              <h4>专题精修链路</h4>
+              <p class="muted">导入校验 -> 术语增强 -> 分段改写 -> 审核预留</p>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="tab-panel" data-panel="template-management">
+        <article class="card section-card">
+          <div class="section-card__header">
+            <div>
+              <p class="eyebrow">模板资产</p>
+              <h3>模板管理</h3>
+            </div>
+            <button type="button" class="btn btn-primary">新增模板</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>模板名称</th>
+                  <th>模板类型</th>
+                  <th>版本</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>公众号长文模板</td>
+                  <td>输出模板</td>
+                  <td>v3</td>
+                  <td><span class="badge badge--done">已启用</span></td>
+                </tr>
+                <tr>
+                  <td>行业快评模板</td>
+                  <td>改写模板</td>
+                  <td>v2</td>
+                  <td><span class="badge badge--pending">待发布</span></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </article>
       </section>
@@ -186,33 +338,39 @@
         <article class="card section-card">
           <div class="section-card__header">
             <div>
-              <p class="eyebrow">Traceability</p>
-              <h3>Audit Log</h3>
+              <p class="eyebrow">全链路留痕</p>
+              <h3>审计日志</h3>
             </div>
-            <span class="badge">Readiness Shell</span>
+            <span class="badge">静态展示</span>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Timestamp</th>
-                  <th>Actor</th>
-                  <th>Action</th>
-                  <th>Result</th>
+                  <th>时间</th>
+                  <th>操作人</th>
+                  <th>行为</th>
+                  <th>结果</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td>2026-05-06 00:00</td>
+                  <td>2026-05-06 10:26</td>
                   <td>system</td>
-                  <td>frontend.hosted</td>
+                  <td>workflow.run.start</td>
                   <td>success</td>
                 </tr>
                 <tr>
-                  <td>2026-05-05 23:42</td>
+                  <td>2026-05-06 10:11</td>
                   <td>operator</td>
-                  <td>rewrite.retry</td>
+                  <td>template.publish</td>
                   <td>queued</td>
+                </tr>
+                <tr>
+                  <td>2026-05-06 09:58</td>
+                  <td>operator</td>
+                  <td>article.retry</td>
+                  <td>accepted</td>
                 </tr>
               </tbody>
             </table>

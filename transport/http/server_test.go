@@ -179,9 +179,38 @@ func TestAdminFrontendServedFromRoot(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Header().Get("Content-Type"), "text/html")
 	require.Contains(t, w.Body.String(), "<title>Content Hub Admin</title>")
-	require.Contains(t, w.Body.String(), "Dashboard")
+	require.Contains(t, w.Body.String(), "图工作流控制台")
+	require.Contains(t, w.Body.String(), "总览")
 	require.Contains(t, w.Body.String(), "/app.js")
 	require.Contains(t, w.Body.String(), "/styles.css")
+}
+
+func TestAdminFrontendContainsChineseWorkflowAndTemplateSections(t *testing.T) {
+	s, _ := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	s.engine.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	require.Contains(t, body, "总览")
+	require.Contains(t, body, "文章导入")
+	require.Contains(t, body, "文章列表")
+	require.Contains(t, body, "工作流控制")
+	require.Contains(t, body, "配置管理")
+	require.Contains(t, body, "工作流模板")
+	require.Contains(t, body, "模板管理")
+	require.Contains(t, body, "审计日志")
+	require.Contains(t, body, "文件上传（.txt/.md/.json）")
+	require.Contains(t, body, "粘贴全文")
+	require.NotContains(t, body, "Source URL")
+	require.Contains(t, body, "未处理")
+	require.Contains(t, body, "处理中")
+	require.Contains(t, body, "已处理")
+	require.Contains(t, body, "再处理")
+	require.Contains(t, body, "删除")
+	require.Contains(t, body, "停止")
 }
 
 func TestCreateContent(t *testing.T) {
