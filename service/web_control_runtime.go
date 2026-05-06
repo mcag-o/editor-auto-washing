@@ -8,11 +8,13 @@ import (
 )
 
 type WebControlRuntime struct {
-	Config   *BusinessConfigService
-	Control  *WebControlPlaneService
-	Audit    *AuditLogService
-	Intake   *WebIntakeService
-	Articles *ArticleQueryService
+	Config    *BusinessConfigService
+	Control   *WebControlPlaneService
+	Audit     *AuditLogService
+	Intake    *WebIntakeService
+	Articles  *ArticleQueryService
+	Workflows *WorkflowTemplateService
+	Templates *TemplateDefinitionService
 }
 
 type webControlProcessingCycleRunner interface {
@@ -20,9 +22,9 @@ type webControlProcessingCycleRunner interface {
 }
 
 type WebControlPlaneService struct {
-	control   *ControlStateService
-	audit     *AuditLogService
-	runner    webControlProcessingCycleRunner
+	control *ControlStateService
+	audit   *AuditLogService
+	runner  webControlProcessingCycleRunner
 }
 
 func NewWebControlPlaneService(control *ControlStateService, audit *AuditLogService, runner webControlProcessingCycleRunner) *WebControlPlaneService {
@@ -158,10 +160,12 @@ func BuildWebControlRuntime(repos *RuntimeRepos) (*WebControlRuntime, error) {
 	runner := newSourceProcessingSchedulerCycleRunner(repos.SourceDocumentRepo, worker, "web-control-runtime")
 
 	return &WebControlRuntime{
-		Config:   NewBusinessConfigService(repos.BusinessConfigRepo),
-		Control:  NewWebControlPlaneService(control, audit, runner),
-		Audit:    audit,
-		Intake:   NewWebIntakeService(repos.SourceDocumentRepo, repos.AuditLogRepo),
-		Articles: NewArticleQueryService(repos.SourceDocumentRepo),
+		Config:    NewBusinessConfigService(repos.BusinessConfigRepo),
+		Control:   NewWebControlPlaneService(control, audit, runner),
+		Audit:     audit,
+		Intake:    NewWebIntakeService(repos.SourceDocumentRepo, repos.AuditLogRepo),
+		Articles:  NewArticleQueryService(repos.SourceDocumentRepo),
+		Workflows: NewWorkflowTemplateService(repos.WorkflowDefinitionRepo),
+		Templates: NewTemplateDefinitionService(repos.TemplateDefinitionRepo),
 	}, nil
 }

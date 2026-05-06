@@ -29,6 +29,23 @@ func TestBuildWebControlRuntimeReturnsReadyServices(t *testing.T) {
 	require.NotNil(t, runtime.Articles)
 }
 
+func TestBuildWebControlRuntimeIncludesWorkflowAndTemplateServices(t *testing.T) {
+	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
+	if cleanup != nil {
+		defer func() {
+			require.NoError(t, cleanup())
+		}()
+	}
+	require.NoError(t, err)
+
+	runtime, err := BuildWebControlRuntime(repos)
+
+	require.NoError(t, err)
+	require.NotNil(t, runtime)
+	require.NotNil(t, runtime.Workflows)
+	require.NotNil(t, runtime.Templates)
+}
+
 func TestBuildWebControlRuntimeRequiresRepos(t *testing.T) {
 	runtime, err := BuildWebControlRuntime(nil)
 
