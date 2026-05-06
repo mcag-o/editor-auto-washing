@@ -128,12 +128,23 @@ function draftToStages(stagesText: string): TemplateStage[] {
     });
 }
 
+function createEmptyDraft(templateCount: number): TemplateDraft {
+  return {
+    name: '新模板',
+    version: `v${templateCount + 1}.0.0`,
+    enabled: false,
+    summary: '请输入模板摘要，说明它适用的场景。',
+    prompt: '在这里填写模板提示词。',
+    stagesText: '起始阶段: 描述第一步的职责。\n输出阶段: 描述最终输出要求。',
+  };
+}
+
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<TemplateRecord[]>(initialTemplates);
   const [selectedId, setSelectedId] = useState(initialTemplates[0].id);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<TemplateDraft>(() => buildDraft(initialTemplates[0]));
+  const [draft, setDraft] = useState<TemplateDraft>(() => createEmptyDraft(initialTemplates.length));
 
   const selectedTemplate = useMemo(
     () => templates.find((item) => item.id === selectedId) ?? templates[0] ?? null,
@@ -142,16 +153,15 @@ export default function TemplatesPage() {
 
   const selectedDraftTarget = editingId ? templates.find((item) => item.id === editingId) ?? null : null;
 
+  const resetEditorState = (templateCount: number) => {
+    setEditorOpen(false);
+    setEditingId(null);
+    setDraft(createEmptyDraft(templateCount));
+  };
+
   const handleOpenCreate = () => {
     setEditingId(null);
-    setDraft({
-      name: '新模板',
-      version: `v${templates.length + 1}.0.0`,
-      enabled: false,
-      summary: '请输入模板摘要，说明它适用的场景。',
-      prompt: '在这里填写模板提示词。',
-      stagesText: '起始阶段: 描述第一步的职责。\n输出阶段: 描述最终输出要求。',
-    });
+    setDraft(createEmptyDraft(templates.length));
     setEditorOpen(true);
   };
 
@@ -168,7 +178,7 @@ export default function TemplatesPage() {
   };
 
   const handleCloseEditor = () => {
-    setEditorOpen(false);
+    resetEditorState(templates.length);
   };
 
   const handleSaveTemplate = () => {
@@ -192,8 +202,7 @@ export default function TemplatesPage() {
       return [nextTemplate, ...currentTemplates];
     });
     setSelectedId(nextTemplate.id);
-    setEditorOpen(false);
-    setEditingId(nextTemplate.id);
+    resetEditorState(editingId ? templates.length : templates.length + 1);
   };
 
   const handleToggleEnabled = (templateId: string) => {
