@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import AppShell, { type AppPage } from '../layout/AppShell';
-import PlaceholderPage from '../features/placeholder/PlaceholderPage';
 import DashboardPage from '../features/dashboard/DashboardPage';
 import IntakePage from '../features/intake/IntakePage';
 import ArticlesPage from '../features/articles/ArticlesPage';
+import ControlPage from '../features/control/ControlPage';
+import ConfigPage from '../features/config/ConfigPage';
+import AuditPage from '../features/audit/AuditPage';
 
 const defaultPage: AppPage = 'dashboard';
 
@@ -50,30 +52,9 @@ export default function AppRoutes() {
       {currentPage === 'dashboard' ? <DashboardPage onNavigate={handleNavigate} /> : null}
       {currentPage === 'intake' ? <IntakePage onNavigate={handleNavigate} /> : null}
       {currentPage === 'articles' ? <ArticlesPage onNavigate={handleNavigate} /> : null}
-      {currentPage === 'workflows' ? (
-        <PlaceholderPage
-          title="流程模板"
-          moduleName="流程模板"
-          description="流程模板入口已经保留在外壳导航中，本里程碑仅提供稳定占位页，不开始 Task 4 的真实实现。"
-          onNavigate={handleNavigate}
-        />
-      ) : null}
-      {currentPage === 'audit' ? (
-        <PlaceholderPage
-          title="操作审计"
-          moduleName="操作审计"
-          description="操作审计入口在当前里程碑中仅作为页面壳层占位，确保导航有确定落点。"
-          onNavigate={handleNavigate}
-        />
-      ) : null}
-      {currentPage === 'settings' ? (
-        <PlaceholderPage
-          title="系统配置"
-          moduleName="系统配置"
-          description="系统配置已纳入整体信息架构，但本次只保留占位页，后续任务再接入真实配置界面。"
-          onNavigate={handleNavigate}
-        />
-      ) : null}
+      {currentPage === 'workflows' ? <ControlPage onNavigate={handleNavigate} /> : null}
+      {currentPage === 'audit' ? <AuditPage onNavigate={handleNavigate} /> : null}
+      {currentPage === 'settings' ? <ConfigPage onNavigate={handleNavigate} /> : null}
     </AppShell>
   );
 }
