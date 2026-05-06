@@ -11,6 +11,8 @@ import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { ApiError, pasteIntake, uploadIntake } from '../../lib/api/client';
+import type { SourceDocument } from '../../lib/api/types';
 import PageCard from '../../components/PageCard';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
@@ -25,8 +27,12 @@ type IntakePageProps = {
 export default function IntakePage({ onNavigate }: IntakePageProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadedItems, setUploadedItems] = useState<SourceDocument[]>([]);
   const [pasteValue, setPasteValue] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [submittingPaste, setSubmittingPaste] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const allowedTypesLabel = useMemo(() => acceptedExtensions.map((item) => `.${item}`).join(' / '), []);
 
@@ -43,11 +49,13 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
 
     if (invalidFile) {
       setError(`仅支持 ${allowedTypesLabel} 文件，当前文件 ${invalidFile.name} 不可导入。`);
+      setSuccessMessage(null);
       event.target.value = '';
       return;
     }
 
     setError(null);
+    setSuccessMessage(null);
     setSelectedFiles(files);
   };
 
@@ -55,8 +63,58 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
     setSelectedFiles([]);
     setPasteValue('');
     setError(null);
+    setSuccessMessage(null);
     if (inputRef.current) {
       inputRef.current.value = '';
+    }
+  };
+
+  const handleUpload = async () => {
+    if (selectedFiles.length === 0) {
+      setError('请先选择至少一个文件。');
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const results = await Promise.all(selectedFiles.map((file) => uploadIntake(file)));
+      setUploadedItems((current) => [...results, ...current]);
+      setSuccessMessage(`已成功导入 ${results.length} 个文件。`);
+      setSelectedFiles([]);
+      if (inputRef.current) {
+        inputRef.current.value = '';
+      }
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '文件上传失败');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handlePasteSubmit = async () => {
+    const trimmed = pasteValue.trim();
+    if (!trimmed) {
+      setError('请先粘贴原文内容。');
+      return;
+    }
+
+    setSubmittingPaste(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const firstLine = trimmed.split('\n').map((line) => line.trim()).find(Boolean) ?? '浏览器粘贴导入';
+      const item = await pasteIntake({ title: firstLine.slice(0, 80), body: pasteValue });
+      setUploadedItems((current) => [item, ...current]);
+      setSuccessMessage(`已成功导入文章《${item.title || '未命名文章'}》。`);
+      setPasteValue('');
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '粘贴导入失败');
+    } finally {
+      setSubmittingPaste(false);
     }
   };
 
@@ -81,7 +139,7 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
             <StatusChip status="completed" label="支持 .txt / .md / .json" />
             <StatusChip status="disabled" label="不提供 URL 导入" />
             <Typography variant="body2" color="text.secondary">
-              本地状态仅模拟待提交内容，不会调用真实后端接口。
+              当前页面已接入真实 intake API，导入成功后会写入文章队列。
             </Typography>
           </Stack>
         }
@@ -96,11 +154,12 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
       >
         <PageCard
           title="文件上传"
-          description="适用于批量导入已有原文文件。后续会在提交时接入真实 intake API。"
-          action={<StatusChip status="pending" label="等待提交" />}
+          description="适用于批量导入已有原文文件，提交后直接调用 intake upload API。"
+          action={<StatusChip status={uploading ? 'active' : selectedFiles.length > 0 ? 'pending' : 'disabled'} label={uploading ? '上传中' : selectedFiles.length > 0 ? '待提交' : '待选择'} />}
         >
           <Stack spacing={2}>
             {error ? <Alert severity="error">{error}</Alert> : null}
+            {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
             <Box
               sx={{
                 p: 3,
@@ -117,10 +176,13 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
                   通过文件选择器导入内容，当前仅接受 {allowedTypesLabel} 文件，不展示 URL 导入表单。
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-                  <Button variant="contained" onClick={handleChooseFiles}>
+                  <Button variant="contained" onClick={handleChooseFiles} disabled={uploading}>
                     选择文件
                   </Button>
-                  <Button variant="text" color="inherit" startIcon={<RestartAltRoundedIcon />} onClick={handleReset}>
+                  <Button variant="contained" onClick={handleUpload} disabled={uploading || selectedFiles.length === 0}>
+                    提交上传
+                  </Button>
+                  <Button variant="text" color="inherit" startIcon={<RestartAltRoundedIcon />} onClick={handleReset} disabled={uploading}>
                     清空内容
                   </Button>
                 </Stack>
@@ -130,7 +192,7 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
             <Stack spacing={1.25}>
               {selectedFiles.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
-                  尚未选择文件。上传后将在此处显示本地待提交清单。
+                  尚未选择文件。上传后将在此处显示待提交清单。
                 </Typography>
               ) : (
                 selectedFiles.map((file) => (
@@ -161,8 +223,8 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
 
         <PageCard
           title="文本粘贴"
-          description="适合临时导入单篇原文。后续可直接转入默认改写主链路。"
-          action={<StatusChip status={pasteValue.trim() ? 'active' : 'disabled'} label={pasteValue.trim() ? '已填写' : '待输入'} />}
+          description="适合临时导入单篇原文，提交后直接调用 intake paste API。"
+          action={<StatusChip status={submittingPaste ? 'active' : pasteValue.trim() ? 'pending' : 'disabled'} label={submittingPaste ? '提交中' : pasteValue.trim() ? '待提交' : '待输入'} />}
         >
           <Stack spacing={2}>
             <TextField
@@ -177,16 +239,54 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
               <Stack direction="row" spacing={1} alignItems="center">
                 <ContentPasteRoundedIcon color="primary" fontSize="small" />
                 <Typography variant="body2" color="text.secondary">
-                  当前字数 {pasteValue.trim().length}，仅保留本地输入状态。
+                  当前字数 {pasteValue.trim().length}。
                 </Typography>
               </Stack>
-              <Button variant="outlined" startIcon={<RestartAltRoundedIcon />} onClick={() => setPasteValue('')}>
-                清空文本
-              </Button>
+              <Stack direction="row" spacing={1.25}>
+                <Button variant="outlined" onClick={handlePasteSubmit} disabled={submittingPaste || !pasteValue.trim()}>
+                  提交粘贴
+                </Button>
+                <Button variant="outlined" startIcon={<RestartAltRoundedIcon />} onClick={() => setPasteValue('')} disabled={submittingPaste}>
+                  清空文本
+                </Button>
+              </Stack>
             </Stack>
           </Stack>
         </PageCard>
       </Box>
+
+      <PageCard
+        title="最近导入结果"
+        description="展示当前页面本次会话内新写入的文章记录，便于快速跳转队列。"
+        action={<StatusChip status="completed" label={`已导入 ${uploadedItems.length} 条`} />}
+      >
+        <Stack spacing={1.25}>
+          {uploadedItems.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              当前会话还没有新的导入结果。
+            </Typography>
+          ) : (
+            uploadedItems.map((item) => (
+              <Stack
+                key={item.id}
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={1.25}
+                alignItems={{ xs: 'flex-start', md: 'center' }}
+                justifyContent="space-between"
+                sx={{ p: 1.5, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}
+              >
+                <Box>
+                  <Typography variant="subtitle1">{item.title || item.original_filename || item.id}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {item.source_type} / {item.file_type || 'text'} / {item.id}
+                  </Typography>
+                </Box>
+                <StatusChip status={item.status === 'completed' ? 'completed' : item.status === 'failed' ? 'failed' : 'pending'} label={item.status} />
+              </Stack>
+            ))
+          )}
+        </Stack>
+      </PageCard>
     </Stack>
   );
 }

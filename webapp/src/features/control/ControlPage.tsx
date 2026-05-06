@@ -1,47 +1,64 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PauseCircleOutlineRoundedIcon from '@mui/icons-material/PauseCircleOutlineRounded';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import RestartAltRoundedIcon from '@mui/icons-material/RestartAltRounded';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
+import CircularProgress from '@mui/material/CircularProgress';
 import LinearProgress from '@mui/material/LinearProgress';
 import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { ApiError, getSystemStatus, listArticles, pauseSystem, resumeSystem, startSystem } from '../../lib/api/client';
+import type { SourceDocument, SystemControlState } from '../../lib/api/types';
 import MetricCards from '../../components/MetricCards';
 import PageCard from '../../components/PageCard';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
 import type { AppPage } from '../../layout/AppShell';
 
-type RuntimeState = 'idle' | 'running' | 'paused';
-
 type ControlPageProps = {
   onNavigate?: (page: AppPage) => void;
 };
 
-const stages = [
-  { key: 'intake', label: '导入接收', progress: 100, detail: '浏览器上传与粘贴入口已就绪，等待统一启动。' },
-  { key: 'rewrite', label: '自动改写', progress: 72, detail: '后续接入真实编排状态后展示批次、模板与失败明细。' },
-  { key: 'render', label: '草稿渲染', progress: 48, detail: '当前仅保留结果阶段位置，不触发真实任务。' },
-];
-
-const pendingItems = [
-  '当前为本地交互壳层，启动/暂停/恢复只切换页面状态。',
-  '后续可在此接入任务调度器、模板选择与系统级告警。',
-  '页面已预留运行状态、摘要指标与链路观察区。',
-];
-
 export default function ControlPage({ onNavigate }: ControlPageProps) {
-  const [runtimeState, setRuntimeState] = useState<RuntimeState>('idle');
-  const [lastAction, setLastAction] = useState('尚未执行控制动作');
+  const [systemState, setSystemState] = useState<SystemControlState | null>(null);
+  const [articles, setArticles] = useState<SourceDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [concurrencyLimit, setConcurrencyLimit] = useState('2');
+
+  const loadData = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const [state, queue] = await Promise.all([getSystemStatus(), listArticles()]);
+      setSystemState(state);
+      setArticles(queue);
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '系统状态加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  const runtimeState = systemState?.state ?? 'stopped';
 
   const stateSummary = useMemo(() => {
     if (runtimeState === 'running') {
       return {
         chipStatus: 'active' as const,
         chipLabel: '主链路运行中',
-        headline: '自动改写主链路已进入运行态',
-        description: '当前页面仅模拟运行控制，后续会替换为真实任务编排状态。',
+        headline: '自动改写主链路正在运行',
+        description: '当前状态来自 /api/system/status，控制按钮将直接操作后端运行态。',
       };
     }
 
@@ -50,7 +67,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
         chipStatus: 'pending' as const,
         chipLabel: '主链路已暂停',
         headline: '系统处于暂停观察态',
-        description: '页面保留恢复入口与链路摘要，用于后续接入真实暂停逻辑。',
+        description: '当前运行已暂停，可在此恢复主链路执行。',
       };
     }
 
@@ -58,22 +75,81 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
       chipStatus: 'disabled' as const,
       chipLabel: '主链路未启动',
       headline: '系统等待启动',
-      description: '本任务仅实现控制页结构与按钮占位，不触发后端操作。',
+      description: '系统当前未运行，可设置并发数后启动主链路。',
     };
   }, [runtimeState]);
 
+  const pendingCount = articles.filter((item) => item.status === 'pending').length;
+  const processingCount = articles.filter((item) => item.status === 'processing' || item.status === 'claimed').length;
+  const failedCount = articles.filter((item) => item.status === 'failed').length;
+  const activeConcurrency = Number(systemState?.metadata?.concurrency_limit ?? 0);
+
   const metrics = [
-    { key: 'runtime', label: '当前状态', value: runtimeState === 'running' ? '运行中' : runtimeState === 'paused' ? '已暂停' : '待启动', hint: '按钮状态为本地模拟', icon: <PlayArrowRoundedIcon fontSize="small" /> },
-    { key: 'queue', label: '待处理任务', value: '18', hint: '沿用当前前端占位统计', icon: <RestartAltRoundedIcon fontSize="small" /> },
-    { key: 'template', label: '活动模板', value: '4', hint: '后续接入真实模板绑定', icon: <Chip size="small" label="模板" /> },
-    { key: 'alerts', label: '观察提醒', value: runtimeState === 'paused' ? '2' : '1', hint: '仅展示本地提醒摘要', icon: <PauseCircleOutlineRoundedIcon fontSize="small" /> },
+    { key: 'runtime', label: '当前状态', value: runtimeState === 'running' ? '运行中' : runtimeState === 'paused' ? '已暂停' : '待启动', hint: '由真实系统状态接口返回', icon: <PlayArrowRoundedIcon fontSize="small" /> },
+    { key: 'queue', label: '待处理任务', value: String(pendingCount), hint: '来源于真实文章队列', icon: <RestartAltRoundedIcon fontSize="small" /> },
+    { key: 'active', label: '处理中任务', value: String(processingCount), hint: '包含 processing / claimed', icon: <Chip size="small" label="任务" /> },
+    { key: 'alerts', label: '失败提醒', value: String(failedCount), hint: '来源于失败状态文章数量', icon: <PauseCircleOutlineRoundedIcon fontSize="small" /> },
+  ];
+
+  const handleStart = async () => {
+    setActionLoading(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const nextState = await startSystem({ concurrency_limit: Math.max(1, Number(concurrencyLimit) || 1) });
+      setSystemState(nextState);
+      setSuccessMessage('系统已启动。');
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '启动流程失败');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePause = async () => {
+    setActionLoading(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const nextState = await pauseSystem();
+      setSystemState(nextState);
+      setSuccessMessage('系统已暂停。');
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '暂停流程失败');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleResume = async () => {
+    setActionLoading(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const nextState = await resumeSystem();
+      setSystemState(nextState);
+      setSuccessMessage('系统已恢复。');
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '恢复流程失败');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const stages = [
+    { key: 'intake', label: '导入接收', progress: articles.length > 0 ? 100 : 10, detail: `当前队列文章数 ${articles.length}。` },
+    { key: 'rewrite', label: '自动改写', progress: articles.length > 0 ? Math.min(100, Math.round((processingCount / Math.max(articles.length, 1)) * 100) + (runtimeState === 'running' ? 30 : 0)) : 0, detail: `处理中 ${processingCount} 条，失败 ${failedCount} 条。` },
+    { key: 'render', label: '草稿渲染', progress: articles.length > 0 ? Math.round((articles.filter((item) => item.status === 'completed').length / Math.max(articles.length, 1)) * 100) : 0, detail: `已完成 ${articles.filter((item) => item.status === 'completed').length} 条。` },
   ];
 
   return (
     <Stack spacing={3}>
       <PageToolbar
         title="流程控制"
-        description="面向运营值守的工作流控制页，先提供系统状态、启动/暂停/恢复按钮与链路摘要壳层。"
+        description="面向运营值守的工作流控制页，现已接入系统状态、启动/暂停/恢复按钮与队列摘要。"
         leading={<StatusChip status={stateSummary.chipStatus} label={stateSummary.chipLabel} />}
         actions={
           <>
@@ -87,14 +163,19 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
         }
         filters={
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ xs: 'flex-start', md: 'center' }}>
-            <StatusChip status="completed" label="页面结构已就绪" />
-            <StatusChip status="disabled" label="未接入真实编排 API" />
+            <StatusChip status="completed" label="已接入控制 API" />
             <Typography variant="body2" color="text.secondary">
-              最近动作：{lastAction}
+              最近更新：{systemState?.updated_at ? new Date(systemState.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未加载'}
             </Typography>
+            <Button size="small" variant="outlined" onClick={() => void loadData()} disabled={loading || actionLoading}>
+              刷新状态
+            </Button>
           </Stack>
         }
       />
+
+      {error ? <Alert severity="error">{error}</Alert> : null}
+      {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
 
       <MetricCards items={metrics} />
 
@@ -103,56 +184,38 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
           <PageCard
             title="系统状态"
             description={stateSummary.description}
-            action={<StatusChip status={stateSummary.chipStatus} label={stateSummary.chipLabel} />}
+            action={loading ? <CircularProgress size={18} /> : <StatusChip status={stateSummary.chipStatus} label={stateSummary.chipLabel} />}
           >
             <Stack spacing={2}>
               <Typography variant="h4">{stateSummary.headline}</Typography>
+              <TextField
+                label="启动并发上限"
+                value={concurrencyLimit}
+                onChange={(event) => setConcurrencyLimit(event.target.value)}
+                disabled={runtimeState === 'running' || actionLoading}
+                helperText={`当前系统记录并发上限：${activeConcurrency || '未设置'}`}
+              />
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-                <Button
-                  variant="contained"
-                  startIcon={<PlayArrowRoundedIcon />}
-                  disabled={runtimeState === 'running'}
-                  onClick={() => {
-                    setRuntimeState('running');
-                    setLastAction('已执行“启动流程”本地占位动作');
-                  }}
-                >
+                <Button variant="contained" startIcon={<PlayArrowRoundedIcon />} disabled={runtimeState === 'running' || actionLoading} onClick={() => void handleStart()}>
                   启动流程
                 </Button>
-                <Button
-                  variant="outlined"
-                  color="warning"
-                  startIcon={<PauseCircleOutlineRoundedIcon />}
-                  disabled={runtimeState !== 'running'}
-                  onClick={() => {
-                    setRuntimeState('paused');
-                    setLastAction('已执行“暂停流程”本地占位动作');
-                  }}
-                >
+                <Button variant="outlined" color="warning" startIcon={<PauseCircleOutlineRoundedIcon />} disabled={runtimeState !== 'running' || actionLoading} onClick={() => void handlePause()}>
                   暂停流程
                 </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<RestartAltRoundedIcon />}
-                  disabled={runtimeState !== 'paused'}
-                  onClick={() => {
-                    setRuntimeState('running');
-                    setLastAction('已执行“恢复流程”本地占位动作');
-                  }}
-                >
+                <Button variant="outlined" startIcon={<RestartAltRoundedIcon />} disabled={runtimeState !== 'paused' || actionLoading} onClick={() => void handleResume()}>
                   恢复流程
                 </Button>
               </Stack>
               <Typography variant="body2" color="text.secondary">
-                后续接入后，这里将承接真实系统状态、操作反馈与权限控制。
+                操作人固定为后端的 `local-admin`，页面仅负责调用现有系统控制接口并展示结果。
               </Typography>
             </Stack>
           </PageCard>
 
           <PageCard
             title="主链路观察"
-            description="通过本地进度条展示导入、改写、草稿渲染三个关键阶段，方便后续替换为真实运行指标。"
-            action={<StatusChip status="pending" label="本地摘要" />}
+            description="基于系统状态与文章队列摘要展示导入、改写、草稿渲染三个关键阶段。"
+            action={<StatusChip status="pending" label="实时摘要" />}
           >
             <Stack spacing={2}>
               {stages.map((stage) => (
@@ -176,11 +239,15 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
         <Stack spacing={3} flex={0.9} minWidth={{ xl: 340 }}>
           <PageCard
             title="值守提醒"
-            description="保留后续系统告警、失败批次与人工干预入口的位置。"
+            description="基于当前真实状态保留系统值守的快速观察位。"
             action={<StatusChip status="active" label="持续观察" />}
           >
             <Stack spacing={1.5}>
-              {pendingItems.map((item) => (
+              {[
+                `系统状态：${runtimeState}`,
+                `失败文章：${failedCount} 条${failedCount > 0 ? '，建议进入文章队列逐条处理。' : '，当前没有失败积压。'}`,
+                `并发上限：${activeConcurrency || Number(concurrencyLimit) || 1}，由系统控制状态 metadata 决定。`,
+              ].map((item) => (
                 <Stack key={item} spacing={0.5} sx={{ p: 1.75, borderRadius: 3, border: '1px solid', borderColor: 'divider', bgcolor: 'background.default' }}>
                   <Typography variant="subtitle2">控制说明</Typography>
                   <Typography variant="body2" color="text.secondary">

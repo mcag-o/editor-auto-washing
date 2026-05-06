@@ -1,5 +1,6 @@
 import AddCircleOutlineRoundedIcon from '@mui/icons-material/AddCircleOutlineRounded';
 import AccountTreeRoundedIcon from '@mui/icons-material/AccountTreeRounded';
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -24,6 +25,7 @@ type WorkflowListPanelProps = {
   selectedId: string;
   onCreateTemplate: () => void;
   onSelectTemplate: (id: string) => void;
+  onDeleteTemplate: () => void;
 };
 
 export default function WorkflowListPanel({
@@ -31,6 +33,7 @@ export default function WorkflowListPanel({
   selectedId,
   onCreateTemplate,
   onSelectTemplate,
+  onDeleteTemplate,
 }: WorkflowListPanelProps) {
   return (
     <PageCard
@@ -48,14 +51,18 @@ export default function WorkflowListPanel({
             <AccountTreeRoundedIcon color="primary" fontSize="small" />
             <Typography variant="subtitle2">工作流模板壳层</Typography>
           </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-            本任务只实现模板壳层、节点编辑和连线操作，不做持久化。
-          </Typography>
-        </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+            phase-one 编辑体验保持不变，但模板列表与保存/删除已接入真实 API。
+            </Typography>
+          </Box>
 
-        <Divider />
+          <Divider />
 
-        <List disablePadding sx={{ display: 'grid', gap: 1 }}>
+          <Button size="small" color="error" variant="outlined" startIcon={<DeleteOutlineRoundedIcon />} onClick={onDeleteTemplate} disabled={!selectedId}>
+            删除当前模板
+          </Button>
+
+          <List disablePadding sx={{ display: 'grid', gap: 1 }}>
           {items.map((item) => (
             <ListItemButton
               key={item.id}

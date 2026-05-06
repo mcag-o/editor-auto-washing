@@ -2,6 +2,7 @@ import EditRoundedIcon from '@mui/icons-material/EditRounded';
 import FileCopyRoundedIcon from '@mui/icons-material/FileCopyRounded';
 import MoreHorizRoundedIcon from '@mui/icons-material/MoreHorizRounded';
 import PowerSettingsNewRoundedIcon from '@mui/icons-material/PowerSettingsNewRounded';
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -27,6 +28,7 @@ type TemplateListProps = {
   onEditTemplate: (id: string) => void;
   onToggleEnabled: (id: string) => void;
   onDuplicateTemplate: (id: string) => void;
+  onDeleteTemplate: (id: string) => void;
 };
 
 export default function TemplateList({
@@ -36,6 +38,7 @@ export default function TemplateList({
   onEditTemplate,
   onToggleEnabled,
   onDuplicateTemplate,
+  onDeleteTemplate,
 }: TemplateListProps) {
   const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
   const [menuTargetId, setMenuTargetId] = useState<string | null>(null);
@@ -73,6 +76,13 @@ export default function TemplateList({
     handleCloseMenu();
   };
 
+  const handleDelete = () => {
+    if (menuTargetId) {
+      onDeleteTemplate(menuTargetId);
+    }
+    handleCloseMenu();
+  };
+
   return (
     <Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, border: '1px solid', borderColor: 'divider' }}>
       <Stack spacing={2}>
@@ -80,7 +90,7 @@ export default function TemplateList({
           <Box>
             <Typography variant="h5">模板列表</Typography>
             <Typography variant="body2" color="text.secondary">
-              以表格形式展示模板版本、启用状态、更新时间与本地操作入口。
+              以表格形式展示模板版本、启用状态、更新时间与真实操作入口。
             </Typography>
           </Box>
           <Chip label={`${items.length} 个模板`} variant="outlined" />
@@ -165,6 +175,10 @@ export default function TemplateList({
         <MenuItem onClick={handleDuplicate}>
           <FileCopyRoundedIcon fontSize="small" style={{ marginRight: 8 }} />
           复制模板
+        </MenuItem>
+        <MenuItem onClick={handleDelete}>
+          <DeleteOutlineRoundedIcon fontSize="small" style={{ marginRight: 8 }} />
+          删除模板
         </MenuItem>
       </Menu>
     </Paper>

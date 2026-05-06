@@ -16,6 +16,7 @@ type TemplateEditorDrawerProps = {
   open: boolean;
   draft: TemplateDraft;
   editingTemplate: TemplateRecord | null;
+  saving?: boolean;
   onClose: () => void;
   onChange: <K extends keyof TemplateDraft>(field: K, value: TemplateDraft[K]) => void;
   onSave: () => void;
@@ -27,6 +28,7 @@ export default function TemplateEditorDrawer({
   open,
   draft,
   editingTemplate,
+  saving = false,
   onClose,
   onChange,
   onSave,
@@ -43,7 +45,7 @@ export default function TemplateEditorDrawer({
           <Box>
             <Typography variant="h5">{editingTemplate ? '编辑模板' : '新建模板'}</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              这里仅维护本地草稿，后续再接入模板保存和发布接口。
+              保留 phase-one 的简化编辑器，但保存动作已经接入真实模板接口。
             </Typography>
           </Box>
           <Button variant="text" onClick={onClose} startIcon={<CloseRoundedIcon />}>
@@ -85,6 +87,18 @@ export default function TemplateEditorDrawer({
           />
 
           <TextField
+            select
+            label="模板类型"
+            value={draft.type}
+            onChange={(event) => onChange('type', event.target.value)}
+            fullWidth
+          >
+            <MenuItem value="prompt">prompt</MenuItem>
+            <MenuItem value="rewrite">rewrite</MenuItem>
+            <MenuItem value="review">review</MenuItem>
+          </TextField>
+
+          <TextField
             label="主提示词"
             value={draft.prompt}
             onChange={(event) => onChange('prompt', event.target.value)}
@@ -110,8 +124,8 @@ export default function TemplateEditorDrawer({
           <Button variant="outlined" onClick={onClose}>
             取消
           </Button>
-          <Button variant="contained" startIcon={<SaveRoundedIcon />} onClick={onSave}>
-            保存到本地
+          <Button variant="contained" startIcon={<SaveRoundedIcon />} onClick={onSave} disabled={saving}>
+            {saving ? '保存中...' : '保存到后端'}
           </Button>
         </Stack>
       </Stack>

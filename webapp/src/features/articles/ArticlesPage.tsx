@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import PauseCircleOutlineRoundedIcon from '@mui/icons-material/PauseCircleOutlineRounded';
+import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
+import CircularProgress from '@mui/material/CircularProgress';
 import InputAdornment from '@mui/material/InputAdornment';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
@@ -16,62 +19,166 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { ApiError, deleteArticle, getArticleStages, listArticles, resumeArticle, retryArticle, stopArticle } from '../../lib/api/client';
+import type { ArticleStagesResponse, SourceDocument } from '../../lib/api/types';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PageCard from '../../components/PageCard';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
 import type { AppPage } from '../../layout/AppShell';
 
-type ArticleStatus = '未处理' | '处理中' | '已处理';
-type ArticleAction = '再处理' | '删除' | '停止';
-
-type ArticleRow = {
-  id: string;
-  title: string;
-  source: string;
-  status: ArticleStatus;
-  updatedAt: string;
-  words: number;
-};
-
 type ArticlesPageProps = {
   onNavigate?: (page: AppPage) => void;
 };
 
-const rows: ArticleRow[] = [
-  { id: 'ART-301', title: '品牌周报改写稿', source: '手动上传 .md', status: '未处理', updatedAt: '今天 10:30', words: 1420 },
-  { id: 'ART-302', title: '新品活动总结', source: '粘贴文本', status: '处理中', updatedAt: '今天 09:48', words: 2160 },
-  { id: 'ART-303', title: '行业观察草稿', source: '手动上传 .txt', status: '已处理', updatedAt: '昨天 18:12', words: 1985 },
-  { id: 'ART-304', title: 'FAQ 整理文档', source: '手动上传 .json', status: '处理中', updatedAt: '昨天 16:05', words: 880 },
-  { id: 'ART-305', title: '客户案例原文', source: '粘贴文本', status: '未处理', updatedAt: '昨天 11:27', words: 2640 },
-  { id: 'ART-306', title: '月度复盘摘要', source: '手动上传 .md', status: '已处理', updatedAt: '周一 14:50', words: 1235 },
-];
+type ArticleAction = 'retry' | 'stop' | 'resume' | 'delete';
 
 const pageSizeOptions = [5, 10, 20];
 
+function statusToLabel(status: string) {
+  switch (status) {
+    case 'pending':
+      return '未处理';
+    case 'processing':
+    case 'claimed':
+      return '处理中';
+    case 'paused':
+      return '已暂停';
+    case 'completed':
+      return '已处理';
+    case 'failed':
+      return '失败';
+    default:
+      return status || '未知';
+  }
+}
+
+function statusToChip(status: string) {
+  if (status === 'completed') {
+    return 'completed' as const;
+  }
+  if (status === 'failed') {
+    return 'failed' as const;
+  }
+  if (status === 'processing' || status === 'claimed') {
+    return 'active' as const;
+  }
+  if (status === 'paused') {
+    return 'disabled' as const;
+  }
+  return 'pending' as const;
+}
+
+function formatTime(value: string | null) {
+  if (!value) {
+    return '未记录';
+  }
+
+  return new Date(value).toLocaleString('zh-CN', {
+    hour12: false,
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function articleWordCount(item: SourceDocument) {
+  return (item.body || '').trim().length;
+}
+
+function canRetry(status: string) {
+  return status === 'failed';
+}
+
+function canStop(status: string) {
+  return status === 'processing';
+}
+
+function canResume(status: string) {
+  return status === 'paused';
+}
+
+function canDelete(status: string) {
+  return ['pending', 'paused', 'completed'].includes(status);
+}
+
 export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
-  const [quickFilter, setQuickFilter] = useState<ArticleStatus | '全部'>('全部');
+  const [articles, setArticles] = useState<SourceDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [quickFilter, setQuickFilter] = useState<'全部' | 'pending' | 'processing' | 'completed' | 'paused' | 'failed'>('全部');
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
-  const [pendingAction, setPendingAction] = useState<{ action: ArticleAction; row: ArticleRow } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ action: ArticleAction; row: SourceDocument } | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
+  const [stageDetail, setStageDetail] = useState<ArticleStagesResponse | null>(null);
+  const [stagesLoading, setStagesLoading] = useState(false);
+
+  const loadArticles = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const items = await listArticles();
+      setArticles(items);
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '文章列表加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadArticles();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedArticleId) {
+      setStageDetail(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setStagesLoading(true);
+
+    getArticleStages(selectedArticleId, { signal: controller.signal })
+      .then((payload) => setStageDetail(payload))
+      .catch((apiError: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setError(apiError instanceof ApiError ? apiError.message : '阶段信息加载失败');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setStagesLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [selectedArticleId]);
 
   const filteredRows = useMemo(() => {
-    return rows.filter((row) => {
-      const matchesStatus = quickFilter === '全部' ? true : row.status === quickFilter;
+    return articles.filter((row) => {
+      const normalizedStatus = row.status === 'claimed' ? 'processing' : row.status;
+      const matchesStatus = quickFilter === '全部' ? true : normalizedStatus === quickFilter;
       const matchesKeyword = keyword.trim()
-        ? `${row.title} ${row.source} ${row.id}`.toLowerCase().includes(keyword.trim().toLowerCase())
+        ? `${row.title} ${row.original_filename} ${row.id}`.toLowerCase().includes(keyword.trim().toLowerCase())
         : true;
       return matchesStatus && matchesKeyword;
     });
-  }, [keyword, quickFilter]);
+  }, [articles, keyword, quickFilter]);
 
   const visibleRows = useMemo(() => {
     const start = page * rowsPerPage;
     return filteredRows.slice(start, start + rowsPerPage);
   }, [filteredRows, page, rowsPerPage]);
 
-  const openActionDialog = (action: ArticleAction, row: ArticleRow) => {
+  const openActionDialog = (action: ArticleAction, row: SourceDocument) => {
     setPendingAction({ action, row });
   };
 
@@ -79,15 +186,61 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
     setPendingAction(null);
   };
 
-  const filterActions = ['未处理', '处理中', '已处理'] as const;
+  const handleConfirmAction = async () => {
+    if (!pendingAction) {
+      return;
+    }
+
+    setActionLoading(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const { action, row } = pendingAction;
+      if (action === 'retry') {
+        const response = await retryArticle(row.id);
+        setArticles((current) => current.map((item) => (item.id === row.id ? response.article : item)));
+        setSuccessMessage(response.message);
+      } else if (action === 'stop') {
+        const response = await stopArticle(row.id);
+        setArticles((current) => current.map((item) => (item.id === row.id ? response.article : item)));
+        setSuccessMessage(response.message);
+      } else if (action === 'resume') {
+        const response = await resumeArticle(row.id);
+        setArticles((current) => current.map((item) => (item.id === row.id ? response.article : item)));
+        setSuccessMessage(response.message);
+      } else {
+        await deleteArticle(row.id);
+        setArticles((current) => current.filter((item) => item.id !== row.id));
+        if (selectedArticleId === row.id) {
+          setSelectedArticleId(null);
+          setStageDetail(null);
+        }
+        setSuccessMessage('文章已删除。');
+      }
+      closeActionDialog();
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '文章操作失败');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const filterActions = [
+    { key: 'pending', label: '未处理' },
+    { key: 'processing', label: '处理中' },
+    { key: 'paused', label: '已暂停' },
+    { key: 'completed', label: '已处理' },
+    { key: 'failed', label: '失败' },
+  ] as const;
 
   return (
     <>
       <Stack spacing={3}>
         <PageToolbar
           title="文章列表"
-          description="使用 Material UI Table 组合工具栏、过滤器与分页壳层，先承接本地 mock 数据。"
-          leading={<StatusChip status="active" label="本地队列视图" />}
+          description="使用现有 /api/articles、阶段查询与重试/停止/恢复/删除接口承接真实文章队列。"
+          leading={<StatusChip status="active" label="实时队列视图" />}
           actions={
             <>
               <Button variant="outlined" onClick={() => onNavigate?.('overview')}>
@@ -111,14 +264,14 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
                       setPage(0);
                     }}
                   />
-                  {filterActions.map((label) => (
+                  {filterActions.map((item) => (
                     <Chip
-                      key={label}
-                      label={label}
-                      color={quickFilter === label ? 'primary' : 'default'}
-                      variant={quickFilter === label ? 'filled' : 'outlined'}
+                      key={item.key}
+                      label={item.label}
+                      color={quickFilter === item.key ? 'primary' : 'default'}
+                      variant={quickFilter === item.key ? 'filled' : 'outlined'}
                       onClick={() => {
-                        setQuickFilter(label);
+                        setQuickFilter(item.key);
                         setPage(0);
                       }}
                     />
@@ -141,18 +294,24 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
                   }}
                   sx={{ minWidth: { md: 280 } }}
                 />
+                <Button variant="outlined" onClick={() => void loadArticles()} disabled={loading}>
+                  刷新列表
+                </Button>
               </Stack>
               <Typography variant="body2" color="text.secondary">
-                顶部快速过滤固定包含未处理、处理中、已处理，操作区展示再处理、删除、停止按钮。
+                顶部快速过滤固定包含未处理、处理中、已暂停、已处理、失败，操作区调用真实文章控制接口。
               </Typography>
             </Stack>
           }
         />
 
+        {error ? <Alert severity="error">{error}</Alert> : null}
+        {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
+
         <PageCard
           title="队列表格"
-          description="保留后续 API 接入所需的栏位结构与操作位置。"
-          action={<StatusChip status="completed" label={`共 ${filteredRows.length} 条`} />}
+          description="展示真实文章队列，并在右侧保留阶段查看入口。"
+          action={loading ? <CircularProgress size={18} /> : <StatusChip status="completed" label={`共 ${filteredRows.length} 条`} />}
         >
           <TableContainer>
             <Table sx={{ minWidth: 880 }}>
@@ -169,41 +328,53 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
               </TableHead>
               <TableBody>
                 {visibleRows.map((row) => (
-                  <TableRow key={row.id} hover>
+                  <TableRow key={row.id} hover selected={selectedArticleId === row.id} onClick={() => setSelectedArticleId(row.id)} sx={{ cursor: 'pointer' }}>
                     <TableCell>{row.id}</TableCell>
                     <TableCell>
                       <Stack spacing={0.5}>
-                        <Typography variant="subtitle1">{row.title}</Typography>
+                        <Typography variant="subtitle1">{row.title || row.original_filename || row.id}</Typography>
                         <Typography variant="body2" color="text.secondary">
-                          本地占位数据，等待真实接口接入
+                          {row.error_summary || '点击行可查看阶段详情'}
                         </Typography>
                       </Stack>
                     </TableCell>
-                    <TableCell>{row.source}</TableCell>
+                    <TableCell>{row.source_type || row.file_type || '未知'}</TableCell>
                     <TableCell>
-                      <StatusChip
-                        status={row.status === '未处理' ? 'pending' : row.status === '处理中' ? 'active' : 'completed'}
-                        label={row.status}
-                      />
+                      <StatusChip status={statusToChip(row.status)} label={statusToLabel(row.status)} />
                     </TableCell>
-                    <TableCell align="right">{row.words.toLocaleString()}</TableCell>
-                    <TableCell>{row.updatedAt}</TableCell>
+                    <TableCell align="right">{articleWordCount(row).toLocaleString()}</TableCell>
+                    <TableCell>{formatTime(row.completed_at ?? row.processing_started_at ?? row.imported_at)}</TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
-                        <Button size="small" variant="outlined" startIcon={<ReplayRoundedIcon />} onClick={() => openActionDialog('再处理', row)}>
+                        <Button size="small" variant="outlined" startIcon={<ReplayRoundedIcon />} disabled={!canRetry(row.status)} onClick={(event) => {
+                          event.stopPropagation();
+                          openActionDialog('retry', row);
+                        }}>
                           再处理
                         </Button>
-                        <Button size="small" variant="outlined" color="warning" startIcon={<PauseCircleOutlineRoundedIcon />} onClick={() => openActionDialog('停止', row)}>
+                        <Button size="small" variant="outlined" color="warning" startIcon={<PauseCircleOutlineRoundedIcon />} disabled={!canStop(row.status)} onClick={(event) => {
+                          event.stopPropagation();
+                          openActionDialog('stop', row);
+                        }}>
                           停止
                         </Button>
-                        <Button size="small" variant="outlined" color="error" startIcon={<DeleteOutlineRoundedIcon />} onClick={() => openActionDialog('删除', row)}>
+                        <Button size="small" variant="outlined" startIcon={<PlayArrowRoundedIcon />} disabled={!canResume(row.status)} onClick={(event) => {
+                          event.stopPropagation();
+                          openActionDialog('resume', row);
+                        }}>
+                          恢复
+                        </Button>
+                        <Button size="small" variant="outlined" color="error" startIcon={<DeleteOutlineRoundedIcon />} disabled={!canDelete(row.status)} onClick={(event) => {
+                          event.stopPropagation();
+                          openActionDialog('delete', row);
+                        }}>
                           删除
                         </Button>
                       </Stack>
                     </TableCell>
                   </TableRow>
                 ))}
-                {visibleRows.length === 0 ? (
+                {!loading && visibleRows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7}>
                       <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
@@ -229,21 +400,69 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
             labelRowsPerPage="每页条数"
           />
         </PageCard>
+
+        <PageCard
+          title="阶段详情"
+          description="按选中文章展示当前运行批次与阶段记录。"
+          action={stagesLoading ? <CircularProgress size={18} /> : <StatusChip status={stageDetail ? 'active' : 'disabled'} label={stageDetail ? '已加载' : '未选择'} />}
+        >
+          <Stack spacing={1.5}>
+            {!selectedArticleId ? (
+              <Typography variant="body2" color="text.secondary">
+                请先选择一篇文章查看阶段详情。
+              </Typography>
+            ) : stagesLoading ? (
+              <Typography variant="body2" color="text.secondary">正在加载阶段信息...</Typography>
+            ) : stageDetail ? (
+              <>
+                <Typography variant="subtitle1">
+                  当前运行：{stageDetail.run ? `${stageDetail.run.status} / ${stageDetail.run.current_stage || '未进入阶段'}` : '尚未创建改写运行'}
+                </Typography>
+                {stageDetail.stages.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    当前文章还没有阶段记录。
+                  </Typography>
+                ) : (
+                  stageDetail.stages.map((stage) => (
+                    <Stack key={stage.id} spacing={0.5} sx={{ p: 1.5, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+                      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
+                        <Typography variant="subtitle2">{stage.stage_name}</Typography>
+                        <StatusChip status={statusToChip(stage.status)} label={stage.status} />
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary">
+                        类型：{stage.stage_type || '未标注'} / 尝试次数：{stage.attempt}
+                      </Typography>
+                      {stage.error_summary ? (
+                        <Typography variant="body2" color="error.main">
+                          {stage.error_summary}
+                        </Typography>
+                      ) : null}
+                    </Stack>
+                  ))
+                )}
+              </>
+            ) : (
+              <Typography variant="body2" color="text.secondary">当前文章阶段信息不可用。</Typography>
+            )}
+          </Stack>
+        </PageCard>
       </Stack>
 
       <ConfirmDialog
         open={Boolean(pendingAction)}
-        title={pendingAction ? `${pendingAction.action}文章` : '操作确认'}
+        title={pendingAction ? `确认${pendingAction.action === 'retry' ? '再处理' : pendingAction.action === 'stop' ? '停止' : pendingAction.action === 'resume' ? '恢复' : '删除'}文章` : '操作确认'}
         description={
           pendingAction
-            ? `当前仅提供本地交互壳层，将对《${pendingAction.row.title}》执行“${pendingAction.action}”操作。真实接口接入将在后续任务完成。`
+            ? `将对《${pendingAction.row.title || pendingAction.row.original_filename || pendingAction.row.id}》执行真实“${pendingAction.action}”操作。`
             : ''
         }
-        confirmText="关闭"
+        confirmText={actionLoading ? '处理中...' : '确认执行'}
         cancelText="返回"
-        confirmColor={pendingAction?.action === '删除' ? 'error' : pendingAction?.action === '停止' ? 'warning' : 'primary'}
+        confirmColor={pendingAction?.action === 'delete' ? 'error' : pendingAction?.action === 'stop' ? 'warning' : 'primary'}
         onClose={closeActionDialog}
-        onConfirm={closeActionDialog}
+        onConfirm={() => {
+          void handleConfirmAction();
+        }}
       />
     </>
   );

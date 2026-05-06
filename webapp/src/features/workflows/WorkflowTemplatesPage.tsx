@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AutoFixHighRoundedIcon from '@mui/icons-material/AutoFixHighRounded';
 import FitScreenRoundedIcon from '@mui/icons-material/FitScreenRounded';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -17,6 +18,8 @@ import {
   type Node,
   type NodeChange,
 } from 'reactflow';
+import { ApiError, createWorkflow, deleteWorkflow, listWorkflows, updateWorkflow } from '../../lib/api/client';
+import type { WorkflowDefinition, WorkflowDefinitionInput, WorkflowEdgeDefinition, WorkflowNodeDefinition } from '../../lib/api/types';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
 import WorkflowEdgePanel, { type WorkflowEdgeSummary } from './components/WorkflowEdgePanel';
@@ -26,6 +29,9 @@ import WorkflowNodeDrawer, { type WorkflowNodeFormValue, type WorkflowNodeType }
 import WorkflowToolbar from './components/WorkflowToolbar';
 
 type WorkflowTemplate = WorkflowTemplateSummary & {
+  version: string;
+  enabled: boolean;
+  updatedBy: string;
   entryNodeId: string | null;
   edges: Edge[];
   nodes: Array<Node<WorkflowCanvasNodeData>>;
@@ -50,13 +56,13 @@ function buildNodeLabel(data: WorkflowCanvasNodeData) {
   return `${data.label}\n${typeLabelMap[data.type]}`;
 }
 
-function createNode(id: string, label: string, type: WorkflowNodeType, x: number, y: number, isEntry = false): Node<WorkflowCanvasNodeData> {
+function createNode(id: string, label: string, type: WorkflowNodeType, x: number, y: number, isEntry = false, template = '', model = '', context = ''): Node<WorkflowCanvasNodeData> {
   const data: WorkflowCanvasNodeData = {
     label,
     type,
-    template: type === 'rewrite' ? 'rewrite.standard' : '',
-    model: type === 'rewrite' ? 'gpt-4.1-mini' : '',
-    context: type === 'input' ? '接收浏览器上传或粘贴的文章原文。' : '',
+    template,
+    model,
+    context,
     isEntry,
   };
 
@@ -83,75 +89,6 @@ function createNode(id: string, label: string, type: WorkflowNodeType, x: number
   };
 }
 
-const initialTemplates: WorkflowTemplate[] = [
-  {
-    id: 'workflow-standard',
-    name: '标准改写流程',
-    description: '从导入到改写再到渲染输出的主链路模板。',
-    updatedAt: '今天 22:10',
-    entryNodeId: 'node-input',
-    nodes: [
-      createNode('node-input', '文章导入', 'input', 40, 220, true),
-      createNode('node-rewrite', '自动改写', 'rewrite', 320, 220),
-      createNode('node-render', '草稿渲染', 'render', 620, 220),
-    ],
-    edges: [
-      {
-        id: 'edge-input-rewrite',
-        source: 'node-input',
-        target: 'node-rewrite',
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#0f62fe' },
-        style: { stroke: '#0f62fe', strokeWidth: 2 },
-      },
-      {
-        id: 'edge-rewrite-render',
-        source: 'node-rewrite',
-        target: 'node-render',
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#0f62fe' },
-        style: { stroke: '#0f62fe', strokeWidth: 2 },
-      },
-    ],
-    nodeCount: 3,
-  },
-  {
-    id: 'workflow-review',
-    name: '带人工复核流程',
-    description: '在自动改写后增加人工审核节点，适用于高风险主题。',
-    updatedAt: '今天 18:30',
-    entryNodeId: 'node-review-input',
-    nodes: [
-      createNode('node-review-input', '导入文章', 'input', 20, 220, true),
-      createNode('node-review-rewrite', '改写初稿', 'rewrite', 280, 120),
-      createNode('node-review-human', '人工复核', 'review', 280, 320),
-      createNode('node-review-render', '输出渲染', 'render', 560, 220),
-    ],
-    edges: [
-      {
-        id: 'edge-review-1',
-        source: 'node-review-input',
-        target: 'node-review-rewrite',
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#0f62fe' },
-        style: { stroke: '#0f62fe', strokeWidth: 2 },
-      },
-      {
-        id: 'edge-review-2',
-        source: 'node-review-rewrite',
-        target: 'node-review-human',
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#0f62fe' },
-        style: { stroke: '#0f62fe', strokeWidth: 2 },
-      },
-      {
-        id: 'edge-review-3',
-        source: 'node-review-human',
-        target: 'node-review-render',
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#0f62fe' },
-        style: { stroke: '#0f62fe', strokeWidth: 2 },
-      },
-    ],
-    nodeCount: 4,
-  },
-];
-
 function syncNodePresentation(nodes: Array<Node<WorkflowCanvasNodeData>>, entryNodeId: string | null) {
   return nodes.map((node) => {
     const isEntry = node.id === entryNodeId;
@@ -170,11 +107,7 @@ function syncNodePresentation(nodes: Array<Node<WorkflowCanvasNodeData>>, entryN
   });
 }
 
-function renderNodes(
-  nodes: Array<Node<WorkflowCanvasNodeData>>,
-  entryNodeId: string | null,
-  selectedNodeId: string | null,
-) {
+function renderNodes(nodes: Array<Node<WorkflowCanvasNodeData>>, entryNodeId: string | null, selectedNodeId: string | null) {
   return syncNodePresentation(nodes, entryNodeId).map((node) => ({
     ...node,
     data: {
@@ -190,19 +123,131 @@ function renderNodes(
   }));
 }
 
+function workflowNodeType(type: string): WorkflowNodeType {
+  if (type === 'input' || type === 'rewrite' || type === 'review' || type === 'render') {
+    return type;
+  }
+  return 'rewrite';
+}
+
+function mapWorkflow(workflow: WorkflowDefinition): WorkflowTemplate {
+  const nodes = workflow.nodes.map((node, index) => {
+    let config: Partial<WorkflowNodeFormValue> = {};
+    try {
+      config = JSON.parse(node.config_json || '{}') as Partial<WorkflowNodeFormValue>;
+    } catch {
+      config = {};
+    }
+    return createNode(
+      node.id,
+      config.label || node.name,
+      workflowNodeType(node.type),
+      80 + (index % 3) * 240,
+      120 + Math.floor(index / 3) * 180,
+      node.id === workflow.entry_node_id,
+      config.template || '',
+      config.model || '',
+      config.context || '',
+    );
+  });
+
+  const edges: Edge[] = workflow.edges.map((edge) => ({
+    id: `edge-${edge.from_node_id}-${edge.to_node_id}`,
+    source: edge.from_node_id,
+    target: edge.to_node_id,
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#0f62fe' },
+    style: { stroke: '#0f62fe', strokeWidth: 2 },
+  }));
+
+  return {
+    id: workflow.id,
+    name: workflow.name,
+    description: workflow.description,
+    version: workflow.version,
+    enabled: workflow.enabled,
+    updatedBy: workflow.updated_by,
+    updatedAt: workflow.updated_at ? new Date(workflow.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未记录',
+    entryNodeId: workflow.entry_node_id,
+    nodes,
+    edges,
+    nodeCount: nodes.length,
+  };
+}
+
+function toWorkflowPayload(template: WorkflowTemplate): WorkflowDefinitionInput {
+  const nodes: WorkflowNodeDefinition[] = template.nodes.map((node) => ({
+    id: node.id,
+    type: node.data.type,
+    name: node.data.label,
+    config_json: JSON.stringify({
+      label: node.data.label,
+      type: node.data.type,
+      template: node.data.template,
+      model: node.data.model,
+      context: node.data.context,
+    }),
+  }));
+
+  const edges: WorkflowEdgeDefinition[] = template.edges.map((edge, index) => ({
+    from_node_id: edge.source,
+    to_node_id: edge.target,
+    condition: '',
+    priority: index,
+  }));
+
+  return {
+    name: template.name,
+    description: template.description,
+    version: template.version,
+    enabled: template.enabled,
+    entry_node_id: template.entryNodeId || template.nodes[0]?.id || '',
+    nodes,
+    edges,
+    updated_by: 'react-webapp',
+  };
+}
+
 export default function WorkflowTemplatesPage() {
-  const [templates, setTemplates] = useState<WorkflowTemplate[]>(initialTemplates);
-  const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplates[0].id);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(initialTemplates[0].entryNodeId);
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const loadWorkflows = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const items = await listWorkflows();
+      const mapped = items.map(mapWorkflow);
+      setTemplates(mapped);
+      const nextId = selectedTemplateId || mapped[0]?.id || '';
+      setSelectedTemplateId(nextId);
+      const selected = mapped.find((template) => template.id === nextId) ?? mapped[0];
+      setSelectedNodeId(selected?.entryNodeId ?? selected?.nodes[0]?.id ?? null);
+      setSelectedEdgeId(null);
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '工作流列表加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadWorkflows();
+  }, []);
 
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === selectedTemplateId) ?? templates[0],
     [selectedTemplateId, templates],
   );
 
-  const selectedNode = selectedTemplate.nodes.find((node) => node.id === selectedNodeId) ?? null;
-  const selectedEdge = selectedTemplate.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
+  const selectedNode = selectedTemplate?.nodes.find((node) => node.id === selectedNodeId) ?? null;
+  const selectedEdge = selectedTemplate?.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
 
   const selectedNodeFormValue: WorkflowNodeFormValue | null = selectedNode
     ? {
@@ -222,7 +267,7 @@ export default function WorkflowTemplatesPage() {
     updatedAt: template.updatedAt,
   }));
 
-  const selectedEdgeSummary: WorkflowEdgeSummary | null = selectedEdge
+  const selectedEdgeSummary: WorkflowEdgeSummary | null = selectedEdge && selectedTemplate
     ? {
         id: selectedEdge.id,
         sourceLabel: selectedTemplate.nodes.find((node) => node.id === selectedEdge.source)?.data.label ?? selectedEdge.source,
@@ -252,7 +297,10 @@ export default function WorkflowTemplatesPage() {
     const newTemplate: WorkflowTemplate = {
       id: nextId,
       name: `本地模板 ${nextLabelIndex}`,
-      description: '用于验证本地节点编排与侧边配置交互。',
+      description: '用于验证工作流模板图编辑和 API 保存。',
+      version: `v${nextLabelIndex}.0.0`,
+      enabled: true,
+      updatedBy: 'react-webapp',
       updatedAt: '刚刚',
       entryNodeId: seedNodeId,
       nodes: [createNode(seedNodeId, '起始节点', 'input', 120, 220, true)],
@@ -278,15 +326,12 @@ export default function WorkflowTemplatesPage() {
   };
 
   const handleAddNode = () => {
+    if (!selectedTemplate) {
+      return;
+    }
     const nextIndex = selectedTemplate.nodes.length + 1;
     const nextNodeId = createLocalId(`${selectedTemplate.id}-node`);
-    const newNode = createNode(
-      nextNodeId,
-      `新节点 ${nextIndex}`,
-      'rewrite',
-      120 + (nextIndex % 3) * 220,
-      120 + Math.floor(nextIndex / 3) * 180,
-    );
+    const newNode = createNode(nextNodeId, `新节点 ${nextIndex}`, 'rewrite', 120 + (nextIndex % 3) * 220, 120 + Math.floor(nextIndex / 3) * 180);
 
     updateSelectedTemplate((template) => ({
       ...template,
@@ -298,7 +343,7 @@ export default function WorkflowTemplatesPage() {
   };
 
   const handleDeleteNode = () => {
-    if (!selectedNodeId) {
+    if (!selectedNodeId || !selectedTemplate) {
       return;
     }
 
@@ -357,14 +402,16 @@ export default function WorkflowTemplatesPage() {
 
   const graphNodes = useMemo(
     () =>
-      renderNodes(selectedTemplate.nodes, selectedTemplate.entryNodeId, selectedNodeId).map((node) => ({
-        ...node,
-        data: {
-          ...node.data,
-          label: buildNodeLabel(node.data),
-        },
-      })),
-    [selectedNodeId, selectedTemplate.entryNodeId, selectedTemplate.nodes],
+      selectedTemplate
+        ? renderNodes(selectedTemplate.nodes, selectedTemplate.entryNodeId, selectedNodeId).map((node) => ({
+            ...node,
+            data: {
+              ...node.data,
+              label: buildNodeLabel(node.data),
+            },
+          }))
+        : [],
+    [selectedNodeId, selectedTemplate],
   );
 
   const handleNodesChange = (changes: NodeChange[]) => {
@@ -424,21 +471,81 @@ export default function WorkflowTemplatesPage() {
     setSelectedEdgeId(null);
   };
 
-  const entryNodeLabel = selectedTemplate.nodes.find((node) => node.id === selectedTemplate.entryNodeId)?.data.label ?? null;
+  const handleSaveTemplate = async () => {
+    if (!selectedTemplate) {
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const payload = toWorkflowPayload(selectedTemplate);
+      const saved = selectedTemplate.id.startsWith('workflow-local')
+        ? await createWorkflow(payload)
+        : await updateWorkflow(selectedTemplate.id, payload);
+      const mapped = mapWorkflow(saved);
+      setTemplates((current) => current.map((template) => (template.id === selectedTemplate.id ? mapped : template)));
+      setSelectedTemplateId(mapped.id);
+      setSelectedNodeId(mapped.entryNodeId ?? mapped.nodes[0]?.id ?? null);
+      setSuccessMessage(selectedTemplate.id.startsWith('workflow-local') ? '工作流模板已创建。' : '工作流模板已保存。');
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '工作流保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteTemplate = async () => {
+    if (!selectedTemplate) {
+      return;
+    }
+
+    if (selectedTemplate.id.startsWith('workflow-local')) {
+      setTemplates((current) => current.filter((template) => template.id !== selectedTemplate.id));
+      const fallback = templates.find((template) => template.id !== selectedTemplate.id);
+      setSelectedTemplateId(fallback?.id ?? '');
+      setSelectedNodeId(fallback?.entryNodeId ?? fallback?.nodes[0]?.id ?? null);
+      setSelectedEdgeId(null);
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      await deleteWorkflow(selectedTemplate.id);
+      const remaining = templates.filter((template) => template.id !== selectedTemplate.id);
+      const fallback = remaining[0];
+      setTemplates(remaining);
+      setSelectedTemplateId(fallback?.id ?? '');
+      setSelectedNodeId(fallback?.entryNodeId ?? fallback?.nodes[0]?.id ?? null);
+      setSelectedEdgeId(null);
+      setSuccessMessage('工作流模板已删除。');
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '工作流删除失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const entryNodeLabel = selectedTemplate?.nodes.find((node) => node.id === selectedTemplate.entryNodeId)?.data.label ?? null;
 
   return (
     <Stack spacing={3}>
       <PageToolbar
         title="工作流模板"
-        description="基于 React Flow 的模板图编辑壳层，先完成本地节点、连线和侧边配置交互，再在后续任务接入真实保存与运行接口。"
-        leading={<StatusChip status="active" label="React Flow 编辑器壳层" />}
+        description="基于 React Flow 的模板图编辑器，现已接入真实工作流列表与保存/删除接口。"
+        leading={<StatusChip status="active" label="React Flow 编辑器" />}
         actions={
           <>
-            <Button variant="outlined" startIcon={<FitScreenRoundedIcon />}>
-              画布预留
+            <Button variant="outlined" startIcon={<FitScreenRoundedIcon />} onClick={() => void loadWorkflows()} disabled={loading || saving}>
+              刷新画布
             </Button>
-            <Button variant="contained" startIcon={<AutoFixHighRoundedIcon />}>
-              本地编辑中
+            <Button variant="contained" startIcon={<AutoFixHighRoundedIcon />} onClick={() => void handleSaveTemplate()} disabled={!selectedTemplate || saving}>
+              {saving ? '保存中' : '保存模板'}
             </Button>
           </>
         }
@@ -446,19 +553,22 @@ export default function WorkflowTemplatesPage() {
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ xs: 'flex-start', md: 'center' }}>
             <StatusChip status="completed" label="支持新增/删除节点" />
             <StatusChip status="completed" label="支持连接/断开连线" />
-            <StatusChip status="pending" label="未接入真实 API" />
+            <StatusChip status="completed" label="已接入真实 API" />
             <Typography variant="body2" color="text.secondary">
-              当前选中模板：{selectedTemplate.name}
+              当前选中模板：{selectedTemplate?.name ?? '未选择'}
             </Typography>
           </Stack>
         }
       />
 
+      {error ? <Alert severity="error">{error}</Alert> : null}
+      {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
+
       <WorkflowToolbar
-        nodeCount={selectedTemplate.nodes.length}
-        edgeCount={selectedTemplate.edges.length}
+        nodeCount={selectedTemplate?.nodes.length ?? 0}
+        edgeCount={selectedTemplate?.edges.length ?? 0}
         hasSelection={Boolean(selectedNodeId)}
-        canDeleteNode={selectedTemplate.nodes.length > 0 && Boolean(selectedNodeId)}
+        canDeleteNode={(selectedTemplate?.nodes.length ?? 0) > 0 && Boolean(selectedNodeId)}
         onAddNode={handleAddNode}
         onDeleteNode={handleDeleteNode}
         onSelectEntryNode={handleSelectEntryNode}
@@ -466,21 +576,16 @@ export default function WorkflowTemplatesPage() {
 
       <Stack direction={{ xs: 'column', xl: 'row' }} spacing={3} alignItems="stretch">
         <Stack spacing={3} sx={{ width: { xs: '100%', xl: 340 }, flexShrink: 0 }}>
-          <WorkflowListPanel
-            items={workflowItems}
-            selectedId={selectedTemplate.id}
-            onCreateTemplate={handleCreateTemplate}
-            onSelectTemplate={handleSelectTemplate}
-          />
+          <WorkflowListPanel items={workflowItems} selectedId={selectedTemplate?.id ?? ''} onCreateTemplate={handleCreateTemplate} onSelectTemplate={handleSelectTemplate} onDeleteTemplate={() => void handleDeleteTemplate()} />
           <WorkflowEdgePanel selectedEdge={selectedEdgeSummary} onDeleteEdge={handleDeleteEdge} />
         </Stack>
 
         <Stack spacing={3} flex={1} minWidth={0}>
           <WorkflowGraphPanel
             nodes={graphNodes}
-            edges={selectedTemplate.edges}
+            edges={selectedTemplate?.edges ?? []}
             selectedNodeId={selectedNodeId}
-            selectedTemplateName={selectedTemplate.name}
+            selectedTemplateName={selectedTemplate?.name ?? '未选择模板'}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}
@@ -500,12 +605,7 @@ export default function WorkflowTemplatesPage() {
         </Stack>
 
         <Stack spacing={3} sx={{ width: { xs: '100%', xl: 360 }, flexShrink: 0 }}>
-          <WorkflowNodeDrawer
-            selectedNodeId={selectedNodeId}
-            entryNodeLabel={entryNodeLabel}
-            value={selectedNodeFormValue}
-            onChange={handleNodeChange}
-          />
+          <WorkflowNodeDrawer selectedNodeId={selectedNodeId} entryNodeLabel={entryNodeLabel} value={selectedNodeFormValue} onChange={handleNodeChange} />
         </Stack>
       </Stack>
     </Stack>

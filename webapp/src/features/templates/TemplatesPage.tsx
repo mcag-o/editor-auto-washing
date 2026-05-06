@@ -1,12 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import AutorenewRoundedIcon from '@mui/icons-material/AutorenewRounded';
 import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded';
 import BookmarkAddedRoundedIcon from '@mui/icons-material/BookmarkAddedRounded';
+import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { ApiError, createTemplate, deleteTemplate, listTemplates, updateTemplate } from '../../lib/api/client';
+import type { TemplateDefinition, TemplateDefinitionInput } from '../../lib/api/types';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
 import TemplateEditorDrawer from './components/TemplateEditorDrawer';
@@ -29,6 +32,7 @@ export type TemplateRecord = {
   stages: TemplateStage[];
   updatedAt: string;
   updatedBy: string;
+  type: string;
 };
 
 export type TemplateDraft = {
@@ -38,61 +42,8 @@ export type TemplateDraft = {
   summary: string;
   prompt: string;
   stagesText: string;
+  type: string;
 };
-
-function createLocalId(prefix: string) {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-const initialTemplates: TemplateRecord[] = [
-  {
-    id: 'template-standard',
-    name: '标准改写模板',
-    version: 'v1.3.0',
-    enabled: true,
-    summary: '默认启用的中文改写模板，覆盖导入后草稿生成主链路。',
-    prompt: '请保留事实信息与语气边界，将文章改写成更适合发布的中文稿件。',
-    stages: [
-      { key: 'stage-brief', label: '摘要校准', note: '先提炼原文主旨与约束。' },
-      { key: 'stage-rewrite', label: '正文改写', note: '围绕平台风格进行重写。' },
-      { key: 'stage-check', label: '发布检查', note: '检查敏感表达和语义偏移。' },
-    ],
-    updatedAt: '今天 21:40',
-    updatedBy: '系统',
-  },
-  {
-    id: 'template-review',
-    name: '人工复核模板',
-    version: 'v2.0.1',
-    enabled: false,
-    summary: '适用于高风险主题的模板草案，保留更严格的审核说明。',
-    prompt: '在输出前加入人工审核提示，并保持措辞保守、可追踪。',
-    stages: [
-      { key: 'stage-annotate', label: '标注风险', note: '标记需要人工复核的段落。' },
-      { key: 'stage-handoff', label: '人工接管', note: '输出给审核人员确认。' },
-    ],
-    updatedAt: '今天 18:05',
-    updatedBy: '运营',
-  },
-  {
-    id: 'template-brief',
-    name: '短文卡片模板',
-    version: 'v1.0.4',
-    enabled: true,
-    summary: '用于短内容与标题卡片的轻量化模板。',
-    prompt: '压缩内容长度，保留关键信息，并适配卡片式展示。',
-    stages: [
-      { key: 'stage-condense', label: '内容压缩', note: '删去冗余解释，保留核心事实。' },
-      { key: 'stage-card', label: '卡片排版', note: '输出更适合列表阅读的结构。' },
-    ],
-    updatedAt: '昨天 23:20',
-    updatedBy: '编辑',
-  },
-];
 
 function buildDraft(template: TemplateRecord): TemplateDraft {
   return {
@@ -102,13 +53,14 @@ function buildDraft(template: TemplateRecord): TemplateDraft {
     summary: template.summary,
     prompt: template.prompt,
     stagesText: template.stages.map((stage) => `${stage.label}: ${stage.note}`).join('\n'),
+    type: template.type,
   };
 }
 
 function draftToStages(stagesText: string): TemplateStage[] {
   return stagesText
     .split('\n')
-    .map((line, index) => line.trim())
+    .map((line) => line.trim())
     .filter(Boolean)
     .map((line, index) => {
       const separatorIndex = line.indexOf(':');
@@ -136,15 +88,73 @@ function createEmptyDraft(templateCount: number): TemplateDraft {
     summary: '请输入模板摘要，说明它适用的场景。',
     prompt: '在这里填写模板提示词。',
     stagesText: '起始阶段: 描述第一步的职责。\n输出阶段: 描述最终输出要求。',
+    type: 'prompt',
+  };
+}
+
+function mapTemplate(template: TemplateDefinition): TemplateRecord {
+  const prompt = template.content ?? '';
+  let summary = template.type;
+  let stages = [{ key: 'stage-1', label: '模板内容', note: '当前模板未提供分阶段结构。' }];
+
+  try {
+    const parsed = JSON.parse(template.variables_json || '{}') as { summary?: string; stages?: Array<{ label?: string; note?: string }> };
+    summary = parsed.summary || summary;
+    if (Array.isArray(parsed.stages) && parsed.stages.length > 0) {
+      stages = parsed.stages.map((stage, index) => ({
+        key: `stage-${index + 1}`,
+        label: stage.label?.trim() || `阶段 ${index + 1}`,
+        note: stage.note?.trim() || '未填写说明。',
+      }));
+    }
+  } catch {
+    summary = template.type;
+  }
+
+  return {
+    id: template.id,
+    name: template.name,
+    version: template.version,
+    enabled: template.enabled,
+    summary,
+    prompt,
+    stages,
+    updatedAt: template.updated_at ? new Date(template.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未记录',
+    updatedBy: template.updated_by || 'system',
+    type: template.type,
   };
 }
 
 export default function TemplatesPage() {
-  const [templates, setTemplates] = useState<TemplateRecord[]>(initialTemplates);
-  const [selectedId, setSelectedId] = useState(initialTemplates[0].id);
+  const [templates, setTemplates] = useState<TemplateRecord[]>([]);
+  const [selectedId, setSelectedId] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<TemplateDraft>(() => createEmptyDraft(initialTemplates.length));
+  const [draft, setDraft] = useState<TemplateDraft>(() => createEmptyDraft(0));
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const loadTemplates = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const items = await listTemplates();
+      const mapped = items.map(mapTemplate);
+      setTemplates(mapped);
+      setSelectedId((current) => current || mapped[0]?.id || '');
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '模板列表加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadTemplates();
+  }, []);
 
   const selectedTemplate = useMemo(
     () => templates.find((item) => item.id === selectedId) ?? templates[0] ?? null,
@@ -181,44 +191,72 @@ export default function TemplatesPage() {
     resetEditorState(templates.length);
   };
 
-  const handleSaveTemplate = () => {
-    const nextTemplate: TemplateRecord = {
-      id: editingId ?? createLocalId('template-local'),
+  const handleSaveTemplate = async () => {
+    setSaving(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    const payload: TemplateDefinitionInput = {
       name: draft.name.trim() || '未命名模板',
       version: draft.version.trim() || 'v0.0.0',
       enabled: draft.enabled,
-      summary: draft.summary.trim(),
-      prompt: draft.prompt.trim(),
-      stages: draftToStages(draft.stagesText),
-      updatedAt: '刚刚',
-      updatedBy: '本地编辑',
+      type: draft.type.trim() || 'prompt',
+      content: draft.prompt.trim(),
+      variables_json: {
+        summary: draft.summary.trim(),
+        stages: draftToStages(draft.stagesText).map((stage) => ({ label: stage.label, note: stage.note })),
+      },
+      updated_by: 'react-webapp',
     };
 
-    setTemplates((currentTemplates) => {
-      if (editingId) {
-        return currentTemplates.map((template) => (template.id === editingId ? nextTemplate : template));
-      }
-
-      return [nextTemplate, ...currentTemplates];
-    });
-    setSelectedId(nextTemplate.id);
-    resetEditorState(editingId ? templates.length : templates.length + 1);
+    try {
+      const saved = editingId ? await updateTemplate(editingId, payload) : await createTemplate(payload);
+      const nextTemplate = mapTemplate(saved);
+      setTemplates((currentTemplates) => {
+        if (editingId) {
+          return currentTemplates.map((template) => (template.id === editingId ? nextTemplate : template));
+        }
+        return [nextTemplate, ...currentTemplates];
+      });
+      setSelectedId(nextTemplate.id);
+      setSuccessMessage(editingId ? '模板已更新。' : '模板已创建。');
+      resetEditorState(editingId ? templates.length : templates.length + 1);
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '模板保存失败');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleToggleEnabled = (templateId: string) => {
-    setTemplates((currentTemplates) =>
-      currentTemplates.map((template) =>
-        template.id === templateId
-          ? {
-              ...template,
-              enabled: !template.enabled,
-              updatedAt: '刚刚',
-              updatedBy: '本地切换',
-            }
-          : template,
-      ),
-    );
-    setSelectedId(templateId);
+  const handleToggleEnabled = async (templateId: string) => {
+    const template = templates.find((item) => item.id === templateId);
+    if (!template) {
+      return;
+    }
+
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const saved = await updateTemplate(templateId, {
+        name: template.name,
+        version: template.version,
+        enabled: !template.enabled,
+        type: template.type,
+        content: template.prompt,
+        variables_json: {
+          summary: template.summary,
+          stages: template.stages.map((stage) => ({ label: stage.label, note: stage.note })),
+        },
+        updated_by: 'react-webapp',
+      });
+      const nextTemplate = mapTemplate(saved);
+      setTemplates((currentTemplates) => currentTemplates.map((item) => (item.id === templateId ? nextTemplate : item)));
+      setSelectedId(templateId);
+      setSuccessMessage(nextTemplate.enabled ? '模板已启用。' : '模板已停用。');
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '模板状态更新失败');
+    }
   };
 
   const handleDuplicateTemplate = (templateId: string) => {
@@ -227,18 +265,30 @@ export default function TemplatesPage() {
       return;
     }
 
-    const duplicated: TemplateRecord = {
-      ...template,
-      id: createLocalId('template-copy'),
+    setEditingId(null);
+    setDraft({
+      ...buildDraft(template),
       name: `${template.name} 副本`,
-      version: template.version,
       enabled: false,
-      updatedAt: '刚刚',
-      updatedBy: '本地复制',
-    };
+    });
+    setEditorOpen(true);
+  };
 
-    setTemplates((currentTemplates) => [duplicated, ...currentTemplates]);
-    setSelectedId(duplicated.id);
+  const handleDeleteTemplate = async (templateId: string) => {
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      await deleteTemplate(templateId);
+      setTemplates((currentTemplates) => currentTemplates.filter((template) => template.id !== templateId));
+      if (selectedId === templateId) {
+        const fallback = templates.find((item) => item.id !== templateId)?.id ?? '';
+        setSelectedId(fallback);
+      }
+      setSuccessMessage('模板已删除。');
+    } catch (apiError) {
+      setError(apiError instanceof ApiError ? apiError.message : '模板删除失败');
+    }
   };
 
   const handleSelectTemplate = (templateId: string) => {
@@ -264,7 +314,7 @@ export default function TemplatesPage() {
           </Stack>
         }
         title="模板管理"
-        description="使用 Material UI Table 组织模板列表、版本与启用状态，并通过本地 Drawer 预览和编辑模板内容。"
+        description="保留现有 Drawer 编辑体验，并接入真实模板列表、创建、更新和删除接口。"
         actions={
           <>
             <StatusChip status={selectedTemplate?.enabled ? 'active' : 'disabled'} label={selectedTemplate?.enabled ? '已启用' : '已停用'} />
@@ -278,7 +328,7 @@ export default function TemplatesPage() {
             <Stack direction="row" spacing={1} alignItems="center">
               <AutorenewRoundedIcon color="primary" fontSize="small" />
               <Typography variant="body2" color="text.secondary">
-                当前仅维护本地草稿和选择状态，尚未接入后端 API。
+                当前模板列表已接入后端 API。
               </Typography>
             </Stack>
             <Stack direction="row" spacing={1} alignItems="center">
@@ -287,9 +337,15 @@ export default function TemplatesPage() {
                 共 {templates.length} 个模板，{templates.filter((template) => template.enabled).length} 个已启用。
               </Typography>
             </Stack>
+            <Button size="small" variant="outlined" onClick={() => void loadTemplates()} disabled={loading}>
+              刷新列表
+            </Button>
           </Stack>
         }
       />
+
+      {error ? <Alert severity="error">{error}</Alert> : null}
+      {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
 
       <Box
         sx={{
@@ -310,6 +366,7 @@ export default function TemplatesPage() {
             onEditTemplate={handleOpenEdit}
             onToggleEnabled={handleToggleEnabled}
             onDuplicateTemplate={handleDuplicateTemplate}
+            onDeleteTemplate={handleDeleteTemplate}
           />
         </Box>
         <Box>
@@ -321,9 +378,12 @@ export default function TemplatesPage() {
         open={editorOpen}
         draft={draft}
         editingTemplate={selectedDraftTarget}
+        saving={saving}
         onClose={handleCloseEditor}
         onChange={handleChangeDraft}
-        onSave={handleSaveTemplate}
+        onSave={() => {
+          void handleSaveTemplate();
+        }}
       />
     </Stack>
   );
