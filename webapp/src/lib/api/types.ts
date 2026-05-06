@@ -201,7 +201,7 @@ export type TemplateDefinition = {
   version: string;
   enabled: boolean;
   content: string;
-  variables_json: string;
+  variables_json: string | JsonValue;
   updated_by: string;
   updated_at: string;
 };

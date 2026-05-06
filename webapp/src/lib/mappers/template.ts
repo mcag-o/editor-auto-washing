@@ -1,6 +1,7 @@
 import type {
   TemplateDefinition,
   TemplateDefinitionInput,
+  JsonValue,
   TemplateStagePayload,
   TemplateVariablesPayload,
 } from '../api/types';
@@ -34,13 +35,39 @@ export type TemplateFormDraft = {
   type: string;
 };
 
+function decodeTemplateVariables(value: string | JsonValue): TemplateVariablesPayload {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(trimmed) as TemplateVariablesPayload;
+    } catch {
+      try {
+        const decoded = atob(trimmed);
+        return JSON.parse(decoded) as TemplateVariablesPayload;
+      } catch {
+        return {};
+      }
+    }
+  }
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as TemplateVariablesPayload;
+  }
+
+  return {};
+}
+
 export function mapApiTemplateToForm(template: TemplateDefinition): TemplateFormRecord {
   const prompt = template.content ?? '';
   let summary = template.type;
   let stages: TemplateFormStage[] = [{ key: 'stage-1', label: '模板内容', note: '当前模板未提供分阶段结构。' }];
 
   try {
-    const parsed = JSON.parse(template.variables_json || '{}') as TemplateVariablesPayload;
+    const parsed = decodeTemplateVariables(template.variables_json);
     summary = parsed.summary || summary;
     if (Array.isArray(parsed.stages) && parsed.stages.length > 0) {
       stages = parsed.stages.map((stage, index) => ({
