@@ -16,6 +16,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -28,6 +30,8 @@ type Server struct {
 	cfg      config.Config
 	provider *Provider
 }
+
+var frontendDistFSForTests func() (fs.FS, error)
 
 func (s *Server) Handler() http.Handler {
 	if s == nil {
@@ -168,17 +172,21 @@ func (s *Server) registerRoutes() {
 	if err != nil {
 		panic(fmt.Errorf("load admin frontend assets: %w", err))
 	}
-	indexHTML, err := fs.ReadFile(adminAssets, "index.html")
+	legacyIndexHTML, err := fs.ReadFile(adminAssets, "index.html")
 	if err != nil {
 		panic(fmt.Errorf("read admin frontend index: %w", err))
 	}
-	appJS, err := fs.ReadFile(adminAssets, "app.js")
+	legacyAppJS, err := fs.ReadFile(adminAssets, "app.js")
 	if err != nil {
 		panic(fmt.Errorf("read admin frontend app.js: %w", err))
 	}
-	stylesCSS, err := fs.ReadFile(adminAssets, "styles.css")
+	legacyStylesCSS, err := fs.ReadFile(adminAssets, "styles.css")
 	if err != nil {
 		panic(fmt.Errorf("read admin frontend styles.css: %w", err))
+	}
+	frontendFS, frontendReady, err := loadFrontendDistFS()
+	if err != nil {
+		panic(fmt.Errorf("load react frontend dist: %w", err))
 	}
 
 	healthHandler := handlers.NewHealthHandler()
@@ -211,10 +219,36 @@ func (s *Server) registerRoutes() {
 			c.Data(http.StatusOK, contentType, body)
 		}
 	}
+	serveFSAsset := func(frontendFS fs.FS, filePath string) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			body, err := fs.ReadFile(frontendFS, filePath)
+			if err != nil {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			contentType := mime.TypeByExtension(path.Ext(filePath))
+			if contentType == "" {
+				contentType = http.DetectContentType(body)
+			}
+			c.Data(http.StatusOK, contentType, body)
+		}
+	}
 
-	s.engine.GET("/", serveAdminAsset("text/html; charset=utf-8", indexHTML))
-	s.engine.GET("/app.js", serveAdminAsset(mime.TypeByExtension(".js"), appJS))
-	s.engine.GET("/styles.css", serveAdminAsset("text/css; charset=utf-8", stylesCSS))
+	if frontendReady {
+		s.engine.GET("/", serveFSAsset(frontendFS, "index.html"))
+		s.engine.GET("/ui/assets/*filepath", func(c *gin.Context) {
+			assetPath := strings.TrimPrefix(c.Param("filepath"), "/")
+			if assetPath == "" {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			serveFSAsset(frontendFS, path.Join("assets", assetPath))(c)
+		})
+	} else {
+		s.engine.GET("/", serveAdminAsset("text/html; charset=utf-8", legacyIndexHTML))
+		s.engine.GET("/app.js", serveAdminAsset(mime.TypeByExtension(".js"), legacyAppJS))
+		s.engine.GET("/styles.css", serveAdminAsset("text/css; charset=utf-8", legacyStylesCSS))
+	}
 
 	s.engine.GET("/health", healthHandler.Health)
 	s.engine.GET("/ready", healthHandler.Ready)
@@ -327,6 +361,32 @@ func (s *Server) registerRoutes() {
 		api.PUT("/templates/:id", apiTemplatesHandler.Update)
 		api.DELETE("/templates/:id", apiTemplatesHandler.Delete)
 	}
+}
+
+func loadFrontendDistFS() (fs.FS, bool, error) {
+	if frontendDistFSForTests != nil {
+		frontendFS, err := frontendDistFSForTests()
+		if err != nil {
+			return nil, false, err
+		}
+		return frontendFS, true, nil
+	}
+
+	distDir := os.Getenv("CONTENT_HUB_WEBAPP_DIST_DIR")
+	if distDir == "" {
+		distDir = filepath.Join("webapp", "dist")
+	}
+	info, err := os.Stat(distDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("stat %s: %w", distDir, err)
+	}
+	if !info.IsDir() {
+		return nil, false, fmt.Errorf("frontend dist path %s is not a directory", distDir)
+	}
+	return os.DirFS(distDir), true, nil
 }
 
 func (s *Server) handleWorkflowExecute(c *gin.Context) {

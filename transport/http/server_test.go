@@ -12,6 +12,7 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"io/fs"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 )
 
@@ -170,6 +172,17 @@ func TestReadyEndpoint(t *testing.T) {
 }
 
 func TestAdminFrontendServedFromRoot(t *testing.T) {
+	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", "")
+	frontendDistFSForTests = func() (fs.FS, error) {
+		return fs.Sub(fstest.MapFS{
+			"index.html":      &fstest.MapFile{Data: []byte(`<!doctype html><html><head><title>Content Hub Control Plane</title><script type="module" src="/ui/assets/index.js"></script></head><body><div id="root"></div></body></html>`)},
+			"assets/index.js": &fstest.MapFile{Data: []byte(`console.log("react-shell")`)},
+		}, ".")
+	}
+	t.Cleanup(func() {
+		frontendDistFSForTests = nil
+	})
+
 	s, _ := newTestServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -178,14 +191,16 @@ func TestAdminFrontendServedFromRoot(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Header().Get("Content-Type"), "text/html")
-	require.Contains(t, w.Body.String(), "<title>Content Hub Admin</title>")
-	require.Contains(t, w.Body.String(), "图工作流控制台")
-	require.Contains(t, w.Body.String(), "总览")
-	require.Contains(t, w.Body.String(), "/app.js")
-	require.Contains(t, w.Body.String(), "/styles.css")
+	require.Contains(t, w.Body.String(), "<title>Content Hub Control Plane</title>")
+	require.Contains(t, w.Body.String(), `<div id="root"></div>`)
+	require.Contains(t, w.Body.String(), "/ui/assets/index.js")
+	require.NotContains(t, w.Body.String(), "图工作流控制台")
 }
 
-func TestAdminFrontendContainsChineseWorkflowAndTemplateSections(t *testing.T) {
+func TestAdminFrontendFallsBackToLegacyStaticShellWhenReactBuildIsUnavailable(t *testing.T) {
+	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", filepath.Join(t.TempDir(), "missing-dist"))
+	frontendDistFSForTests = nil
+
 	s, _ := newTestServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
