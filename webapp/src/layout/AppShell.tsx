@@ -27,15 +27,23 @@ import { useTheme } from '@mui/material/styles';
 
 const drawerWidth = 248;
 
+export type AppPage = 'dashboard' | 'intake' | 'articles';
+
 const navigationItems = [
-  { key: 'overview', label: '控制台总览', icon: <AppsRoundedIcon fontSize="small" />, active: true },
-  { key: 'articles', label: '文章队列', icon: <DescriptionRoundedIcon fontSize="small" /> },
+  { key: 'dashboard' as const, label: '控制台总览', icon: <AppsRoundedIcon fontSize="small" /> },
+  { key: 'intake' as const, label: '文章导入', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
+  { key: 'articles' as const, label: '文章队列', icon: <DescriptionRoundedIcon fontSize="small" /> },
   { key: 'workflows', label: '流程模板', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
   { key: 'audit', label: '操作审计', icon: <HistoryRoundedIcon fontSize="small" /> },
   { key: 'settings', label: '系统配置', icon: <SettingsRoundedIcon fontSize="small" /> },
 ];
 
-export default function AppShell({ children }: PropsWithChildren) {
+type AppShellProps = PropsWithChildren<{
+  currentPage: AppPage;
+  onNavigate: (page: AppPage) => void;
+}>;
+
+export default function AppShell({ children, currentPage, onNavigate }: AppShellProps) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -77,13 +85,18 @@ export default function AppShell({ children }: PropsWithChildren) {
         {navigationItems.map((item) => (
           <ListItemButton
             key={item.key}
-            selected={item.active}
-            onClick={handleCloseMobileNav}
+            selected={item.key === currentPage}
+            onClick={() => {
+              if (item.key === 'dashboard' || item.key === 'intake' || item.key === 'articles') {
+                onNavigate(item.key);
+              }
+              handleCloseMobileNav();
+            }}
             sx={{
               mb: 0.75,
               borderRadius: 3,
-              color: item.active ? '#ffffff' : alpha('#ffffff', 0.74),
-              bgcolor: item.active ? alpha('#ffffff', 0.1) : 'transparent',
+              color: item.key === currentPage ? '#ffffff' : alpha('#ffffff', 0.74),
+              bgcolor: item.key === currentPage ? alpha('#ffffff', 0.1) : 'transparent',
               '&.Mui-selected': {
                 bgcolor: alpha('#ffffff', 0.1),
               },
@@ -131,11 +144,11 @@ export default function AppShell({ children }: PropsWithChildren) {
             </Box>
           </Stack>
           <Stack direction="row" spacing={1.25} alignItems="center">
-            <Button variant="contained" color="secondary">
-              新建任务
-            </Button>
-          </Stack>
-        </Toolbar>
+              <Button variant="contained" color="secondary" onClick={() => onNavigate('intake')}>
+                新建导入
+              </Button>
+            </Stack>
+          </Toolbar>
       </AppBar>
 
       <Drawer
