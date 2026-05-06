@@ -120,6 +120,29 @@ func TestAPIWorkflowsCreateAndList(t *testing.T) {
 	require.Equal(t, "wf-1", listResp.Data[0].ID)
 }
 
+func TestAPIWorkflowsCreateWithoutIDGeneratesNonEmptyID(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	repo := &workflowDefinitionRepoStub{}
+	svc := service.NewWorkflowTemplateService(repo)
+	handler := NewAPIWorkflowsHandler(svc)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/workflows", handler.Create)
+
+	body := `{"name":"Default workflow","description":"Mainline graph","version":"v1","enabled":true,"entry_node_id":"start-1","nodes":[{"id":"start-1","type":"start","name":"Start","config_json":"{}"}],"edges":[],"updated_by":"tester"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/workflows", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	var created domain.WorkflowDefinition
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
+	require.NotEmpty(t, created.ID)
+	require.NotEqual(t, "", repo.stored.ID)
+}
+
 func TestAPIWorkflowsGetAndUpdate(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	repo := &workflowDefinitionRepoStub{}
@@ -211,4 +234,68 @@ func TestAPIWorkflowsCreateDeleteAndGetReturnsNotFound(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &listResp))
 	require.Empty(t, listResp.Data)
+}
+
+func TestAPIWorkflowsUpdateMissingReturnsNotFound(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	repo := &workflowDefinitionRepoStub{}
+	svc := service.NewWorkflowTemplateService(repo)
+	handler := NewAPIWorkflowsHandler(svc)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.PUT("/api/workflows/:id", handler.Update)
+
+	body := `{"name":"Updated workflow","description":"Updated graph","version":"v2","enabled":false,"entry_node_id":"start-1","nodes":[{"id":"start-1","type":"start","name":"Start","config_json":"{}"}],"edges":[]}`
+	req := httptest.NewRequest(http.MethodPut, "/api/workflows/wf-missing", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Contains(t, w.Body.String(), domain.ErrNotFound)
+	require.Nil(t, repo.stored)
+	require.Empty(t, repo.list)
+}
+
+func TestAPIWorkflowsDeleteThenUpdateReturnsNotFound(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	repo := &workflowDefinitionRepoStub{}
+	require.NoError(t, repo.Upsert(t.Context(), &domain.WorkflowDefinition{
+		ID:          "wf-1",
+		Name:        "Default workflow",
+		Description: "Mainline graph",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start-1",
+		Nodes: []domain.WorkflowNode{{
+			ID:         "start-1",
+			Type:       "start",
+			Name:       "Start",
+			ConfigJSON: `{}`,
+		}},
+	}))
+	svc := service.NewWorkflowTemplateService(repo)
+	handler := NewAPIWorkflowsHandler(svc)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.DELETE("/api/workflows/:id", handler.Delete)
+	router.PUT("/api/workflows/:id", handler.Update)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/workflows/wf-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNoContent, w.Code)
+
+	body := `{"name":"Updated workflow","description":"Updated graph","version":"v2","enabled":false,"entry_node_id":"start-1","nodes":[{"id":"start-1","type":"start","name":"Start","config_json":"{}"}],"edges":[]}`
+	req = httptest.NewRequest(http.MethodPut, "/api/workflows/wf-1", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Contains(t, w.Body.String(), domain.ErrNotFound)
+	require.Nil(t, repo.stored)
+	require.Empty(t, repo.list)
 }

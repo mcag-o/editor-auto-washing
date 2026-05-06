@@ -121,6 +121,29 @@ func TestAPITemplatesCreateAndList(t *testing.T) {
 	require.JSONEq(t, `{"title":"string"}`, string(listResp.Data[0].VariablesJSON))
 }
 
+func TestAPITemplatesCreateWithoutIDGeneratesNonEmptyID(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	repo := &templateDefinitionRepoStub{}
+	svc := service.NewTemplateDefinitionService(repo)
+	handler := NewAPITemplatesHandler(svc)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/templates", handler.Create)
+
+	body := `{"name":"Draft prompt","type":"prompt","version":"v1","enabled":true,"content":"Write a draft for {{title}}","variables_json":{"title":"string"},"updated_by":"tester"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/templates", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	var created domain.TemplateDefinition
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
+	require.NotEmpty(t, created.ID)
+	require.NotEqual(t, "", repo.stored.ID)
+}
+
 func TestAPITemplatesGetAndUpdate(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	repo := &templateDefinitionRepoStub{}
@@ -208,4 +231,63 @@ func TestAPITemplatesCreateDeleteAndGetReturnsNotFound(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &listResp))
 	require.Empty(t, listResp.Data)
+}
+
+func TestAPITemplatesUpdateMissingReturnsNotFound(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	repo := &templateDefinitionRepoStub{}
+	svc := service.NewTemplateDefinitionService(repo)
+	handler := NewAPITemplatesHandler(svc)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.PUT("/api/templates/:id", handler.Update)
+
+	body := `{"name":"Repair prompt","type":"stage","version":"v2","enabled":false,"content":"Repair the draft for {{title}}","variables_json":{"title":"string","tone":"string"},"updated_by":"editor"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/templates/tpl-missing", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Contains(t, w.Body.String(), domain.ErrNotFound)
+	require.Nil(t, repo.stored)
+	require.Empty(t, repo.list)
+}
+
+func TestAPITemplatesDeleteThenUpdateReturnsNotFound(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	repo := &templateDefinitionRepoStub{}
+	require.NoError(t, repo.Upsert(t.Context(), &domain.TemplateDefinition{
+		ID:            "tpl-1",
+		Name:          "Draft prompt",
+		Type:          "prompt",
+		Version:       "v1",
+		Enabled:       true,
+		Content:       "Write a draft for {{title}}",
+		VariablesJSON: []byte(`{"title":"string"}`),
+	}))
+	svc := service.NewTemplateDefinitionService(repo)
+	handler := NewAPITemplatesHandler(svc)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.DELETE("/api/templates/:id", handler.Delete)
+	router.PUT("/api/templates/:id", handler.Update)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/templates/tpl-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNoContent, w.Code)
+
+	body := `{"name":"Repair prompt","type":"stage","version":"v2","enabled":false,"content":"Repair the draft for {{title}}","variables_json":{"title":"string","tone":"string"},"updated_by":"editor"}`
+	req = httptest.NewRequest(http.MethodPut, "/api/templates/tpl-1", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Contains(t, w.Body.String(), domain.ErrNotFound)
+	require.Nil(t, repo.stored)
+	require.Empty(t, repo.list)
 }

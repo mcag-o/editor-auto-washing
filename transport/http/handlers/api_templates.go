@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"content-hub/domain"
+	"content-hub/pkg/id"
 	"content-hub/service"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -33,6 +35,9 @@ func (h *APITemplatesHandler) Create(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	if strings.TrimSpace(template.ID) == "" {
+		template.ID = id.New()
 	}
 	if err := h.svc.Upsert(c.Request.Context(), template); err != nil {
 		HandleError(c, err)
@@ -65,7 +70,12 @@ func (h *APITemplatesHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	template.ID = c.Param("id")
+	targetID := c.Param("id")
+	if _, err := h.svc.GetByID(c.Request.Context(), targetID); err != nil {
+		HandleError(c, err)
+		return
+	}
+	template.ID = targetID
 	if err := h.svc.Upsert(c.Request.Context(), template); err != nil {
 		HandleError(c, err)
 		return
