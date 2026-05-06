@@ -138,6 +138,12 @@ func validateProvider(provider *Provider) error {
 		if provider.WebControlRuntime.Audit == nil {
 			missing = append(missing, "WebControlRuntime.Audit")
 		}
+		if provider.WebControlRuntime.Workflows == nil {
+			missing = append(missing, "WebControlRuntime.Workflows")
+		}
+		if provider.WebControlRuntime.Templates == nil {
+			missing = append(missing, "WebControlRuntime.Templates")
+		}
 	}
 	if provider.SourceDocumentRepo == nil {
 		missing = append(missing, "SourceDocumentRepo")
@@ -191,6 +197,8 @@ func (s *Server) registerRoutes() {
 	apiConfigHandler := handlers.NewAPIConfigHandler(s.provider.WebControlRuntime.Config)
 	apiSystemHandler := handlers.NewAPISystemHandler(s.provider.WebControlRuntime.Control)
 	apiAuditHandler := handlers.NewAPIAuditHandler(s.provider.WebControlRuntime.Audit, s.provider.AuditLogRepo)
+	apiWorkflowsHandler := handlers.NewAPIWorkflowsHandler(s.provider.WebControlRuntime.Workflows)
+	apiTemplatesHandler := handlers.NewAPITemplatesHandler(s.provider.WebControlRuntime.Templates)
 	var rewriteRunner interface {
 		Run(context.Context, service.RewriteRunRequest) (*domain.RewritePipelineRun, error)
 	}
@@ -307,6 +315,14 @@ func (s *Server) registerRoutes() {
 		api.GET("/system/status", apiSystemHandler.Status)
 		api.GET("/audit", apiAuditHandler.List)
 		api.GET("/audit/:id", apiAuditHandler.Get)
+		api.POST("/workflows", apiWorkflowsHandler.Create)
+		api.GET("/workflows", apiWorkflowsHandler.List)
+		api.GET("/workflows/:id", apiWorkflowsHandler.Get)
+		api.PUT("/workflows/:id", apiWorkflowsHandler.Update)
+		api.POST("/templates", apiTemplatesHandler.Create)
+		api.GET("/templates", apiTemplatesHandler.List)
+		api.GET("/templates/:id", apiTemplatesHandler.Get)
+		api.PUT("/templates/:id", apiTemplatesHandler.Update)
 	}
 }
 
