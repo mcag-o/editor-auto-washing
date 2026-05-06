@@ -5,7 +5,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 ## Repository Shape
 
 - Active project: repo root Go module `content-hub`
-- Active documented operator surface: browser-based web control plane on `8123` in the root Go runtime
+- Active documented operator surface: browser-based React web control plane on `8123` in the root Go runtime
 - Active documented intake path: browser upload / paste workflow in the root Go runtime
 - Archived reference projects:
   - `Archive/ArticleWashing/` - legacy Python content-hub implementation
@@ -24,7 +24,7 @@ This repository is a post-migration workspace with one active Go codebase at the
 
 - Assume repo root is the default working project unless the task explicitly points into `Archive/`.
 - Do not treat archived docs as source of truth for current commands, APIs, or architecture.
-- Treat the web control plane on port `8123` as the only active documented operator surface for the root Go runtime, and describe its operator UI as Chinese-first unless a task explicitly targets localization details. Treat browser upload / paste as the only supported and documented active-runtime intake path, and present workflow/template management as browser-first behavior on that same surface. Treat business configuration as DB-backed runtime state, not file-first operator setup. Draft + render are the default automated result path. Review/publish are optional later steps, not part of the default automated chain. Folder-intake remains backend/internal compatibility only unless a task explicitly targets it. Do not present legacy RSS/collector/ingestion HTTP or CLI surfaces as current supported entrypoints unless the task explicitly targets historical behavior.
+- Treat the React web control plane on port `8123` as the only active documented operator surface for the root Go runtime, and describe its operator UI as Chinese-first unless a task explicitly targets localization details. Treat browser upload / paste as the only supported and documented active-runtime intake path, and present workflow/template management as browser-first behavior on that same surface. Treat business configuration as DB-backed runtime state, not file-first operator setup. Draft + render are the default automated result path. Review/publish are optional later steps, not part of the default automated chain. Folder-intake remains backend/internal compatibility only unless a task explicitly targets it. Do not present legacy static shell, RSS/collector/ingestion HTTP, or CLI surfaces as current supported operator entrypoints unless the task explicitly targets historical behavior or development/debug support.
 - Preserve Chinese user-facing documentation where it already exists; bilingual docs are normal here.
 - Prefer minimal, local edits over wide migration-era cleanup unless the task explicitly asks for broader normalization.
 - When touching path-sensitive docs or metadata, check whether the target should reference root runtime code or archived legacy code.
@@ -185,7 +185,7 @@ Match the active area you are editing. Do not normalize root Go code and archive
 - Confirm whether the task targets active root Go code or archived reference material.
 - Read the nearest README, config, and tests for the target area before editing.
 - Make the smallest change that fits the existing architecture.
-- When describing operator workflows, default to the browser-based Chinese web control plane on `8123`; describe the CLI as development/debug support unless the task explicitly centers CLI behavior.
+- When describing operator workflows, default to the browser-based Chinese React web control plane on `8123`; describe the CLI as development/debug support unless the task explicitly centers CLI behavior.
 - Re-run the most specific relevant test, then broaden as needed.
 - Mention build or lint results only when that workflow actually exists in the target area.
 - If docs claim migration completeness, operational exposure, or parity, verify the claim against code before editing it.
