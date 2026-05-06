@@ -19,7 +19,13 @@ import {
   type NodeChange,
 } from 'reactflow';
 import { ApiError, createWorkflow, deleteWorkflow, listWorkflows, updateWorkflow } from '../../lib/api/client';
-import { mapApiWorkflowToForm, mapWorkflowFormToApi, type WorkflowFormTemplate } from '../../lib/mappers/workflow';
+import {
+  getWorkflowNodeDisplayType,
+  mapApiWorkflowToForm,
+  mapWorkflowFormToApi,
+  reconcileCreatedWorkflow,
+  type WorkflowFormTemplate,
+} from '../../lib/mappers/workflow';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
 import WorkflowEdgePanel, { type WorkflowEdgeSummary } from './components/WorkflowEdgePanel';
@@ -46,10 +52,11 @@ const typeLabelMap: Record<WorkflowNodeType, string> = {
 };
 
 function buildNodeLabel(data: WorkflowCanvasNodeData) {
-  return `${data.label}\n${typeLabelMap[data.type]}`;
+  const displayTypeLabel = data.rawType && !(data.rawType in typeLabelMap) ? `${data.rawType}（保留）` : typeLabelMap[data.type];
+  return `${data.label}\n${displayTypeLabel}`;
 }
 
-function createNode(id: string, label: string, type: WorkflowNodeType, x: number, y: number, isEntry = false, template = '', model = '', context = ''): Node<WorkflowCanvasNodeData> {
+function createNode(id: string, label: string, type: WorkflowNodeType, x: number, y: number, isEntry = false, template = '', model = '', context = '', rawType?: string): Node<WorkflowCanvasNodeData> {
   const data: WorkflowCanvasNodeData = {
     label,
     type,
@@ -57,6 +64,7 @@ function createNode(id: string, label: string, type: WorkflowNodeType, x: number
     model,
     context,
     isEntry,
+    rawType: rawType || type,
   };
 
   return {
@@ -131,13 +139,14 @@ function decorateWorkflowTemplate(template: WorkflowFormTemplate): WorkflowTempl
       createNode(
         node.id,
         node.data.label,
-        workflowNodeType(node.data.type),
+        getWorkflowNodeDisplayType(node.data.rawType || node.data.type),
         node.position.x,
         node.position.y,
         node.id === template.entryNodeId,
         node.data.template,
         node.data.model,
         node.data.context,
+        node.data.rawType,
       ),
     ),
     edges: template.edges.map((edge) => ({
@@ -334,6 +343,7 @@ export default function WorkflowTemplatesPage() {
               data: {
                 ...node.data,
                 [field]: value,
+                rawType: field === 'type' ? value : node.data.rawType,
               } as WorkflowCanvasNodeData,
             }
           : node,
@@ -422,18 +432,32 @@ export default function WorkflowTemplatesPage() {
     setSuccessMessage(null);
 
     try {
+      const temporaryTemplateId = selectedTemplate.id;
       const payload = mapWorkflowFormToApi({
         ...selectedTemplate,
         updatedBy: 'react-webapp',
       });
-      const saved = selectedTemplate.id.startsWith('workflow-local')
+      const saved = temporaryTemplateId.startsWith('workflow-local')
         ? await createWorkflow(payload)
-        : await updateWorkflow(selectedTemplate.id, payload);
+        : await updateWorkflow(temporaryTemplateId, payload);
       const mapped = decorateWorkflowTemplate(mapApiWorkflowToForm(saved));
-      setTemplates((current) => current.map((template) => (template.id === selectedTemplate.id ? mapped : template)));
-      setSelectedTemplateId(mapped.id);
+
+      if (temporaryTemplateId.startsWith('workflow-local')) {
+        const reconciled = reconcileCreatedWorkflow({
+          created: mapped,
+          selectedTemplateId: temporaryTemplateId,
+          templates,
+          temporaryTemplateId,
+        });
+        setTemplates(reconciled.templates);
+        setSelectedTemplateId(reconciled.selectedTemplateId);
+      } else {
+        setTemplates((current) => current.map((template) => (template.id === temporaryTemplateId ? mapped : template)));
+        setSelectedTemplateId(mapped.id);
+      }
+
       setSelectedNodeId(mapped.entryNodeId ?? mapped.nodes[0]?.id ?? null);
-      setSuccessMessage(selectedTemplate.id.startsWith('workflow-local') ? '工作流模板已创建。' : '工作流模板已保存。');
+      setSuccessMessage(temporaryTemplateId.startsWith('workflow-local') ? '工作流模板已创建。' : '工作流模板已保存。');
     } catch (apiError) {
       setError(apiError instanceof ApiError ? apiError.message : '工作流保存失败');
     } finally {

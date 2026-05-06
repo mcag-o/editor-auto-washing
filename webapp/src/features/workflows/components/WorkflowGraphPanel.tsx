@@ -9,6 +9,7 @@ import type { WorkflowNodeFormValue } from './WorkflowNodeDrawer';
 
 export type WorkflowCanvasNodeData = WorkflowNodeFormValue & {
   isEntry?: boolean;
+  rawType?: string;
 };
 
 type WorkflowGraphPanelProps = {
