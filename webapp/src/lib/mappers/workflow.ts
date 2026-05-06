@@ -10,6 +10,10 @@ import type { WorkflowCanvasNodeData } from '../../features/workflows/components
 
 const supportedWorkflowNodeTypes = new Set(['input', 'rewrite', 'review', 'render']);
 
+export type WorkflowEdgeData = {
+  priority: number;
+};
+
 function normalizeEdgeCondition(condition: string | undefined): string {
   const trimmed = condition?.trim();
   return trimmed ? trimmed : 'always';
@@ -37,7 +41,7 @@ export type WorkflowFormTemplate = {
   entryNodeId: string | null;
   nodeCount: number;
   nodes: Array<Node<WorkflowCanvasNodeData>>;
-  edges: Edge[];
+  edges: Array<Edge<WorkflowEdgeData>>;
 };
 
 export type WorkflowCreateReconcileInput<TTemplate extends { id: string }> = {
@@ -105,7 +109,7 @@ export function mapApiWorkflowToForm(workflow: WorkflowDefinition): WorkflowForm
     } as Node<WorkflowCanvasNodeData>;
   });
 
-  const edges: Edge[] = workflow.edges.map((edge) => ({
+  const edges: Array<Edge<WorkflowEdgeData>> = workflow.edges.map((edge) => ({
     id: buildWorkflowEdgeId({
       source: edge.from_node_id,
       target: edge.to_node_id,
@@ -115,6 +119,9 @@ export function mapApiWorkflowToForm(workflow: WorkflowDefinition): WorkflowForm
     source: edge.from_node_id,
     target: edge.to_node_id,
     label: edge.condition,
+    data: {
+      priority: edge.priority,
+    },
   }));
 
   return {
@@ -147,11 +154,11 @@ export function mapWorkflowFormToApi(template: WorkflowFormTemplate): WorkflowDe
     } satisfies WorkflowNodeConfigPayload),
   }));
 
-  const edges: WorkflowEdgeDefinition[] = template.edges.map((edge, index) => ({
+  const edges: WorkflowEdgeDefinition[] = template.edges.map((edge) => ({
     from_node_id: edge.source,
     to_node_id: edge.target,
     condition: edge.label ? String(edge.label) : 'always',
-    priority: index,
+    priority: edge.data?.priority ?? 0,
   }));
 
   return {

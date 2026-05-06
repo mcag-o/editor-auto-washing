@@ -101,8 +101,8 @@ describe('workflow mapper contract', () => {
         },
       ],
       edges: [
-        { id: 'edge-b', source: 'node-2', target: 'node-1' },
-        { id: 'edge-a', source: 'node-1', target: 'node-2' },
+        { id: 'edge-b', source: 'node-2', target: 'node-1', data: { priority: 0 } },
+        { id: 'edge-a', source: 'node-1', target: 'node-2', data: { priority: 1 } },
       ],
     });
 
@@ -152,6 +152,46 @@ describe('workflow mapper contract', () => {
     const api = mapWorkflowFormToApi(form);
 
     expect(api.edges[0]?.condition).toBe('retry');
+  });
+
+  it('preserves backend edge priority through a load and save round-trip', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'wf-priority',
+      name: 'Priority Workflow',
+      description: 'verifies edge priority preservation',
+      version: 'v1',
+      enabled: true,
+      entry_node_id: 'node-1',
+      updated_by: 'tester',
+      updated_at: '2026-05-07T00:00:00Z',
+      nodes: [
+        {
+          id: 'node-1',
+          type: 'input',
+          name: 'Input',
+          config_json: JSON.stringify({ label: 'Input', type: 'input' }),
+        },
+        {
+          id: 'node-2',
+          type: 'rewrite',
+          name: 'Priority Handler',
+          config_json: JSON.stringify({ label: 'Priority Handler', type: 'rewrite' }),
+        },
+      ],
+      edges: [
+        {
+          from_node_id: 'node-1',
+          to_node_id: 'node-2',
+          condition: 'retry',
+          priority: 7,
+        },
+      ],
+    };
+
+    const form = mapApiWorkflowToForm(workflow);
+    const api = mapWorkflowFormToApi(form);
+
+    expect(api.edges[0]?.priority).toBe(7);
   });
 
   it('defaults a newly created edge condition to always when no prior condition exists', () => {
@@ -293,6 +333,7 @@ describe('workflow mapper contract', () => {
 
     expect(api.edges).toHaveLength(2);
     expect(api.edges.map((edge) => edge.condition)).toEqual(['retry', 'fallback']);
+    expect(api.edges.map((edge) => edge.priority)).toEqual([0, 1]);
   });
 
   it('does not rely on source-target alone for local edge identity', () => {

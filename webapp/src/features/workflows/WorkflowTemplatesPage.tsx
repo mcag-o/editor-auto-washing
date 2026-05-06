@@ -25,6 +25,7 @@ import {
   mapApiWorkflowToForm,
   mapWorkflowFormToApi,
   reconcileCreatedWorkflow,
+  type WorkflowEdgeData,
   type WorkflowFormTemplate,
 } from '../../lib/mappers/workflow';
 import PageToolbar from '../../components/PageToolbar';
@@ -43,6 +44,33 @@ function createLocalId(prefix: string) {
   }
 
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function createLocalWorkflowEdge(input: {
+  source: string;
+  target: string;
+  condition?: string;
+  priority: number;
+}): Edge<WorkflowEdgeData> {
+  const condition = input.condition ?? 'always';
+  const uniqueToken = createLocalId('edge-local');
+
+  return {
+    id: `${buildWorkflowEdgeId({
+      source: input.source,
+      target: input.target,
+      condition,
+      priority: input.priority,
+    })}-${uniqueToken}`,
+    source: input.source,
+    target: input.target,
+    label: condition,
+    data: {
+      priority: input.priority,
+    },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#0f62fe' },
+    style: { stroke: '#0f62fe', strokeWidth: 2 },
+  };
 }
 
 const typeLabelMap: Record<WorkflowNodeType, string> = {
@@ -407,27 +435,19 @@ export default function WorkflowTemplatesPage() {
     }
 
     updateSelectedTemplate((template) => {
-      const samePairCount = template.edges.filter((edge) => edge.source === source && edge.target === target).length;
-      const nextPriority = samePairCount;
+      const nextPriority = template.edges.reduce((maxPriority, edge) => Math.max(maxPriority, edge.data?.priority ?? -1), -1) + 1;
       const defaultCondition = 'always';
 
       return {
         ...template,
         updatedAt: '刚刚',
         edges: addEdge(
-          {
-            id: buildWorkflowEdgeId({
-              source,
-              target,
-              condition: defaultCondition,
-              priority: nextPriority,
-            }),
+          createLocalWorkflowEdge({
             source,
             target,
-            label: defaultCondition,
-            markerEnd: { type: MarkerType.ArrowClosed, color: '#0f62fe' },
-            style: { stroke: '#0f62fe', strokeWidth: 2 },
-          },
+            condition: defaultCondition,
+            priority: nextPriority,
+          }),
           template.edges,
         ),
       };
