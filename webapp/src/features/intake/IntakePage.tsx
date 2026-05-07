@@ -122,7 +122,7 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
     <Stack spacing={3}>
       <PageToolbar
         title="文章导入"
-        description="当前仅保留浏览器文件上传与文本粘贴入口，导入后写入文章队列并进入默认草稿生成与渲染链路。"
+        description="当前仅保留浏览器文件上传与文本粘贴入口，导入后写入文章队列并进入默认 draft + render 自动链路。"
         leading={<StatusChip status="active" label="浏览器导入" />}
         actions={
           <>
@@ -139,7 +139,7 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
             <StatusChip status="completed" label="支持 .txt / .md / .json" />
             <StatusChip status="disabled" label="仅支持浏览器上传与粘贴" />
               <Typography variant="body2" color="text.secondary">
-                导入成功后会新增文章记录，并停在默认草稿生成与渲染结果。
+                导入成功后会新增文章记录，并停在默认 draft + render 结果。
               </Typography>
           </Stack>
         }
@@ -154,7 +154,7 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
       >
         <PageCard
           title="文件上传"
-          description="适用于批量导入已有原文文件，提交后会进入当前浏览器导入主链路。"
+          description="适用于批量导入已有原文文件，提交后会进入 `8123` 浏览器导入主链路。"
           action={<StatusChip status={uploading ? 'active' : selectedFiles.length > 0 ? 'pending' : 'disabled'} label={uploading ? '上传中' : selectedFiles.length > 0 ? '待提交' : '待选择'} />}
         >
           <Stack spacing={2}>
@@ -223,7 +223,7 @@ export default function IntakePage({ onNavigate }: IntakePageProps) {
 
         <PageCard
           title="文本粘贴"
-          description="适合临时导入单篇原文，提交后会进入当前浏览器导入主链路。"
+          description="适合临时导入单篇原文，提交后会进入 `8123` 浏览器导入主链路。"
           action={<StatusChip status={submittingPaste ? 'active' : pasteValue.trim() ? 'pending' : 'disabled'} label={submittingPaste ? '提交中' : pasteValue.trim() ? '待提交' : '待输入'} />}
         >
           <Stack spacing={2}>

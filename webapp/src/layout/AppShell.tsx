@@ -78,8 +78,8 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
           <Typography variant="h4" sx={{ color: '#ffffff' }}>
             Content Hub
           </Typography>
-            <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
-              统一处理上传/粘贴导入、草稿渲染、模板配置与操作审计。
+              <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
+              统一处理上传/粘贴导入、工作流/模板管理、draft + render 与操作审计。
             </Typography>
         </Stack>
       </Box>
@@ -151,7 +151,7 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
                 Content Hub 控制台
               </Typography>
               <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.72), display: { xs: 'none', sm: 'block' } }}>
-                中文操作台，默认自动结果停在草稿与渲染
+                中文操作台，默认自动结果停在 draft + render
               </Typography>
             </Box>
           </Stack>

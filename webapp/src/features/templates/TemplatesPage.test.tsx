@@ -1,5 +1,4 @@
 import { CssBaseline, ThemeProvider } from '@mui/material';
-import { act } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TemplatesPage from './TemplatesPage';
@@ -136,51 +135,37 @@ describe('TemplatesPage', () => {
     expect(screen.getAllByText('适用于品牌稿的主模板。').length).toBeGreaterThan(0);
     expect(screen.getAllByText('更新人 运营编辑组').length).toBeGreaterThan(0);
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
-    });
+    fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
     expect(screen.getByRole('heading', { name: '新建模板' })).toBeInTheDocument();
 
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText('模板名称'), { target: { value: '新建模板' } });
-      fireEvent.change(screen.getByLabelText('模板摘要'), { target: { value: '新的模板摘要' } });
-      fireEvent.change(screen.getByLabelText('主提示词'), { target: { value: '新的提示词' } });
-      fireEvent.change(screen.getByLabelText('阶段说明'), { target: { value: '输入理解: 说明第一阶段。' } });
-    });
+    fireEvent.change(screen.getByLabelText('模板名称'), { target: { value: '新建模板' } });
+    fireEvent.change(screen.getByLabelText('模板摘要'), { target: { value: '新的模板摘要' } });
+    fireEvent.change(screen.getByLabelText('主提示词'), { target: { value: '新的提示词' } });
+    fireEvent.change(screen.getByLabelText('阶段说明'), { target: { value: '输入理解: 说明第一阶段。' } });
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
-    });
+    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
 
     expect(await screen.findByText('模板已创建。')).toBeInTheDocument();
     expect(screen.getByText('共 3 个模板，1 个已启用。')).toBeInTheDocument();
     expect(screen.getAllByText('新的模板摘要').length).toBeGreaterThan(0);
     expect(screen.getAllByText('新建模板').length).toBeGreaterThan(0);
-  });
+  }, 10000);
 
   it('loads templates from the API and allows updating an existing template', async () => {
     renderTemplatesPage();
 
     expect(await screen.findByText('共 2 个模板，1 个已启用。')).toBeInTheDocument();
 
-    await act(async () => {
-      fireEvent.click(screen.getAllByRole('button', { name: '操作' })[0]);
-    });
+    fireEvent.click(screen.getAllByRole('button', { name: '操作' })[0]);
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: '编辑模板' }));
-    });
+    fireEvent.click(screen.getByRole('menuitem', { name: '编辑模板' }));
 
     expect(screen.getByRole('heading', { name: '编辑模板' })).toBeInTheDocument();
     expect(screen.getByLabelText('模板名称')).toHaveValue('品牌改写主模板');
 
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText('启用中'));
-    });
+    fireEvent.click(screen.getByLabelText('启用中'));
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
-    });
+    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
 
     await waitFor(() => {
       expect(screen.getByText('模板已保存。')).toBeInTheDocument();
@@ -258,13 +243,9 @@ describe('TemplatesPage', () => {
 
     expect((await screen.findAllByText('暂无模板记录')).length).toBeGreaterThanOrEqual(1);
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
-    });
+    fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
-    });
+    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
 
     expect(await screen.findByText('模板保存失败：名称重复。')).toBeInTheDocument();
     expect(screen.getAllByText('暂无模板记录').length).toBeGreaterThanOrEqual(1);

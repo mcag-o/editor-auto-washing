@@ -281,9 +281,7 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(screen.getByText('当前节点')).toBeInTheDocument();
     expect(screen.getByText('node-input')).toBeInTheDocument();
 
-    await act(async () => {
-      fireEvent.click(rewriteNode);
-    });
+    fireEvent.click(rewriteNode);
 
     expect(rewriteNode).toHaveAttribute('aria-pressed', 'true');
     expect(inputNode).toHaveAttribute('aria-pressed', 'false');
@@ -291,9 +289,7 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(screen.getByText('入口节点：导入文章')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '设为入口节点' })).toBeEnabled();
 
-    await act(async () => {
-      fireEvent.click(firstEdge);
-    });
+    fireEvent.click(firstEdge);
 
     const leftColumn = screen.getByTestId('workflow-list-column');
     const sidePanel = screen.getByTestId('workflow-side-panel');
@@ -310,9 +306,7 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(screen.getByRole('button', { name: '设为入口节点' })).toBeDisabled();
     expect(screen.queryByText('请在中间画布点击一个节点，再在此编辑节点名称、类型、模板、模型和上下文配置。')).not.toBeInTheDocument();
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '清空画布选择' }));
-    });
+    fireEvent.click(screen.getByRole('button', { name: '清空画布选择' }));
 
     expect(screen.getByText('当前未选择节点')).toBeInTheDocument();
     expect(screen.getByText('当前未选择连线')).toBeInTheDocument();

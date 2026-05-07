@@ -309,7 +309,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
                 {[
                   '启动会按当前并发上限拉起主链路，仅对未启动状态生效。',
                   '暂停会提交协作暂停请求，不会强制中断已在执行中的任务。',
-                  '恢复只对已暂停状态生效，会继续处理当前待处理队列；审核与发布仍保持人工后续步骤。',
+                  '恢复只对已暂停状态生效，会继续处理当前待处理队列；默认自动结果仍停在 draft + render，审核与发布保持人工后续步骤。',
                 ].map((item) => (
                   <Typography key={item} variant="body2" color="text.secondary">
                     {item}

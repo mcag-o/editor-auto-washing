@@ -257,7 +257,7 @@ export default function TemplatesPage() {
           </Stack>
         }
         title="模板管理"
-        description="在浏览器中管理真实模板记录，并完成列表、预览、编辑、启停与删除操作。"
+        description="在 `8123` 浏览器界面中管理真实模板记录，并完成列表、预览、编辑、启停与删除操作。"
         actions={
           <>
             <StatusChip status={selectedTemplate?.enabled ? 'active' : 'disabled'} label={selectedTemplate?.enabled ? '已启用' : '已停用'} />

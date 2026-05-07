@@ -119,7 +119,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     <Stack spacing={3}>
       <PageToolbar
         title="控制台总览"
-        description="汇总系统状态、文章队列、模板与操作留痕，并强调默认草稿+渲染结果。"
+        description="汇总系统状态、文章队列、工作流/模板管理与操作留痕，并强调默认 draft + render 结果。"
         leading={<StatusChip status="active" label="运营总览" />}
         actions={
           <>
@@ -173,7 +173,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
           action={<StatusChip status={failedCount > 0 ? 'failed' : 'pending'} label="需持续关注" />}
         >
           <Stack spacing={1.5}>
-            <Alert severity="info">默认自动结果停在草稿生成与渲染，审核发布作为后续人工步骤。</Alert>
+             <Alert severity="info">默认自动结果停在 draft + render，审核发布作为后续人工步骤。</Alert>
             {alerts.map((item) => (
               <Stack
                 key={item.key}

@@ -610,7 +610,7 @@ export default function WorkflowTemplatesPage() {
     <Stack spacing={3}>
       <PageToolbar
         title="工作流模板"
-        description="使用工作流列表与保存接口维护流程定义，并在画布中编辑节点与连线。"
+        description="在 `8123` 浏览器界面中维护真实工作流定义，并在 React Flow 画布中编辑节点与连线。"
         leading={<StatusChip status="active" label="React Flow 编辑器" />}
         actions={
           <>
