@@ -247,6 +247,16 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
     { key: 'failed', label: '失败' },
   ] as const;
 
+  const detailStatus = stagesLoading
+    ? { status: 'pending' as const, label: '加载中' }
+    : selectedArticleId && detailError
+      ? { status: 'failed' as const, label: '加载失败' }
+      : stageDetail
+        ? { status: 'active' as const, label: '已加载' }
+        : selectedArticleId
+          ? { status: 'pending' as const, label: '待加载' }
+          : { status: 'disabled' as const, label: '未选择' };
+
   return (
     <>
       <Stack spacing={3}>
@@ -438,7 +448,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
           testId="articles-detail-card"
           title="阶段详情"
           description="按选中文章展示当前运行批次、当前阶段与每个阶段的执行状态。"
-          action={stagesLoading ? <CircularProgress size={18} /> : <StatusChip status={stageDetail ? 'active' : 'disabled'} label={stageDetail ? '已加载' : '未选择'} />}
+          action={stagesLoading ? <CircularProgress size={18} /> : <StatusChip status={detailStatus.status} label={detailStatus.label} />}
         >
           <Stack spacing={1.5}>
             {!selectedArticleId ? (

@@ -4,6 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ControlPage from './ControlPage';
 import theme from '../../theme/theme';
 
+function deferredResponse() {
+  let resolve: (response: Response) => void;
+  const promise = new Promise<Response>((res) => {
+    resolve = res;
+  });
+
+  return {
+    promise,
+    resolve: resolve!,
+  };
+}
+
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -114,5 +126,69 @@ describe('ControlPage', () => {
     expect(screen.getByText('启动会按当前并发上限拉起主链路，仅对未启动状态生效。')).toBeInTheDocument();
     expect(screen.getByText('暂停会提交协作暂停请求，不会强制中断已在执行中的任务。')).toBeInTheDocument();
     expect(screen.getByText('恢复只对已暂停状态生效，会继续处理当前待处理队列。')).toBeInTheDocument();
+  });
+
+  it('does not show normal stopped or zero-value semantics while loading', async () => {
+    const pendingStatus = deferredResponse();
+    const pendingArticles = deferredResponse();
+
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/system/status') && method === 'GET') {
+        return pendingStatus.promise;
+      }
+
+      if (url.endsWith('/api/articles') && method === 'GET') {
+        return pendingArticles.promise;
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+
+    renderControlPage();
+
+    expect(screen.getAllByText('加载中').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('未启动')).not.toBeInTheDocument();
+    expect(screen.queryByText('待启动')).not.toBeInTheDocument();
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
+    expect(screen.queryByText('0 条')).not.toBeInTheDocument();
+  });
+
+  it('does not fall back to normal stopped or zero-value semantics on API failure', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/system/status') && method === 'GET') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ message: '系统状态加载失败，请稍后重试。' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+
+      if (url.endsWith('/api/articles') && method === 'GET') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ message: '文章队列加载失败，请稍后重试。' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+
+    renderControlPage();
+
+    expect(await screen.findByText('系统状态加载失败，请稍后重试。')).toBeInTheDocument();
+    expect(screen.getAllByText('加载失败').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('未启动')).not.toBeInTheDocument();
+    expect(screen.queryByText('待启动')).not.toBeInTheDocument();
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
+    expect(screen.queryByText('0 条')).not.toBeInTheDocument();
   });
 });

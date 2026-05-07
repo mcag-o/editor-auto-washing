@@ -166,6 +166,65 @@ describe('ArticlesPage', () => {
     expect(await within(detailCard).findByText('阶段详情加载失败：运行记录不存在。')).toBeInTheDocument();
   });
 
+  it('shows a failure action status when an article is selected but stages fail to load', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/articles') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({
+            data: [
+              {
+                id: 'article-1',
+                source_type: 'upload',
+                original_filename: 'a.md',
+                original_path: '',
+                archived_path: '',
+                file_type: 'markdown',
+                title: '测试文章',
+                body: '正文内容',
+                summary: '',
+                metadata: {},
+                hash: 'hash-1',
+                imported_at: '2026-05-07T03:00:00Z',
+                status: 'completed',
+                workspace_article_id: '',
+                rewrite_run_id: '',
+                claimed_by: '',
+                claimed_at: null,
+                processing_started_at: null,
+                completed_at: '2026-05-07T03:10:00Z',
+                error_summary: '',
+              },
+            ],
+          }),
+        );
+      }
+
+      if (url.endsWith('/api/articles/article-1/stages') && method === 'GET') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ message: '阶段详情加载失败：运行记录不存在。' }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+
+    renderArticlesPage();
+
+    expect(await screen.findByText('测试文章')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('row', { name: /article-1/i }));
+
+    const detailCard = screen.getByTestId('articles-detail-card');
+    expect(await within(detailCard).findByText('阶段详情加载失败：运行记录不存在。')).toBeInTheDocument();
+    expect(within(detailCard).getByText('加载失败')).toBeInTheDocument();
+    expect(within(detailCard).queryByText('未选择')).not.toBeInTheDocument();
+  });
+
   it('shows explicit detail and queue action wording for operators', async () => {
     vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
