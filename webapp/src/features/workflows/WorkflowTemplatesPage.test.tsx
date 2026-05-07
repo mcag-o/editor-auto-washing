@@ -64,11 +64,7 @@ vi.mock('reactflow', async () => {
   }
 
   function MockControls() {
-    return (
-      <button type="button" onClick={() => fitViewSpy()}>
-        画布适配视图
-      </button>
-    );
+    return <div data-testid="mock-reactflow-controls" />;
   }
 
   function passthrough({ children }: { children?: React.ReactNode }) {
@@ -302,9 +298,10 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(within(toolbar).getByText('已选择节点: 主文改写')).toBeInTheDocument();
     expect(within(toolbar).getByRole('button', { name: '设为入口节点' })).toBeEnabled();
     expect(within(toolbar).getByRole('button', { name: '删除节点' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: '画布适配视图' })).not.toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '画布适配视图' }));
+      fireEvent.click(within(toolbar).getByRole('button', { name: '适配视图' }));
     });
 
     expect(fitViewSpy).toHaveBeenCalledTimes(1);
@@ -331,5 +328,32 @@ describe('WorkflowTemplatesPage editor interactions', () => {
 
     expect(screen.queryByTestId('node-node-rewrite')).not.toBeInTheDocument();
     expect(within(toolbar).getByText('已选择节点: 导入文章')).toBeInTheDocument();
+  });
+
+  it('clears edge selection when save returns focus to a node', async () => {
+    const api = await import('../../lib/api/client');
+    vi.mocked(api.updateWorkflow).mockResolvedValue(buildSavedWorkflow('node-input'));
+
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('edge-edge-node-input-node-rewrite-always-0'));
+    });
+
+    expect(screen.getByTestId('edge-edge-node-input-node-rewrite-always-0')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('已选择连线: 导入文章 -> 主文改写')).toBeInTheDocument();
+    expect(screen.getByText('当前未选择节点')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+    });
+
+    expect(await screen.findByText('工作流模板已保存。')).toBeInTheDocument();
+    expect(screen.getByTestId('node-node-input')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('edge-edge-node-input-node-rewrite-always-0')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('已选择节点: 导入文章')).toBeInTheDocument();
+    expect(screen.getByText('已选择连线: 当前未选择连线')).toBeInTheDocument();
   });
 });

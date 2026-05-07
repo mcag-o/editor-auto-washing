@@ -531,6 +531,7 @@ export default function WorkflowTemplatesPage() {
       }
 
       setSelectedNodeId(mapped.entryNodeId ?? mapped.nodes[0]?.id ?? null);
+      setSelectedEdgeId(null);
       setSuccessMessage(temporaryTemplateId.startsWith('workflow-local') ? '工作流模板已创建。' : '工作流模板已保存。');
     } catch (apiError) {
       setError(apiError instanceof ApiError ? apiError.message : '工作流保存失败');
@@ -609,7 +610,6 @@ export default function WorkflowTemplatesPage() {
       <WorkflowToolbar
         nodeCount={selectedTemplate?.nodes.length ?? 0}
         edgeCount={selectedTemplate?.edges.length ?? 0}
-        hasSelection={Boolean(selectedNodeId)}
         canFitView={Boolean(selectedTemplate)}
         canDeleteNode={(selectedTemplate?.nodes.length ?? 0) > 0 && Boolean(selectedNodeId)}
         canSetEntryNode={Boolean(selectedNodeId)}

@@ -16,7 +16,6 @@ type WorkflowToolbarProps = {
   entryNodeLabel: string | null;
   selectedEdgeLabel: string | null;
   selectedNodeLabel: string | null;
-  hasSelection: boolean;
   nodeCount: number;
   edgeCount: number;
   onAddNode: () => void;
@@ -32,7 +31,6 @@ export default function WorkflowToolbar({
   entryNodeLabel,
   selectedEdgeLabel,
   selectedNodeLabel,
-  hasSelection,
   nodeCount,
   edgeCount,
   onAddNode,
