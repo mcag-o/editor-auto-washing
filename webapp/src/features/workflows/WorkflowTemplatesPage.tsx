@@ -41,8 +41,18 @@ import WorkflowGraphPanel, { type WorkflowCanvasNodeData } from './components/Wo
 import WorkflowListPanel, { type WorkflowTemplateSummary } from './components/WorkflowListPanel';
 import WorkflowNodeDrawer, { commonWorkflowNodeTypes, type WorkflowNodeFormValue, type WorkflowNodeType } from './components/WorkflowNodeDrawer';
 import WorkflowToolbar from './components/WorkflowToolbar';
+import { appendDownstreamNode, deleteSelectedNode, duplicateSelectedNode } from './editor/commands';
+import { createWorkflowDraftSignature, getInitialWorkflowSelection, isWorkflowDraftDirty } from './editor/state';
 
 type WorkflowTemplate = WorkflowFormTemplate & { updatedAtLabel: string };
+
+function withDirtyTimestamp<T extends WorkflowTemplate>(template: T): T {
+  return {
+    ...template,
+    updatedAt: '刚刚',
+    updatedAtLabel: '刚刚',
+  };
+}
 
 function createLocalId(prefix: string) {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -77,6 +87,27 @@ export function createLocalWorkflowEdge(input: {
     markerEnd: { type: MarkerType.ArrowClosed, color: '#0f62fe' },
     style: { stroke: '#0f62fe', strokeWidth: 2 },
   };
+}
+
+function updateWorkflowEdgeIdPreservingLocalUniqueness(edge: Edge<WorkflowEdgeData>, input: { condition: string; priority: number }) {
+  const currentContractId = buildWorkflowEdgeId({
+    source: edge.source,
+    target: edge.target,
+    condition: edge.label ? String(edge.label) : 'always',
+    priority: edge.data?.priority ?? 0,
+  });
+  const nextContractId = buildWorkflowEdgeId({
+    source: edge.source,
+    target: edge.target,
+    condition: input.condition,
+    priority: input.priority,
+  });
+
+  if (!edge.id.startsWith(`${currentContractId}-`)) {
+    return nextContractId;
+  }
+
+  return `${nextContractId}${edge.id.slice(currentContractId.length)}`;
 }
 
 const typeLabelMap: Record<WorkflowNodeType, string> = {
@@ -207,6 +238,47 @@ function decorateWorkflowTemplate(template: WorkflowFormTemplate): WorkflowTempl
   };
 }
 
+function getSelectionAfterSave(
+  template: WorkflowTemplate,
+  selection: { selectedNodeId: string | null; selectedEdgeId: string | null },
+  previousTemplate: WorkflowTemplate | null,
+) {
+  if (selection.selectedEdgeId && template.edges.some((edge) => edge.id === selection.selectedEdgeId)) {
+    return {
+      selectedNodeId: null,
+      selectedEdgeId: selection.selectedEdgeId,
+    };
+  }
+
+  if (selection.selectedEdgeId && previousTemplate) {
+    const previousEdge = previousTemplate.edges.find((edge) => edge.id === selection.selectedEdgeId);
+    if (previousEdge) {
+      const canonicalEdgeId = buildWorkflowEdgeId({
+        source: previousEdge.source,
+        target: previousEdge.target,
+        condition: previousEdge.label ? String(previousEdge.label) : 'always',
+        priority: previousEdge.data?.priority ?? 0,
+      });
+      const matchingSavedEdge = template.edges.find((edge) => edge.id === canonicalEdgeId);
+      if (matchingSavedEdge) {
+        return {
+          selectedNodeId: null,
+          selectedEdgeId: matchingSavedEdge.id,
+        };
+      }
+    }
+  }
+
+  if (selection.selectedNodeId && template.nodes.some((node) => node.id === selection.selectedNodeId)) {
+    return {
+      selectedNodeId: selection.selectedNodeId,
+      selectedEdgeId: null,
+    };
+  }
+
+  return getInitialWorkflowSelection(template);
+}
+
 export default function WorkflowTemplatesPage() {
   const theme = useTheme();
   const isNarrowLayout = useMediaQuery(theme.breakpoints.down('lg'));
@@ -221,6 +293,8 @@ export default function WorkflowTemplatesPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [fitViewRequest, setFitViewRequest] = useState(0);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [createMenuMode, setCreateMenuMode] = useState<'create' | 'append' | null>(null);
+  const [baselineByTemplateId, setBaselineByTemplateId] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (isNarrowLayout) {
@@ -236,11 +310,14 @@ export default function WorkflowTemplatesPage() {
       const items = await listWorkflows();
       const mapped = items.map(mapApiWorkflowToForm).map(decorateWorkflowTemplate);
       setTemplates(mapped);
+      setBaselineByTemplateId(Object.fromEntries(mapped.map((template) => [template.id, createWorkflowDraftSignature(template)])));
       const nextId = selectedTemplateId || mapped[0]?.id || '';
       setSelectedTemplateId(nextId);
       const selected = mapped.find((template) => template.id === nextId) ?? mapped[0];
-      setSelectedNodeId(selected?.entryNodeId ?? selected?.nodes[0]?.id ?? null);
-      setSelectedEdgeId(null);
+      const initialSelection = getInitialWorkflowSelection(selected);
+      setSelectedNodeId(initialSelection.selectedNodeId);
+      setSelectedEdgeId(initialSelection.selectedEdgeId);
+      setCreateMenuMode(null);
     } catch (apiError) {
       setLoadError(apiError instanceof ApiError ? apiError.message : '工作流列表加载失败');
     } finally {
@@ -256,6 +333,8 @@ export default function WorkflowTemplatesPage() {
     () => templates.find((template) => template.id === selectedTemplateId) ?? templates[0],
     [selectedTemplateId, templates],
   );
+  const selectedTemplateBaseline = selectedTemplate ? baselineByTemplateId[selectedTemplate.id] ?? null : null;
+  const isSelectedTemplateDirty = selectedTemplate ? isWorkflowDraftDirty(selectedTemplate, selectedTemplateBaseline) : false;
 
   const selectedNode = selectedTemplate?.nodes.find((node) => node.id === selectedNodeId) ?? null;
   const selectedEdge = selectedTemplate?.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
@@ -279,6 +358,7 @@ export default function WorkflowTemplatesPage() {
     id: template.id,
     name: template.name,
     description: template.description,
+    isDirty: isWorkflowDraftDirty(template, baselineByTemplateId[template.id] ?? null),
     nodeCount: template.nodes.length,
     updatedAt: template.updatedAtLabel,
   }));
@@ -289,6 +369,7 @@ export default function WorkflowTemplatesPage() {
         sourceLabel: selectedTemplate.nodes.find((node) => node.id === selectedEdge.source)?.data.label ?? selectedEdge.source,
         targetLabel: selectedTemplate.nodes.find((node) => node.id === selectedEdge.target)?.data.label ?? selectedEdge.target,
         condition: selectedEdge.label ? String(selectedEdge.label) : 'always',
+        priority: selectedEdge.data?.priority ?? 0,
       }
     : null;
 
@@ -327,36 +408,118 @@ export default function WorkflowTemplatesPage() {
 
     setTemplates((current) => [...current, newTemplate]);
     setSelectedTemplateId(nextId);
-    setSelectedNodeId(seedNodeId);
-    setSelectedEdgeId(null);
+    const initialSelection = getInitialWorkflowSelection(newTemplate);
+    setSelectedNodeId(initialSelection.selectedNodeId);
+    setSelectedEdgeId(initialSelection.selectedEdgeId);
+    setCreateMenuMode(null);
   };
 
   const handleSelectTemplate = (templateId: string) => {
+    if (selectedTemplate && templateId !== selectedTemplate.id && isSelectedTemplateDirty) {
+      const shouldContinue = window.confirm('当前模板有未保存更改，切换后将丢失这些修改。是否继续？');
+      if (!shouldContinue) {
+        return;
+      }
+    }
+
     const nextTemplate = templates.find((template) => template.id === templateId);
     if (!nextTemplate) {
       return;
     }
 
     setSelectedTemplateId(templateId);
-    setSelectedNodeId(nextTemplate.entryNodeId ?? nextTemplate.nodes[0]?.id ?? null);
-    setSelectedEdgeId(null);
+    const initialSelection = getInitialWorkflowSelection(nextTemplate);
+    setSelectedNodeId(initialSelection.selectedNodeId);
+    setSelectedEdgeId(initialSelection.selectedEdgeId);
+    setCreateMenuMode(null);
+  };
+
+  const handleRefreshWorkflows = () => {
+    if (selectedTemplate && isSelectedTemplateDirty) {
+      const shouldContinue = window.confirm('当前模板有未保存更改，刷新后将丢失这些修改。是否继续？');
+      if (!shouldContinue) {
+        return;
+      }
+    }
+
+    void loadWorkflows();
   };
 
   const handleAddNode = () => {
     if (!selectedTemplate) {
       return;
     }
+
+    if (!selectedNodeId || selectedEdgeId) {
+      setCreateMenuMode('create');
+      return;
+    }
+
+    const result = appendDownstreamNode({
+      template: selectedTemplate,
+      selection: { selectedNodeId, selectedEdgeId },
+      createNodeId: () => createLocalId(`${selectedTemplate.id}-node`),
+      createNode: ({ id, index, position }) => createNode(id, `新节点 ${index}`, 'rewrite', position.x, position.y),
+      createEdge: createLocalWorkflowEdge,
+    });
+
+    updateSelectedTemplate(() => withDirtyTimestamp(result.template as WorkflowTemplate));
+    setSelectedNodeId(result.selection.selectedNodeId);
+    setSelectedEdgeId(result.selection.selectedEdgeId);
+    setCreateMenuMode(null);
+  };
+
+  const handleCreateNodeFromCanvas = (nodeType: WorkflowNodeType) => {
+    if (!selectedTemplate) {
+      return;
+    }
+
     const nextIndex = selectedTemplate.nodes.length + 1;
     const nextNodeId = createLocalId(`${selectedTemplate.id}-node`);
-    const newNode = createNode(nextNodeId, `新节点 ${nextIndex}`, 'rewrite', 120 + (nextIndex % 3) * 220, 120 + Math.floor(nextIndex / 3) * 180);
+    const nextNodeLabel = `${nodeType === 'input' ? '导入' : nodeType === 'rewrite' ? '改写' : nodeType === 'review' ? '审核' : '渲染'}节点 ${nextIndex}`;
+    const anchorNode = selectedTemplate.nodes[selectedTemplate.nodes.length - 1] ?? null;
+    const nextNode = createNode(
+      nextNodeId,
+      nextNodeLabel,
+      nodeType,
+      anchorNode ? anchorNode.position.x + 240 : 120,
+      anchorNode?.position.y ?? 220,
+      false,
+      '',
+      '',
+      '',
+      nodeType,
+    );
 
-    updateSelectedTemplate((template) => ({
-      ...template,
-      updatedAt: '刚刚',
-      nodes: [...template.nodes, newNode],
-    }));
+    updateSelectedTemplate((template) =>
+      withDirtyTimestamp({
+        ...template,
+        nodes: [...template.nodes, nextNode],
+        nodeCount: template.nodes.length + 1,
+      }),
+    );
     setSelectedNodeId(nextNodeId);
     setSelectedEdgeId(null);
+    setCreateMenuMode(null);
+  };
+
+  const handleAppendNodeFromCanvas = (nodeType: WorkflowNodeType) => {
+    if (!selectedTemplate) {
+      return;
+    }
+
+    const result = appendDownstreamNode({
+      template: selectedTemplate,
+      selection: { selectedNodeId, selectedEdgeId },
+      createNodeId: () => createLocalId(`${selectedTemplate.id}-node`),
+      createNode: ({ id, index, position }) => createNode(id, `${nodeType === 'input' ? '导入' : nodeType === 'rewrite' ? '改写' : nodeType === 'review' ? '审核' : '渲染'}节点 ${index}`, nodeType, position.x, position.y),
+      createEdge: createLocalWorkflowEdge,
+    });
+
+    updateSelectedTemplate(() => withDirtyTimestamp(result.template as WorkflowTemplate));
+    setSelectedNodeId(result.selection.selectedNodeId);
+    setSelectedEdgeId(result.selection.selectedEdgeId);
+    setCreateMenuMode(null);
   };
 
   const handleDeleteNode = () => {
@@ -364,22 +527,17 @@ export default function WorkflowTemplatesPage() {
       return;
     }
 
-    updateSelectedTemplate((template) => {
-      const nextNodes = template.nodes.filter((node) => node.id !== selectedNodeId);
-      const nextEdges = template.edges.filter((edge) => edge.source !== selectedNodeId && edge.target !== selectedNodeId);
-      const nextEntryNodeId = template.entryNodeId === selectedNodeId ? nextNodes[0]?.id ?? null : template.entryNodeId;
-      return {
-        ...template,
-        updatedAt: '刚刚',
-        entryNodeId: nextEntryNodeId,
-        nodes: syncNodePresentation(nextNodes, nextEntryNodeId),
-        edges: nextEdges,
-      };
+    const result = deleteSelectedNode({
+      template: selectedTemplate,
+      selection: { selectedNodeId, selectedEdgeId },
+      syncNodes: syncNodePresentation,
     });
 
-    const fallbackNodeId = selectedTemplate.nodes.find((node) => node.id !== selectedNodeId)?.id ?? null;
-    setSelectedNodeId(fallbackNodeId);
-    setSelectedEdgeId(null);
+    updateSelectedTemplate(() => withDirtyTimestamp(result.template as WorkflowTemplate));
+
+    setSelectedNodeId(result.selection.selectedNodeId);
+    setSelectedEdgeId(result.selection.selectedEdgeId);
+    setCreateMenuMode(null);
   };
 
   const handleSelectEntryNode = () => {
@@ -387,12 +545,31 @@ export default function WorkflowTemplatesPage() {
       return;
     }
 
-    updateSelectedTemplate((template) => ({
-      ...template,
-      updatedAt: '刚刚',
-      entryNodeId: selectedNodeId,
-      nodes: syncNodePresentation(template.nodes, selectedNodeId),
-    }));
+    updateSelectedTemplate((template) =>
+      withDirtyTimestamp({
+        ...template,
+        entryNodeId: selectedNodeId,
+        nodes: syncNodePresentation(template.nodes, selectedNodeId),
+      }),
+    );
+    setCreateMenuMode(null);
+  };
+
+  const handleDuplicateNode = () => {
+    if (!selectedNodeId || !selectedTemplate) {
+      return;
+    }
+
+    const result = duplicateSelectedNode({
+      template: selectedTemplate,
+      selection: { selectedNodeId, selectedEdgeId },
+      createNodeId: () => createLocalId(`${selectedTemplate.id}-node`),
+    });
+
+    updateSelectedTemplate(() => withDirtyTimestamp(result.template as WorkflowTemplate));
+    setSelectedNodeId(result.selection.selectedNodeId);
+    setSelectedEdgeId(result.selection.selectedEdgeId);
+    setCreateMenuMode(null);
   };
 
   const handleNodeChange = <K extends keyof WorkflowNodeFormValue>(field: K, value: WorkflowNodeFormValue[K]) => {
@@ -400,21 +577,22 @@ export default function WorkflowTemplatesPage() {
       return;
     }
 
-    updateSelectedTemplate((template) => ({
-      ...template,
-      updatedAt: '刚刚',
-      nodes: template.nodes.map((node) =>
-        node.id === selectedNodeId
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                ...mapNodeFieldChange(node.data, field, value),
-              } as WorkflowCanvasNodeData,
-            }
-          : node,
-      ),
-    }));
+    updateSelectedTemplate((template) =>
+      withDirtyTimestamp({
+        ...template,
+        nodes: template.nodes.map((node) =>
+          node.id === selectedNodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  ...mapNodeFieldChange(node.data, field, value),
+                } as WorkflowCanvasNodeData,
+              }
+            : node,
+        ),
+      }),
+    );
   };
 
   function mapNodeFieldChange<K extends keyof WorkflowNodeFormValue>(
@@ -459,19 +637,21 @@ export default function WorkflowTemplatesPage() {
   };
 
   const handleNodesChange = (changes: NodeChange[]) => {
-    updateSelectedTemplate((template) => ({
-      ...template,
-      updatedAt: '刚刚',
-      nodes: applyNodeChanges(changes, template.nodes),
-    }));
+    updateSelectedTemplate((template) =>
+      withDirtyTimestamp({
+        ...template,
+        nodes: applyNodeChanges(changes, template.nodes),
+      }),
+    );
   };
 
   const handleEdgesChange = (changes: EdgeChange[]) => {
-    updateSelectedTemplate((template) => ({
-      ...template,
-      updatedAt: '刚刚',
-      edges: applyEdgeChanges(changes, template.edges),
-    }));
+    updateSelectedTemplate((template) =>
+      withDirtyTimestamp({
+        ...template,
+        edges: applyEdgeChanges(changes, template.edges),
+      }),
+    );
   };
 
   const handleConnect = ({ source, target }: Connection) => {
@@ -483,9 +663,8 @@ export default function WorkflowTemplatesPage() {
       const nextPriority = template.edges.reduce((maxPriority, edge) => Math.max(maxPriority, edge.data?.priority ?? -1), -1) + 1;
       const defaultCondition = 'always';
 
-      return {
+      return withDirtyTimestamp({
         ...template,
-        updatedAt: '刚刚',
         edges: addEdge(
           createLocalWorkflowEdge({
             source,
@@ -495,7 +674,7 @@ export default function WorkflowTemplatesPage() {
           }),
           template.edges,
         ),
-      };
+      });
     });
   };
 
@@ -504,12 +683,72 @@ export default function WorkflowTemplatesPage() {
       return;
     }
 
-    updateSelectedTemplate((template) => ({
-      ...template,
-      updatedAt: '刚刚',
-      edges: template.edges.filter((edge) => edge.id !== selectedEdgeId),
-    }));
+    updateSelectedTemplate((template) =>
+      withDirtyTimestamp({
+        ...template,
+        edges: template.edges.filter((edge) => edge.id !== selectedEdgeId),
+      }),
+    );
     setSelectedEdgeId(null);
+    setCreateMenuMode(null);
+  };
+
+  const handleEdgeChange = (field: 'condition' | 'priority', value: string | number) => {
+    if (!selectedEdgeId) {
+      return;
+    }
+
+    updateSelectedTemplate((template) =>
+      withDirtyTimestamp({
+        ...template,
+        edges: template.edges.map((edge) => {
+          if (edge.id !== selectedEdgeId) {
+            return edge;
+          }
+
+          const nextCondition = field === 'condition' ? String(value).trim() || 'always' : edge.label ? String(edge.label) : 'always';
+          const nextPriority = field === 'priority' ? Number(value) || 0 : edge.data?.priority ?? 0;
+
+          return {
+            ...edge,
+            id: updateWorkflowEdgeIdPreservingLocalUniqueness(edge, {
+              condition: nextCondition,
+              priority: nextPriority,
+            }),
+            label: nextCondition,
+            data: {
+              ...edge.data,
+              priority: nextPriority,
+            },
+          };
+        }),
+      }),
+    );
+
+    if (selectedTemplate) {
+      const currentEdge = selectedTemplate.edges.find((edge) => edge.id === selectedEdgeId);
+      if (!currentEdge) {
+        return;
+      }
+
+      const nextCondition = field === 'condition' ? String(value).trim() || 'always' : currentEdge.label ? String(currentEdge.label) : 'always';
+      const nextPriority = field === 'priority' ? Number(value) || 0 : currentEdge.data?.priority ?? 0;
+      setSelectedEdgeId(
+        updateWorkflowEdgeIdPreservingLocalUniqueness(currentEdge, {
+          condition: nextCondition,
+          priority: nextPriority,
+        }),
+      );
+    }
+  };
+
+  const handleDeleteSelection = () => {
+    if (selectedEdgeId) {
+      handleDeleteEdge();
+      return;
+    }
+
+    handleDeleteNode();
   };
 
   const handleSaveTemplate = async () => {
@@ -542,13 +781,25 @@ export default function WorkflowTemplatesPage() {
         });
         setTemplates(reconciled.templates);
         setSelectedTemplateId(reconciled.selectedTemplateId);
+        setBaselineByTemplateId((current) => {
+          const next = { ...current };
+          delete next[temporaryTemplateId];
+          next[mapped.id] = createWorkflowDraftSignature(mapped);
+          return next;
+        });
       } else {
         setTemplates((current) => current.map((template) => (template.id === temporaryTemplateId ? mapped : template)));
         setSelectedTemplateId(mapped.id);
+        setBaselineByTemplateId((current) => ({
+          ...current,
+          [mapped.id]: createWorkflowDraftSignature(mapped),
+        }));
       }
 
-      setSelectedNodeId(mapped.entryNodeId ?? mapped.nodes[0]?.id ?? null);
-      setSelectedEdgeId(null);
+      const nextSelection = getSelectionAfterSave(mapped, { selectedNodeId, selectedEdgeId }, selectedTemplate);
+      setSelectedNodeId(nextSelection.selectedNodeId);
+      setSelectedEdgeId(nextSelection.selectedEdgeId);
+      setCreateMenuMode(null);
       setSuccessMessage(temporaryTemplateId.startsWith('workflow-local') ? '工作流模板已创建。' : '工作流模板已保存。');
     } catch (apiError) {
       if (selectedTemplate.id.startsWith('workflow-local') && !hadTemplatesBeforeSave) {
@@ -556,6 +807,7 @@ export default function WorkflowTemplatesPage() {
         setSelectedTemplateId('');
         setSelectedNodeId(null);
         setSelectedEdgeId(null);
+        setCreateMenuMode(null);
       }
       setActionError(apiError instanceof ApiError ? apiError.message : '工作流保存失败');
     } finally {
@@ -570,10 +822,17 @@ export default function WorkflowTemplatesPage() {
 
     if (selectedTemplate.id.startsWith('workflow-local')) {
       setTemplates((current) => current.filter((template) => template.id !== selectedTemplate.id));
+      setBaselineByTemplateId((current) => {
+        const next = { ...current };
+        delete next[selectedTemplate.id];
+        return next;
+      });
       const fallback = templates.find((template) => template.id !== selectedTemplate.id);
       setSelectedTemplateId(fallback?.id ?? '');
-      setSelectedNodeId(fallback?.entryNodeId ?? fallback?.nodes[0]?.id ?? null);
-      setSelectedEdgeId(null);
+      const initialSelection = getInitialWorkflowSelection(fallback);
+      setSelectedNodeId(initialSelection.selectedNodeId);
+      setSelectedEdgeId(initialSelection.selectedEdgeId);
+      setCreateMenuMode(null);
       return;
     }
 
@@ -586,9 +845,16 @@ export default function WorkflowTemplatesPage() {
       const remaining = templates.filter((template) => template.id !== selectedTemplate.id);
       const fallback = remaining[0];
       setTemplates(remaining);
+      setBaselineByTemplateId((current) => {
+        const next = { ...current };
+        delete next[selectedTemplate.id];
+        return next;
+      });
       setSelectedTemplateId(fallback?.id ?? '');
-      setSelectedNodeId(fallback?.entryNodeId ?? fallback?.nodes[0]?.id ?? null);
-      setSelectedEdgeId(null);
+      const initialSelection = getInitialWorkflowSelection(fallback);
+      setSelectedNodeId(initialSelection.selectedNodeId);
+      setSelectedEdgeId(initialSelection.selectedEdgeId);
+      setCreateMenuMode(null);
       setSuccessMessage('工作流模板已删除。');
     } catch (apiError) {
       setActionError(apiError instanceof ApiError ? apiError.message : '工作流删除失败');
@@ -606,6 +872,45 @@ export default function WorkflowTemplatesPage() {
       ? '节点焦点已同步，右侧可直接修改配置。'
       : '点击画布中的节点或连线后，可在右侧查看详细信息。';
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const tagName = target.tagName.toLowerCase();
+        if (target.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
+          return;
+        }
+      }
+
+      if (event.key === 'Escape') {
+        setSelectedNodeId(null);
+        setSelectedEdgeId(null);
+        setCreateMenuMode(null);
+        return;
+      }
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (!selectedNodeId && !selectedEdgeId) {
+          return;
+        }
+
+        event.preventDefault();
+        handleDeleteSelection();
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd' && selectedNodeId) {
+        event.preventDefault();
+        handleDuplicateNode();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedEdgeId, selectedNodeId, selectedTemplate]);
+
   return (
     <Stack spacing={3}>
       <PageToolbar
@@ -614,11 +919,11 @@ export default function WorkflowTemplatesPage() {
         leading={<StatusChip status="active" label="React Flow 编辑器" />}
         actions={
           <>
-            <Button color="inherit" variant="text" startIcon={<FitScreenRoundedIcon />} onClick={() => void loadWorkflows()} disabled={loading || saving}>
+            <Button color="inherit" variant="text" startIcon={<FitScreenRoundedIcon />} onClick={handleRefreshWorkflows} disabled={loading || saving}>
               刷新画布
             </Button>
             <Button variant="contained" startIcon={<AutoFixHighRoundedIcon />} onClick={() => void handleSaveTemplate()} disabled={!selectedTemplate || saving}>
-              {saving ? '保存中' : '保存模板'}
+              {saving ? '保存中' : isSelectedTemplateDirty ? '保存未保存更改' : '保存模板'}
             </Button>
           </>
         }
@@ -642,7 +947,9 @@ export default function WorkflowTemplatesPage() {
         edgeCount={selectedTemplate?.edges.length ?? 0}
         canFitView={Boolean(selectedTemplate)}
         canDeleteNode={(selectedTemplate?.nodes.length ?? 0) > 0 && Boolean(selectedNodeId)}
+        canDuplicateNode={Boolean(selectedNodeId)}
         canSetEntryNode={Boolean(selectedNodeId)}
+        isDirty={isSelectedTemplateDirty}
         focusDescription={toolbarFocusDescription}
         focusLabel={toolbarFocusLabel}
         selectedNodeLabel={selectedNodeLabel}
@@ -651,6 +958,7 @@ export default function WorkflowTemplatesPage() {
         selectionKind={selectionKind}
         onAddNode={handleAddNode}
         onDeleteNode={handleDeleteNode}
+        onDuplicateNode={handleDuplicateNode}
         onFitView={handleFitView}
         onSelectEntryNode={handleSelectEntryNode}
       />
@@ -677,26 +985,45 @@ export default function WorkflowTemplatesPage() {
             nodes={graphNodes}
             edges={graphEdges}
             fitViewRequest={fitViewRequest}
+            isDirty={isSelectedTemplateDirty}
             selectedEdgeId={selectedEdgeId}
             selectedEdgeLabel={selectedEdgeLabel}
             selectedNodeId={selectedNodeId}
             selectedNodeLabel={selectedNodeLabel}
             selectedTemplateName={selectedTemplate?.name ?? (loading ? '正在加载模板' : '未选择模板')}
             isPanelCollapsed={isRightPanelCollapsed}
+            createMenuMode={createMenuMode}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}
+            onOpenAppendMenu={() => setCreateMenuMode('append')}
+            onOpenCreateMenu={() => setCreateMenuMode('create')}
+            onCloseCreateMenu={() => setCreateMenuMode(null)}
+            onDeleteSelection={handleDeleteSelection}
+            onDuplicateNode={handleDuplicateNode}
+            onSetEntryNode={handleSelectEntryNode}
+            onCreateNode={(type) => {
+              if (createMenuMode === 'append') {
+                handleAppendNodeFromCanvas(type);
+                return;
+              }
+
+              handleCreateNodeFromCanvas(type);
+            }}
             onClearSelection={() => {
               setSelectedNodeId(null);
               setSelectedEdgeId(null);
+              setCreateMenuMode(null);
             }}
             onNodeClick={(node) => {
               setSelectedNodeId(node?.id ?? null);
               setSelectedEdgeId(null);
+              setCreateMenuMode(null);
             }}
             onEdgeClick={(edge) => {
               setSelectedEdgeId(edge.id);
               setSelectedNodeId(null);
+              setCreateMenuMode(null);
             }}
           />
         </Stack>
@@ -739,7 +1066,7 @@ export default function WorkflowTemplatesPage() {
           </Stack>
 
           {isRightPanelCollapsed ? null : selectedEdgeSummary ? (
-            <WorkflowEdgePanel selectedEdge={selectedEdgeSummary} onDeleteEdge={handleDeleteEdge} />
+            <WorkflowEdgePanel selectedEdge={selectedEdgeSummary} onDeleteEdge={handleDeleteEdge} onChange={handleEdgeChange} />
           ) : loadError && templates.length === 0 ? (
             <PageState title="工作流编辑器暂时不可用" description={loadError} tone="error" />
           ) : (

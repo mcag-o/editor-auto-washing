@@ -212,6 +212,52 @@ const workflowFixtures: ApiWorkflow[] = [
       },
     ],
   },
+  {
+    id: 'workflow-beta',
+    name: '审核兜底链路',
+    description: '用于高风险稿件的人工审核分支。',
+    version: 'v1.4.0',
+    enabled: true,
+    updated_by: '审核运营组',
+    updated_at: '2026-05-07T10:15:00Z',
+    entry_node_id: 'beta-input',
+    nodes: [
+      {
+        id: 'beta-input',
+        type: 'input',
+        name: '接收稿件',
+        config_json: JSON.stringify({
+          label: '接收稿件',
+          type: 'input',
+          template: '',
+          model: '',
+          context: '接收待审核稿件。',
+          position: { x: 100, y: 140 },
+        }),
+      },
+      {
+        id: 'beta-review',
+        type: 'review',
+        name: '人工审核',
+        config_json: JSON.stringify({
+          label: '人工审核',
+          type: 'review',
+          template: 'review.risk.manual',
+          model: '',
+          context: '由审核编辑确认发布风险。',
+          position: { x: 360, y: 140 },
+        }),
+      },
+    ],
+    edges: [
+      {
+        from_node_id: 'beta-input',
+        to_node_id: 'beta-review',
+        condition: 'always',
+        priority: 0,
+      },
+    ],
+  },
 ];
 
 function buildSavedWorkflow(entryNodeId = 'node-rewrite'): ApiWorkflow {
@@ -287,7 +333,7 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(inputNode).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByText('node-rewrite')).toBeInTheDocument();
     expect(screen.getByText('入口节点：导入文章')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '设为入口节点' })).toBeEnabled();
+    expect(within(screen.getByRole('toolbar', { name: '工作流画布工具栏' })).getByRole('button', { name: '设为入口节点' })).toBeEnabled();
 
     fireEvent.click(firstEdge);
 
@@ -295,6 +341,9 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     const sidePanel = screen.getByTestId('workflow-side-panel');
 
     expect(firstEdge).toHaveAttribute('aria-pressed', 'true');
+    expect(within(sidePanel).getByText('连线检查器')).toBeInTheDocument();
+    expect(within(sidePanel).getByDisplayValue('always')).toBeInTheDocument();
+    expect(within(sidePanel).getByDisplayValue('0')).toBeInTheDocument();
     expect(within(sidePanel).getByText('条件/分支')).toBeInTheDocument();
     expect(within(sidePanel).getByText('来源节点')).toBeInTheDocument();
     expect(within(sidePanel).getByText('导入文章')).toBeInTheDocument();
@@ -303,15 +352,87 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(within(sidePanel).queryByText('节点配置')).not.toBeInTheDocument();
     expect(within(leftColumn).queryByText('连线信息')).not.toBeInTheDocument();
     expect(within(leftColumn).queryByText('条件/分支')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '设为入口节点' })).toBeDisabled();
+    expect(within(screen.getByRole('toolbar', { name: '工作流画布工具栏' })).getByRole('button', { name: '设为入口节点' })).toBeDisabled();
     expect(screen.queryByText('请在中间画布点击一个节点，再在此编辑节点名称、类型、模板、模型和上下文配置。')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '清空画布选择' }));
 
-    expect(screen.getByText('当前未选择节点')).toBeInTheDocument();
-    expect(screen.getByText('当前未选择连线')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '设为入口节点' })).toBeDisabled();
+    expect(within(sidePanel).getByText('工作流检查器')).toBeInTheDocument();
+    expect(within(sidePanel).getByTestId('page-state-empty')).toBeInTheDocument();
+    expect(screen.getByText('请先在画布中选择一个节点或连线。')).toBeInTheDocument();
+    expect(within(screen.getByRole('toolbar', { name: '工作流画布工具栏' })).getByRole('button', { name: '设为入口节点' })).toBeDisabled();
   }, 10000);
+
+  it('updates edge condition and priority through the inspector while preserving edge contract values', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('edge-edge-node-input-node-rewrite-always-0'));
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('条件分支'), { target: { value: 'fallback' } });
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('优先级'), { target: { value: '7' } });
+    });
+
+    expect(screen.getByTestId('edge-edge-node-input-node-rewrite-fallback-7')).toBeInTheDocument();
+    expect(screen.getByText('已选择连线: 导入文章 -> 主文改写')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('fallback')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('7')).toBeInTheDocument();
+  });
+
+  it('preserves local edge uniqueness when editing a locally unique edge condition and priority', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('node-node-input'));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '为当前节点追加下游节点' }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '改写节点' }));
+    });
+
+    const edgeLayer = screen.getByTestId('mock-edge-layer');
+    const localEdge = within(edgeLayer)
+      .getAllByRole('button')
+      .find((button) => button.getAttribute('data-testid')?.startsWith('edge-edge-node-input-') && button.getAttribute('data-testid')?.includes('-always-2-'));
+
+    expect(localEdge).toBeDefined();
+
+    await act(async () => {
+      fireEvent.click(localEdge!);
+    });
+
+    const originalTestId = localEdge!.getAttribute('data-testid');
+    expect(originalTestId).toContain('-always-2-');
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('条件分支'), { target: { value: 'fallback' } });
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('优先级'), { target: { value: '7' } });
+    });
+
+    const updatedLocalEdge = within(edgeLayer)
+      .getAllByRole('button')
+      .find((button) => button.getAttribute('data-testid')?.startsWith('edge-edge-node-input-') && button.getAttribute('data-testid')?.includes('-fallback-7-'));
+
+    expect(updatedLocalEdge).toBeDefined();
+    expect(updatedLocalEdge?.getAttribute('data-testid')).not.toBe('edge-edge-node-input-node-input-fallback-7');
+    expect(updatedLocalEdge?.getAttribute('data-testid')).toContain('-fallback-7-');
+  });
 
   it('supports fit view and graph toolbar actions without breaking selection state', async () => {
     const api = await import('../../lib/api/client');
@@ -350,7 +471,7 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(screen.getByTestId('node-node-rewrite')).toHaveAttribute('aria-pressed', 'true');
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+      fireEvent.click(screen.getByRole('button', { name: '保存未保存更改' }));
     });
 
     expect(await screen.findByText('工作流模板已保存。')).toBeInTheDocument();
@@ -425,7 +546,7 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(screen.getByText('当前正在查看连线条件与去向。')).toBeInTheDocument();
   });
 
-  it('clears edge selection when save returns focus to a node', async () => {
+  it('preserves edge selection after save even when the saved entry node differs', async () => {
     const api = await import('../../lib/api/client');
     vi.mocked(api.updateWorkflow).mockResolvedValue(buildSavedWorkflow('node-input'));
 
@@ -446,10 +567,191 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     });
 
     expect(await screen.findByText('工作流模板已保存。')).toBeInTheDocument();
-    expect(screen.getByTestId('node-node-input')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('edge-edge-node-input-node-rewrite-always-0')).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByText('已选择节点: 导入文章')).toBeInTheDocument();
-    expect(screen.getByText('已选择连线: 当前未选择连线')).toBeInTheDocument();
+    expect(screen.getByTestId('node-node-input')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('edge-edge-node-input-node-rewrite-always-0')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('已选择节点: 当前未选择节点')).toBeInTheDocument();
+    expect(screen.getByText('已选择连线: 导入文章 -> 主文改写')).toBeInTheDocument();
+  });
+
+  it('preserves the current edge selection after save when the saved edge id still exists', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('edge-edge-node-input-node-rewrite-always-0'));
+    });
+
+    expect(screen.getByTestId('edge-edge-node-input-node-rewrite-always-0')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('已选择连线: 导入文章 -> 主文改写')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+    });
+
+    expect(await screen.findByText('工作流模板已保存。')).toBeInTheDocument();
+    expect(screen.getByTestId('edge-edge-node-input-node-rewrite-always-0')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('已选择连线: 导入文章 -> 主文改写')).toBeInTheDocument();
+    expect(screen.getByText('已选择节点: 当前未选择节点')).toBeInTheDocument();
+  });
+
+  it('preserves the matching saved edge selection after saving a locally created edge', async () => {
+    const api = await import('../../lib/api/client');
+    vi.mocked(api.updateWorkflow).mockImplementationOnce(async (_id, payload) => ({
+      id: 'workflow-alpha',
+      name: workflowFixtures[0].name,
+      description: workflowFixtures[0].description,
+      version: workflowFixtures[0].version,
+      enabled: workflowFixtures[0].enabled,
+      updated_by: 'react-webapp',
+      updated_at: '2026-05-07T11:30:00Z',
+      entry_node_id: payload.entry_node_id,
+      nodes: payload.nodes,
+      edges: payload.edges,
+    }));
+
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('node-node-input'));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '为当前节点追加下游节点' }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '改写节点' }));
+    });
+
+    const edgeLayer = screen.getByTestId('mock-edge-layer');
+    const localEdge = within(edgeLayer)
+      .getAllByRole('button')
+      .find((button) => button.getAttribute('data-testid')?.startsWith('edge-edge-node-input-') && button.getAttribute('data-testid')?.includes('-always-2-'));
+
+    expect(localEdge).toBeDefined();
+
+    await act(async () => {
+      fireEvent.click(localEdge!);
+    });
+
+    expect(localEdge).toHaveAttribute('aria-pressed', 'true');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保存未保存更改' }));
+    });
+
+    expect(await screen.findByText('工作流模板已保存。')).toBeInTheDocument();
+
+    const savedEdge = within(edgeLayer)
+      .getAllByRole('button')
+      .find((button) => {
+        const testId = button.getAttribute('data-testid') ?? '';
+        return testId.startsWith('edge-edge-node-input-') && testId.endsWith('-always-2');
+      });
+
+    expect(savedEdge).toBeDefined();
+    expect(savedEdge).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('guards refresh when the current template has unsaved changes', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    confirmSpy.mockReturnValueOnce(false).mockReturnValueOnce(true);
+
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('节点名称'), { target: { value: '导入文章（待刷新）' } });
+    });
+
+    expect(screen.getByText('有未保存更改')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '刷新画布' }));
+    });
+
+    expect(confirmSpy).toHaveBeenCalledWith('当前模板有未保存更改，刷新后将丢失这些修改。是否继续？');
+    expect(screen.getByDisplayValue('导入文章（待刷新）')).toBeInTheDocument();
+    expect(screen.getByText('有未保存更改')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '刷新画布' }));
+    });
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('导入文章')).toBeInTheDocument();
+    expect(screen.queryByText('有未保存更改')).not.toBeInTheDocument();
+  });
+
+  it('does not expose page-level dirty tracking state on the canvas column', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    const canvasColumn = screen.getByTestId('workflow-canvas-column');
+    expect(canvasColumn).not.toHaveAttribute('data-dirty-state');
+  });
+
+  it('shows explicit dirty-state cues after local edits and clears them after save', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+    expect(screen.queryByText('有未保存更改')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存模板' })).toHaveTextContent('保存模板');
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('节点名称'), { target: { value: '导入文章（已修改）' } });
+    });
+
+    expect(screen.getByText('有未保存更改')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存未保存更改' })).toHaveTextContent('保存未保存更改');
+    expect(screen.getByRole('button', { name: /品牌改写主链路.*未保存/ })).toHaveTextContent('未保存');
+    expect(screen.getByTestId('workflow-graph-panel')).toHaveAttribute('data-dirty-state', 'dirty');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保存未保存更改' }));
+    });
+
+    expect(await screen.findByText('工作流模板已保存。')).toBeInTheDocument();
+    expect(screen.queryByText('有未保存更改')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存模板' })).toHaveTextContent('保存模板');
+    expect(screen.getByRole('button', { name: /品牌改写主链路/ })).not.toHaveTextContent('未保存');
+    expect(screen.getByTestId('workflow-graph-panel')).toHaveAttribute('data-dirty-state', 'clean');
+  });
+
+  it('guards template switching when the current template has unsaved changes', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    confirmSpy.mockReturnValueOnce(false).mockReturnValueOnce(true);
+
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('节点名称'), { target: { value: '导入文章（未保存）' } });
+    });
+
+    expect(screen.getByText('有未保存更改')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /审核兜底链路/ }));
+    });
+
+    expect(confirmSpy).toHaveBeenCalledWith('当前模板有未保存更改，切换后将丢失这些修改。是否继续？');
+    expect(screen.getByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('导入文章（未保存）')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /审核兜底链路/ }));
+    });
+
+    expect(screen.getByText('当前选中模板：审核兜底链路')).toBeInTheDocument();
+    expect(screen.queryByText('有未保存更改')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('接收稿件')).toBeInTheDocument();
   });
 
   it('collapses and expands the right panel to reclaim canvas space', async () => {
@@ -478,7 +780,7 @@ describe('WorkflowTemplatesPage editor interactions', () => {
 
     expect(sidePanel).toHaveAttribute('data-panel-state', 'expanded');
     expect(canvasColumn).toHaveAttribute('data-panel-state', 'expanded');
-    expect(screen.getByText('节点配置')).toBeInTheDocument();
+    expect(screen.getByText('节点检查器')).toBeInTheDocument();
   });
 
   it('keeps right panel collapse and expand working for edge selections', async () => {
@@ -513,6 +815,253 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(within(sidePanel).getByText('条件/分支')).toBeInTheDocument();
   });
 
+  it('creates a node from the empty-canvas creation entry', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '清空画布选择' }));
+    });
+
+    const graphPanel = screen.getByTestId('workflow-graph-panel');
+    expect(graphPanel).toHaveAttribute('data-selection-kind', 'idle');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '在空白画布创建节点' }));
+    });
+
+    expect(screen.getByRole('textbox', { name: '搜索节点类型' })).toBeInTheDocument();
+    expect(within(screen.getByTestId('mock-node-layer')).getAllByRole('button')).toHaveLength(3);
+    expect(within(screen.getByTestId('mock-edge-layer')).getAllByRole('button')).toHaveLength(2);
+
+    await act(async () => {
+      fireEvent.change(screen.getByRole('textbox', { name: '搜索节点类型' }), { target: { value: '审核' } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '审核节点' }));
+    });
+
+    const createdNode = within(screen.getByTestId('mock-node-layer'))
+      .getByText((content) => content.includes('审核节点 4'))
+      .closest('button');
+    expect(createdNode).toBeInTheDocument();
+    expect(createdNode).toHaveAttribute('aria-pressed', 'true');
+    expect(within(screen.getByTestId('mock-node-layer')).getAllByRole('button')).toHaveLength(4);
+    expect(within(screen.getByTestId('mock-edge-layer')).getAllByRole('button')).toHaveLength(2);
+    expect(screen.getByText('已选择节点: 审核节点 4')).toBeInTheDocument();
+    expect(screen.getByText('节点 4')).toBeInTheDocument();
+    expect(screen.getByText('连线 2')).toBeInTheDocument();
+    expect(graphPanel).toHaveAttribute('data-selection-kind', 'node');
+  });
+
+  it('appends a downstream node from the selected-node flow', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('node-node-rewrite'));
+    });
+
+    const graphPanel = screen.getByTestId('workflow-graph-panel');
+    expect(graphPanel).toHaveAttribute('data-selection-kind', 'node');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '为当前节点追加下游节点' }));
+    });
+
+    expect(screen.getByRole('textbox', { name: '搜索节点类型' })).toBeInTheDocument();
+    expect(within(screen.getByTestId('mock-node-layer')).getAllByRole('button')).toHaveLength(3);
+    expect(within(screen.getByTestId('mock-edge-layer')).getAllByRole('button')).toHaveLength(2);
+
+    await act(async () => {
+      fireEvent.change(screen.getByRole('textbox', { name: '搜索节点类型' }), { target: { value: '渲染' } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '渲染节点' }));
+    });
+
+    const appendedNode = within(screen.getByTestId('mock-node-layer'))
+      .getByText((content) => content.includes('渲染节点 4'))
+      .closest('button');
+    expect(appendedNode).toBeInTheDocument();
+    expect(appendedNode).toHaveAttribute('aria-pressed', 'true');
+    expect(within(screen.getByTestId('mock-node-layer')).getAllByRole('button')).toHaveLength(4);
+    expect(within(screen.getByTestId('mock-edge-layer')).getAllByRole('button')).toHaveLength(3);
+    expect(screen.getByText('已选择节点: 渲染节点 4')).toBeInTheDocument();
+    expect(screen.getByText('节点 4')).toBeInTheDocument();
+    expect(screen.getByText('连线 3')).toBeInTheDocument();
+    expect(graphPanel).toHaveAttribute('data-selection-kind', 'node');
+  });
+
+  it('opens standalone creation from the generic add action when no node is selected', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '清空画布选择' }));
+    });
+
+    expect(screen.getByTestId('workflow-graph-panel')).toHaveAttribute('data-selection-kind', 'idle');
+
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole('toolbar', { name: '工作流画布工具栏' })).getByRole('button', { name: '新增节点' }));
+    });
+
+    expect(screen.getByRole('textbox', { name: '搜索节点类型' })).toBeInTheDocument();
+    expect(within(screen.getByTestId('mock-node-layer')).getAllByRole('button')).toHaveLength(3);
+    expect(within(screen.getByTestId('mock-edge-layer')).getAllByRole('button')).toHaveLength(2);
+  });
+
+  it('supports keyboard delete and escape for the current canvas selection', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('node-node-rewrite'));
+    });
+
+    expect(screen.getByTestId('node-node-rewrite')).toHaveAttribute('aria-pressed', 'true');
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+
+    expect(screen.getByText('当前未选择节点')).toBeInTheDocument();
+    expect(screen.getByTestId('workflow-graph-panel')).toHaveAttribute('data-selection-kind', 'idle');
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('node-node-rewrite'));
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'Delete' });
+    });
+
+    expect(screen.queryByTestId('node-node-rewrite')).not.toBeInTheDocument();
+    expect(screen.getByText('已选择节点: 导入文章')).toBeInTheDocument();
+  });
+
+  it('duplicates the selected node from keyboard shortcuts', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('node-node-rewrite'));
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'd', ctrlKey: true });
+    });
+
+    const nodeLayer = screen.getByTestId('mock-node-layer');
+    expect(within(nodeLayer).getAllByRole('button')).toHaveLength(4);
+    expect(within(nodeLayer).getByText((content) => content.includes('主文改写（副本）'))).toBeInTheDocument();
+    expect(screen.getByText('已选择节点: 主文改写（副本）')).toBeInTheDocument();
+  });
+
+  it('shows canvas quick actions for a selected node and supports quick set-entry and delete flows', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('node-node-rewrite'));
+    });
+
+    const quickActions = screen.getByTestId('workflow-canvas-quick-actions');
+    expect(within(quickActions).getByRole('button', { name: '设为入口节点' })).toBeEnabled();
+    expect(within(quickActions).getByRole('button', { name: '删除节点' })).toBeEnabled();
+
+    await act(async () => {
+      fireEvent.click(within(quickActions).getByRole('button', { name: '设为入口节点' }));
+    });
+
+    expect(screen.getByText('入口节点：主文改写')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(within(quickActions).getByRole('button', { name: '删除节点' }));
+    });
+
+    expect(screen.queryByTestId('node-node-rewrite')).not.toBeInTheDocument();
+  });
+
+  it('closes the create menu when template or destructive selection state changes', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '清空画布选择' }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '在空白画布创建节点' }));
+    });
+
+    expect(screen.getByRole('textbox', { name: '搜索节点类型' })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
+    });
+
+    expect(screen.queryByRole('textbox', { name: '搜索节点类型' })).not.toBeInTheDocument();
+    expect(screen.getByText('当前选中模板：工作流模板 3')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '为当前节点追加下游节点' }));
+    });
+
+    expect(screen.getByRole('textbox', { name: '搜索节点类型' })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole('toolbar', { name: '工作流画布工具栏' })).getByRole('button', { name: '删除节点' }));
+    });
+
+    expect(screen.queryByRole('textbox', { name: '搜索节点类型' })).not.toBeInTheDocument();
+  });
+
+  it('closes the create menu after refresh and successful save recompute editor state', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '清空画布选择' }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '在空白画布创建节点' }));
+    });
+
+    expect(screen.getByRole('textbox', { name: '搜索节点类型' })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '刷新画布' }));
+    });
+
+    expect(screen.queryByRole('textbox', { name: '搜索节点类型' })).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '为当前节点追加下游节点' }));
+    });
+
+    expect(screen.getByRole('textbox', { name: '搜索节点类型' })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+    });
+
+    expect(await screen.findByText('工作流模板已保存。')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: '搜索节点类型' })).not.toBeInTheDocument();
+  });
+
   it('defaults to a compact collapsed side panel on narrow layouts', async () => {
     installMatchMedia(900);
 
@@ -536,7 +1085,7 @@ describe('WorkflowTemplatesPage editor interactions', () => {
 
     expect(sidePanel).toHaveAttribute('data-panel-state', 'expanded');
     expect(sidePanel).toHaveAttribute('data-collapsed-footprint', 'full');
-    expect(screen.getByText('节点配置')).toBeInTheDocument();
+    expect(screen.getByText('节点检查器')).toBeInTheDocument();
   });
 
   it('uses finite side columns as soon as the layout switches to row mode at lg widths', async () => {
@@ -555,7 +1104,7 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(sidePanel).toHaveAttribute('data-layout-mode', 'side-by-side');
     expect(sidePanel).toHaveAttribute('data-width-mode', 'fixed');
     expect(sidePanel).toHaveAttribute('data-collapsed-footprint', 'full');
-    expect(screen.getByText('节点配置')).toBeInTheDocument();
+    expect(screen.getByText('节点检查器')).toBeInTheDocument();
   });
 
   it('uses sectioned content instead of one long scrolling side panel', async () => {
@@ -583,15 +1132,16 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(screen.getByLabelText('模型名称')).toBeInTheDocument();
   });
 
-  it('shows an explicit empty state when no workflow templates are returned', async () => {
+  it('shows inspector idle guidance when no workflow templates are returned', async () => {
     const api = await import('../../lib/api/client');
     vi.mocked(api.listWorkflows).mockResolvedValue([]);
 
     renderWorkflowTemplatesPage();
 
-    expect((await screen.findAllByTestId('page-state-empty')).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText('暂无工作流模板').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('请在画布中选择一个节点后再编辑节点配置。')).toBeInTheDocument();
+    expect((await screen.findAllByTestId('page-state-empty')).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('暂无工作流模板')).toBeInTheDocument();
+    expect(screen.getByText('点击上方“新建模板”开始配置新的流程定义。')).toBeInTheDocument();
+    expect(screen.getByText('请先在画布中选择一个节点或连线。')).toBeInTheDocument();
   });
 
   it('shows an explicit error state while keeping the editor layout visible', async () => {
@@ -621,7 +1171,7 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+      fireEvent.click(screen.getByRole('button', { name: '保存未保存更改' }));
     });
 
     expect(await screen.findByText('工作流保存失败：名称重复。')).toBeInTheDocument();

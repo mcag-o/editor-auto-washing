@@ -1,4 +1,5 @@
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
+import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import FitScreenRoundedIcon from '@mui/icons-material/FitScreenRounded';
 import HubRoundedIcon from '@mui/icons-material/HubRounded';
@@ -14,8 +15,10 @@ import StatusChip from '../../../components/StatusChip';
 
 type WorkflowToolbarProps = {
   canDeleteNode: boolean;
+  canDuplicateNode: boolean;
   canFitView: boolean;
   canSetEntryNode: boolean;
+  isDirty: boolean;
   focusDescription: string;
   focusLabel: string;
   entryNodeLabel: string | null;
@@ -26,14 +29,17 @@ type WorkflowToolbarProps = {
   edgeCount: number;
   onAddNode: () => void;
   onDeleteNode: () => void;
+  onDuplicateNode: () => void;
   onFitView: () => void;
   onSelectEntryNode: () => void;
 };
 
 export default function WorkflowToolbar({
   canDeleteNode,
+  canDuplicateNode,
   canFitView,
   canSetEntryNode,
+  isDirty,
   focusDescription,
   focusLabel,
   entryNodeLabel,
@@ -44,6 +50,7 @@ export default function WorkflowToolbar({
   edgeCount,
   onAddNode,
   onDeleteNode,
+  onDuplicateNode,
   onFitView,
   onSelectEntryNode,
 }: WorkflowToolbarProps) {
@@ -67,6 +74,12 @@ export default function WorkflowToolbar({
       <Stack spacing={1.5} flex={1} minWidth={0}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
           <StatusChip status="active" label="工作流编辑" />
+          <Chip
+            size="small"
+            color={isDirty ? 'warning' : 'success'}
+            variant={isDirty ? 'filled' : 'outlined'}
+            label={isDirty ? '有未保存更改' : '已保存'}
+          />
           <Typography variant="body2" color="text.secondary">
             画布为主操作区，右侧面板跟随当前选择同步更新。
           </Typography>
@@ -136,6 +149,9 @@ export default function WorkflowToolbar({
         </Button>
         <Button variant="outlined" startIcon={<RadioButtonCheckedRoundedIcon />} disabled={!canSetEntryNode} onClick={onSelectEntryNode}>
           设为入口节点
+        </Button>
+        <Button variant="outlined" startIcon={<ContentCopyRoundedIcon />} disabled={!canDuplicateNode} onClick={onDuplicateNode}>
+          复制节点
         </Button>
         <Button variant="outlined" color="error" startIcon={<DeleteOutlineRoundedIcon />} disabled={!canDeleteNode} onClick={onDeleteNode}>
           删除节点
