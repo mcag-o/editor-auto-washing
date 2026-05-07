@@ -25,7 +25,7 @@ export default function WorkflowEdgePanel({ selectedEdge, onDeleteEdge }: Workfl
   return (
     <PageCard
       title="连线信息"
-      description="支持本地断开节点连接，用于后续补充条件分支配置。"
+      description="右侧面板用于查看当前分支的来源、目标与条件配置，并支持本地断开连接。"
       action={
         <Button
           size="small"

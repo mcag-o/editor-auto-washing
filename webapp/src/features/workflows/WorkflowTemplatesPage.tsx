@@ -627,9 +627,8 @@ export default function WorkflowTemplatesPage() {
       />
 
       <Stack direction={{ xs: 'column', xl: 'row' }} spacing={3} alignItems="stretch">
-        <Stack spacing={3} sx={{ width: { xs: '100%', xl: 340 }, flexShrink: 0 }}>
+        <Stack spacing={3} sx={{ width: { xs: '100%', xl: 340 }, flexShrink: 0 }} data-testid="workflow-list-column">
           <WorkflowListPanel items={workflowItems} selectedId={selectedTemplate?.id ?? ''} onCreateTemplate={handleCreateTemplate} onSelectTemplate={handleSelectTemplate} onDeleteTemplate={() => void handleDeleteTemplate()} />
-          <WorkflowEdgePanel selectedEdge={selectedEdgeSummary} onDeleteEdge={handleDeleteEdge} />
         </Stack>
 
         <Stack spacing={3} flex={1} minWidth={0} data-testid="workflow-canvas-column" data-panel-state={isRightPanelCollapsed ? 'collapsed' : 'expanded'}>
@@ -693,7 +692,9 @@ export default function WorkflowTemplatesPage() {
             </IconButton>
           </Stack>
 
-          {isRightPanelCollapsed ? null : (
+          {isRightPanelCollapsed ? null : selectedEdgeSummary ? (
+            <WorkflowEdgePanel selectedEdge={selectedEdgeSummary} onDeleteEdge={handleDeleteEdge} />
+          ) : (
             <WorkflowNodeDrawer selectedNodeId={selectedNodeId} entryNodeLabel={entryNodeLabel} value={selectedNodeFormValue} onChange={handleNodeChange} />
           )}
         </Stack>

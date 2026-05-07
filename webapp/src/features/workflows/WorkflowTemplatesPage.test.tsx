@@ -265,13 +265,20 @@ describe('WorkflowTemplatesPage editor interactions', () => {
       fireEvent.click(firstEdge);
     });
 
+    const leftColumn = screen.getByTestId('workflow-list-column');
+    const sidePanel = screen.getByTestId('workflow-side-panel');
+
     expect(firstEdge).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('来源节点')).toBeInTheDocument();
-    expect(screen.getByText('导入文章')).toBeInTheDocument();
-    expect(screen.getByText('目标节点')).toBeInTheDocument();
-    expect(screen.getByText('主文改写')).toBeInTheDocument();
+    expect(within(sidePanel).getByText('条件/分支')).toBeInTheDocument();
+    expect(within(sidePanel).getByText('来源节点')).toBeInTheDocument();
+    expect(within(sidePanel).getByText('导入文章')).toBeInTheDocument();
+    expect(within(sidePanel).getByText('目标节点')).toBeInTheDocument();
+    expect(within(sidePanel).getByText('主文改写')).toBeInTheDocument();
+    expect(within(sidePanel).queryByText('节点配置')).not.toBeInTheDocument();
+    expect(within(leftColumn).queryByText('连线信息')).not.toBeInTheDocument();
+    expect(within(leftColumn).queryByText('条件/分支')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '设为入口节点' })).toBeDisabled();
-    expect(screen.getByText('请在中间画布点击一个节点，再在此编辑节点名称、类型、模板、模型和上下文配置。')).toBeInTheDocument();
+    expect(screen.queryByText('请在中间画布点击一个节点，再在此编辑节点名称、类型、模板、模型和上下文配置。')).not.toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '清空画布选择' }));
@@ -386,6 +393,38 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(screen.getByText('节点配置')).toBeInTheDocument();
   });
 
+  it('keeps right panel collapse and expand working for edge selections', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    const canvasColumn = screen.getByTestId('workflow-canvas-column');
+    const sidePanel = screen.getByTestId('workflow-side-panel');
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('edge-edge-node-input-node-rewrite-always-0'));
+    });
+
+    expect(within(sidePanel).getByText('条件/分支')).toBeInTheDocument();
+    expect(within(sidePanel).queryByText('节点配置')).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '折叠右侧配置面板' }));
+    });
+
+    expect(sidePanel).toHaveAttribute('data-panel-state', 'collapsed');
+    expect(canvasColumn).toHaveAttribute('data-panel-state', 'collapsed');
+    expect(screen.queryByText('条件/分支')).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '展开右侧配置面板' }));
+    });
+
+    expect(sidePanel).toHaveAttribute('data-panel-state', 'expanded');
+    expect(canvasColumn).toHaveAttribute('data-panel-state', 'expanded');
+    expect(within(sidePanel).getByText('条件/分支')).toBeInTheDocument();
+  });
+
   it('uses sectioned content instead of one long scrolling side panel', async () => {
     renderWorkflowTemplatesPage();
 
@@ -395,7 +434,6 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(screen.getByRole('tab', { name: '模板绑定' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '模型参数' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '上下文' })).toBeInTheDocument();
-    expect(screen.getByText('条件/分支')).toBeInTheDocument();
     expect(screen.getByText('当前节点')).toBeInTheDocument();
 
     await act(async () => {
