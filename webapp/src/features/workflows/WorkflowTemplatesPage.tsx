@@ -32,6 +32,7 @@ import {
   type WorkflowFormTemplate,
 } from '../../lib/mappers/workflow';
 import PageToolbar from '../../components/PageToolbar';
+import PageState from '../../components/PageState';
 import StatusChip from '../../components/StatusChip';
 import WorkflowEdgePanel, { type WorkflowEdgeSummary } from './components/WorkflowEdgePanel';
 import WorkflowGraphPanel, { type WorkflowCanvasNodeData } from './components/WorkflowGraphPanel';
@@ -608,7 +609,7 @@ export default function WorkflowTemplatesPage() {
         }
       />
 
-      {error ? <Alert severity="error">{error}</Alert> : null}
+      {error && templates.length > 0 ? <Alert severity="error">{error}</Alert> : null}
       {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
 
       <WorkflowToolbar
@@ -628,7 +629,7 @@ export default function WorkflowTemplatesPage() {
 
       <Stack direction={{ xs: 'column', xl: 'row' }} spacing={3} alignItems="stretch">
         <Stack spacing={3} sx={{ width: { xs: '100%', xl: 340 }, flexShrink: 0 }} data-testid="workflow-list-column">
-          <WorkflowListPanel items={workflowItems} selectedId={selectedTemplate?.id ?? ''} onCreateTemplate={handleCreateTemplate} onSelectTemplate={handleSelectTemplate} onDeleteTemplate={() => void handleDeleteTemplate()} />
+          <WorkflowListPanel items={workflowItems} loading={loading} error={templates.length === 0 ? error : null} selectedId={selectedTemplate?.id ?? ''} onCreateTemplate={handleCreateTemplate} onSelectTemplate={handleSelectTemplate} onDeleteTemplate={() => void handleDeleteTemplate()} />
         </Stack>
 
         <Stack spacing={3} flex={1} minWidth={0} data-testid="workflow-canvas-column" data-panel-state={isRightPanelCollapsed ? 'collapsed' : 'expanded'}>
@@ -640,7 +641,7 @@ export default function WorkflowTemplatesPage() {
             selectedEdgeLabel={selectedEdgeLabel}
             selectedNodeId={selectedNodeId}
             selectedNodeLabel={selectedNodeLabel}
-            selectedTemplateName={selectedTemplate?.name ?? '未选择模板'}
+            selectedTemplateName={selectedTemplate?.name ?? (loading ? '正在加载模板' : '未选择模板')}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}
@@ -694,8 +695,10 @@ export default function WorkflowTemplatesPage() {
 
           {isRightPanelCollapsed ? null : selectedEdgeSummary ? (
             <WorkflowEdgePanel selectedEdge={selectedEdgeSummary} onDeleteEdge={handleDeleteEdge} />
+          ) : error && templates.length === 0 ? (
+            <PageState title="工作流编辑器暂时不可用" description={error} tone="error" />
           ) : (
-            <WorkflowNodeDrawer selectedNodeId={selectedNodeId} entryNodeLabel={entryNodeLabel} value={selectedNodeFormValue} onChange={handleNodeChange} />
+            <WorkflowNodeDrawer loading={loading} selectedNodeId={selectedNodeId} entryNodeLabel={entryNodeLabel} value={selectedNodeFormValue} onChange={handleNodeChange} />
           )}
         </Stack>
       </Stack>

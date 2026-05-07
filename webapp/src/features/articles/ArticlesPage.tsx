@@ -23,6 +23,7 @@ import { ApiError, deleteArticle, getArticleStages, listArticles, resumeArticle,
 import type { ArticleStagesResponse, SourceDocument } from '../../lib/api/types';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PageCard from '../../components/PageCard';
+import PageState from '../../components/PageState';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
 import type { AppPage } from '../../layout/AppShell';
@@ -106,7 +107,9 @@ function canDelete(status: string) {
 export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
   const [articles, setArticles] = useState<SourceDocument[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [quickFilter, setQuickFilter] = useState<'全部' | 'pending' | 'processing' | 'completed' | 'paused' | 'failed'>('全部');
   const [keyword, setKeyword] = useState('');
@@ -120,13 +123,13 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
 
   const loadArticles = async () => {
     setLoading(true);
-    setError(null);
+    setListError(null);
 
     try {
       const items = await listArticles();
       setArticles(items);
     } catch (apiError) {
-      setError(apiError instanceof ApiError ? apiError.message : '文章列表加载失败');
+      setListError(apiError instanceof ApiError ? apiError.message : '文章列表加载失败，请刷新后重试。');
     } finally {
       setLoading(false);
     }
@@ -144,6 +147,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
 
     const controller = new AbortController();
     setStagesLoading(true);
+    setDetailError(null);
 
     getArticleStages(selectedArticleId, { signal: controller.signal })
       .then((payload) => setStageDetail(payload))
@@ -151,7 +155,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
         if (controller.signal.aborted) {
           return;
         }
-        setError(apiError instanceof ApiError ? apiError.message : '阶段信息加载失败');
+        setDetailError(apiError instanceof ApiError ? apiError.message : '阶段详情加载失败，请重新选择或稍后重试。');
       })
       .finally(() => {
         if (!controller.signal.aborted) {
@@ -192,7 +196,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
     }
 
     setActionLoading(true);
-    setError(null);
+    setActionError(null);
     setSuccessMessage(null);
 
     try {
@@ -220,7 +224,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
       }
       closeActionDialog();
     } catch (apiError) {
-      setError(apiError instanceof ApiError ? apiError.message : '文章操作失败');
+      setActionError(apiError instanceof ApiError ? apiError.message : '文章操作失败');
     } finally {
       setActionLoading(false);
     }
@@ -305,123 +309,124 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
           }
         />
 
-        {error ? <Alert severity="error">{error}</Alert> : null}
+        {actionError ? <Alert severity="error">{actionError}</Alert> : null}
         {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
 
         <PageCard
+          testId="articles-list-card"
           title="队列表格"
           description="展示文章队列，并在右侧保留阶段查看入口。"
           action={loading ? <CircularProgress size={18} /> : <StatusChip status="completed" label={`共 ${filteredRows.length} 条`} />}
         >
-          <TableContainer>
-            <Table sx={{ minWidth: 880 }}>
-              <TableHead>
-                <TableRow>
-                  <TableCell>文章编号</TableCell>
-                  <TableCell>标题</TableCell>
-                  <TableCell>导入来源</TableCell>
-                  <TableCell>状态</TableCell>
-                  <TableCell align="right">字数</TableCell>
-                  <TableCell>更新时间</TableCell>
-                  <TableCell align="right">操作</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {visibleRows.map((row) => (
-                  <TableRow key={row.id} hover selected={selectedArticleId === row.id} onClick={() => setSelectedArticleId(row.id)} sx={{ cursor: 'pointer' }}>
-                    <TableCell>{row.id}</TableCell>
-                    <TableCell>
-                      <Stack spacing={0.5}>
-                        <Typography variant="subtitle1">{row.title || row.original_filename || row.id}</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {row.error_summary || '点击行可查看阶段详情'}
-                        </Typography>
-                      </Stack>
-                    </TableCell>
-                    <TableCell>{row.source_type || row.file_type || '未知'}</TableCell>
-                    <TableCell>
-                      <StatusChip status={statusToChip(row.status)} label={statusToLabel(row.status)} />
-                    </TableCell>
-                    <TableCell align="right">{articleWordCount(row).toLocaleString()}</TableCell>
-                    <TableCell>{formatTime(row.completed_at ?? row.processing_started_at ?? row.imported_at)}</TableCell>
-                    <TableCell align="right">
-                      <Stack direction="row" spacing={1} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
-                        <Button size="small" variant="outlined" startIcon={<ReplayRoundedIcon />} disabled={!canRetry(row.status)} onClick={(event) => {
-                          event.stopPropagation();
-                          openActionDialog('retry', row);
-                        }}>
-                          重新入队
-                        </Button>
-                        <Button size="small" variant="outlined" color="warning" startIcon={<PauseCircleOutlineRoundedIcon />} disabled={!canStop(row.status)} onClick={(event) => {
-                          event.stopPropagation();
-                          openActionDialog('stop', row);
-                        }}>
-                          请求暂停
-                        </Button>
-                        <Button size="small" variant="outlined" startIcon={<PlayArrowRoundedIcon />} disabled={!canResume(row.status)} onClick={(event) => {
-                          event.stopPropagation();
-                          openActionDialog('resume', row);
-                        }}>
-                          尝试恢复
-                        </Button>
-                        <Button size="small" variant="outlined" color="error" startIcon={<DeleteOutlineRoundedIcon />} disabled={!canDelete(row.status)} onClick={(event) => {
-                          event.stopPropagation();
-                          openActionDialog('delete', row);
-                        }}>
-                           删除记录
-                        </Button>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {!loading && visibleRows.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7}>
-                      <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-                        当前过滤条件下没有匹配文章。
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <TablePagination
-            component="div"
-            count={filteredRows.length}
-            page={page}
-            onPageChange={(_, nextPage) => setPage(nextPage)}
-            rowsPerPage={rowsPerPage}
-            onRowsPerPageChange={(event) => {
-              setRowsPerPage(Number(event.target.value));
-              setPage(0);
-            }}
-            rowsPerPageOptions={pageSizeOptions}
-            labelRowsPerPage="每页条数"
-          />
+          {loading ? (
+            <PageState title="正在加载文章列表" description="正在同步当前文章队列，请稍候。" tone="loading" />
+          ) : listError ? (
+            <PageState title="文章列表暂时不可用" description={listError} tone="error" />
+          ) : filteredRows.length === 0 ? (
+            <PageState title="暂无文章记录" description="当前筛选条件下没有可处理的文章。" tone="empty" />
+          ) : (
+            <>
+              <TableContainer>
+                <Table sx={{ minWidth: 880 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>文章编号</TableCell>
+                      <TableCell>标题</TableCell>
+                      <TableCell>导入来源</TableCell>
+                      <TableCell>状态</TableCell>
+                      <TableCell align="right">字数</TableCell>
+                      <TableCell>更新时间</TableCell>
+                      <TableCell align="right">操作</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {visibleRows.map((row) => (
+                      <TableRow key={row.id} hover selected={selectedArticleId === row.id} onClick={() => setSelectedArticleId(row.id)} sx={{ cursor: 'pointer' }}>
+                        <TableCell>{row.id}</TableCell>
+                        <TableCell>
+                          <Stack spacing={0.5}>
+                            <Typography variant="subtitle1">{row.title || row.original_filename || row.id}</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {row.error_summary || '点击行可查看阶段详情'}
+                            </Typography>
+                          </Stack>
+                        </TableCell>
+                        <TableCell>{row.source_type || row.file_type || '未知'}</TableCell>
+                        <TableCell>
+                          <StatusChip status={statusToChip(row.status)} label={statusToLabel(row.status)} />
+                        </TableCell>
+                        <TableCell align="right">{articleWordCount(row).toLocaleString()}</TableCell>
+                        <TableCell>{formatTime(row.completed_at ?? row.processing_started_at ?? row.imported_at)}</TableCell>
+                        <TableCell align="right">
+                          <Stack direction="row" spacing={1} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
+                            <Button size="small" variant="outlined" startIcon={<ReplayRoundedIcon />} disabled={!canRetry(row.status)} onClick={(event) => {
+                              event.stopPropagation();
+                              openActionDialog('retry', row);
+                            }}>
+                              重新入队
+                            </Button>
+                            <Button size="small" variant="outlined" color="warning" startIcon={<PauseCircleOutlineRoundedIcon />} disabled={!canStop(row.status)} onClick={(event) => {
+                              event.stopPropagation();
+                              openActionDialog('stop', row);
+                            }}>
+                              请求暂停
+                            </Button>
+                            <Button size="small" variant="outlined" startIcon={<PlayArrowRoundedIcon />} disabled={!canResume(row.status)} onClick={(event) => {
+                              event.stopPropagation();
+                              openActionDialog('resume', row);
+                            }}>
+                              尝试恢复
+                            </Button>
+                            <Button size="small" variant="outlined" color="error" startIcon={<DeleteOutlineRoundedIcon />} disabled={!canDelete(row.status)} onClick={(event) => {
+                              event.stopPropagation();
+                              openActionDialog('delete', row);
+                            }}>
+                               删除记录
+                            </Button>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              <TablePagination
+                component="div"
+                count={filteredRows.length}
+                page={page}
+                onPageChange={(_, nextPage) => setPage(nextPage)}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={(event) => {
+                  setRowsPerPage(Number(event.target.value));
+                  setPage(0);
+                }}
+                rowsPerPageOptions={pageSizeOptions}
+                labelRowsPerPage="每页条数"
+              />
+            </>
+          )}
         </PageCard>
 
         <PageCard
+          testId="articles-detail-card"
           title="阶段详情"
           description="按选中文章展示当前运行批次与阶段记录。"
           action={stagesLoading ? <CircularProgress size={18} /> : <StatusChip status={stageDetail ? 'active' : 'disabled'} label={stageDetail ? '已加载' : '未选择'} />}
         >
           <Stack spacing={1.5}>
             {!selectedArticleId ? (
-              <Typography variant="body2" color="text.secondary">
-                请先选择一篇文章查看阶段详情。
-              </Typography>
+              <PageState title="未选择文章" description="请选择一篇文章查看阶段详情。" tone="empty" />
             ) : stagesLoading ? (
-              <Typography variant="body2" color="text.secondary">正在加载阶段信息...</Typography>
+              <PageState title="正在加载阶段详情" description="正在同步当前文章的阶段执行记录。" tone="loading" />
+            ) : detailError ? (
+              <PageState title="阶段详情暂时不可用" description="当前记录详情暂时不可用，请重新选择或稍后重试。" tone="error" />
             ) : stageDetail ? (
               <>
                 <Typography variant="subtitle1">
                   当前运行：{stageDetail.run ? `${stageDetail.run.status} / ${stageDetail.run.current_stage || '未进入阶段'}` : '尚未创建改写运行'}
                 </Typography>
                 {stageDetail.stages.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">
-                    当前文章还没有阶段记录。
-                  </Typography>
+                  <PageState title="暂无阶段记录" description="当前文章尚未产生可查看的阶段执行记录。" tone="empty" />
                 ) : (
                   stageDetail.stages.map((stage) => (
                     <Stack key={stage.id} spacing={0.5} sx={{ p: 1.5, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
@@ -442,7 +447,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
                 )}
               </>
             ) : (
-              <Typography variant="body2" color="text.secondary">当前文章阶段信息不可用。</Typography>
+              <PageState title="阶段详情暂时不可用" description="当前记录详情暂时不可用，请重新选择或稍后重试。" tone="error" />
             )}
           </Stack>
         </PageCard>

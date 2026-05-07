@@ -187,4 +187,49 @@ describe('TemplatesPage', () => {
     });
     expect(screen.getAllByText('已停用').length).toBeGreaterThan(0);
   });
+
+  it('shows an explicit empty state when no templates are returned', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/templates') && method === 'GET') {
+        return Promise.resolve(jsonResponse({ data: [] }));
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+
+    renderTemplatesPage();
+
+    expect((await screen.findAllByTestId('page-state-empty')).length).toBe(2);
+    expect(screen.getByText('暂无模板记录')).toBeInTheDocument();
+    expect(screen.getAllByTestId('page-state-empty')).toHaveLength(2);
+    expect(screen.getByText('请选择一个模板查看详细内容。')).toBeInTheDocument();
+  });
+
+  it('shows an explicit error state while keeping the page structure visible', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/templates') && method === 'GET') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ message: '模板列表加载失败，请刷新后重试。' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+
+    renderTemplatesPage();
+
+    expect(await screen.findByTestId('page-state-error')).toBeInTheDocument();
+    expect(screen.getByText('模板列表加载失败，请刷新后重试。')).toBeInTheDocument();
+    expect(screen.getByText('模板列表')).toBeInTheDocument();
+    expect(screen.getByText('内容预览')).toBeInTheDocument();
+  });
 });

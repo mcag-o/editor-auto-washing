@@ -6,6 +6,7 @@ describe('WorkflowNodeDrawer node type contract', () => {
   it('shows unknown backend node types without coercing them away', () => {
     render(
       <WorkflowNodeDrawer
+        loading={false}
         entryNodeLabel="审核入口"
         selectedNodeId="node-42"
         value={{

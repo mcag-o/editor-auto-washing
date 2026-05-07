@@ -16,6 +16,7 @@ import {
   type TemplateFormDraft,
   type TemplateFormRecord,
 } from '../../lib/mappers/template';
+import PageState from '../../components/PageState';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
 import TemplateEditorDrawer from './components/TemplateEditorDrawer';
@@ -283,7 +284,7 @@ export default function TemplatesPage() {
         }
       />
 
-      {error ? <Alert severity="error">{error}</Alert> : null}
+      {error && templates.length > 0 ? <Alert severity="error">{error}</Alert> : null}
       {bannerMessage ? <Alert severity={loading ? 'info' : 'success'}>{bannerMessage}</Alert> : null}
 
       <Box
@@ -300,6 +301,8 @@ export default function TemplatesPage() {
         <Box>
           <TemplateList
             items={templates}
+            loading={loading}
+            error={templates.length === 0 ? error : null}
             selectedId={selectedId}
             onSelectTemplate={handleSelectTemplate}
             onEditTemplate={handleOpenEdit}
@@ -309,7 +312,7 @@ export default function TemplatesPage() {
           />
         </Box>
         <Box>
-          <TemplatePreview template={selectedTemplate} />
+          <TemplatePreview template={selectedTemplate} loading={loading} />
         </Box>
       </Box>
 

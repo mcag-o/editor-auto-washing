@@ -449,4 +449,28 @@ describe('WorkflowTemplatesPage editor interactions', () => {
 
     expect(screen.getByLabelText('模型名称')).toBeInTheDocument();
   });
+
+  it('shows an explicit empty state when no workflow templates are returned', async () => {
+    const api = await import('../../lib/api/client');
+    vi.mocked(api.listWorkflows).mockResolvedValue([]);
+
+    renderWorkflowTemplatesPage();
+
+    expect((await screen.findAllByTestId('page-state-empty')).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('暂无工作流模板')).toBeInTheDocument();
+    expect(screen.getByText('请选择一个工作流模板后再编辑节点配置。')).toBeInTheDocument();
+  });
+
+  it('shows an explicit error state while keeping the editor layout visible', async () => {
+    const api = await import('../../lib/api/client');
+    vi.mocked(api.listWorkflows).mockRejectedValue(new api.ApiError(500, '工作流列表加载失败，请刷新后重试。'));
+
+    renderWorkflowTemplatesPage();
+
+    expect((await screen.findAllByTestId('page-state-error')).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('工作流列表加载失败，请刷新后重试。').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByTestId('workflow-list-column')).toBeInTheDocument();
+    expect(screen.getByTestId('workflow-canvas-column')).toBeInTheDocument();
+    expect(screen.getByTestId('workflow-side-panel')).toBeInTheDocument();
+  });
 });

@@ -7,6 +7,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useEffect, useId, useState } from 'react';
 import PageCard from '../../../components/PageCard';
+import PageState from '../../../components/PageState';
 
 export const commonWorkflowNodeTypes = ['input', 'rewrite', 'review', 'render'] as const;
 
@@ -22,6 +23,7 @@ export type WorkflowNodeFormValue = {
 };
 
 type WorkflowNodeDrawerProps = {
+  loading: boolean;
   entryNodeLabel: string | null;
   selectedNodeId: string | null;
   value: WorkflowNodeFormValue | null;
@@ -36,6 +38,7 @@ const nodeTypeLabels: Record<WorkflowNodeType, string> = {
 };
 
 export default function WorkflowNodeDrawer({
+  loading,
   entryNodeLabel,
   selectedNodeId,
   value,
@@ -61,7 +64,9 @@ export default function WorkflowNodeDrawer({
         </Typography>
       }
     >
-      {value ? (
+      {loading ? (
+        <PageState title="正在加载节点配置" description="工作流定义加载完成后即可编辑节点参数。" tone="loading" />
+      ) : value ? (
         <Stack spacing={2}>
           <Tabs
             value={activeTab}
@@ -170,12 +175,7 @@ export default function WorkflowNodeDrawer({
           </Box>
         </Stack>
       ) : (
-        <Stack spacing={1}>
-          <Typography variant="subtitle2">未选择节点</Typography>
-          <Typography variant="body2" color="text.secondary">
-            请在中间画布点击一个节点，再在此编辑节点名称、类型、模板、模型和上下文配置。
-          </Typography>
-        </Stack>
+        <PageState title="未选择节点" description="请选择一个工作流模板后再编辑节点配置。" tone="empty" />
       )}
     </PageCard>
   );

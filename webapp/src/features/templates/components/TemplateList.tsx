@@ -18,11 +18,14 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { useState } from 'react';
+import PageState from '../../../components/PageState';
 import StatusChip from '../../../components/StatusChip';
 import type { TemplateRecord } from '../TemplatesPage';
 
 type TemplateListProps = {
   items: TemplateRecord[];
+  loading: boolean;
+  error: string | null;
   selectedId: string;
   onSelectTemplate: (id: string) => void;
   onEditTemplate: (id: string) => void;
@@ -33,6 +36,8 @@ type TemplateListProps = {
 
 export default function TemplateList({
   items,
+  loading,
+  error,
   selectedId,
   onSelectTemplate,
   onEditTemplate,
@@ -96,83 +101,79 @@ export default function TemplateList({
           <Chip label={`${items.length} 个模板`} variant="outlined" />
         </Stack>
 
-        <TableContainer>
-          <Table size="small" sx={{ minWidth: 920 }}>
-            <TableHead>
-              <TableRow>
-                <TableCell>模板名称</TableCell>
-                <TableCell>版本</TableCell>
-                <TableCell>启用状态</TableCell>
-                <TableCell>摘要</TableCell>
-                <TableCell>阶段数</TableCell>
-                <TableCell>更新时间</TableCell>
-                <TableCell align="right">操作</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {items.length === 0 ? (
+        {loading ? (
+          <PageState title="正在加载模板列表" description="正在同步模板定义，请稍候。" tone="loading" />
+        ) : error ? (
+          <PageState title="模板列表暂时不可用" description={error} tone="error" />
+        ) : items.length === 0 ? (
+          <PageState title="暂无模板记录" description="点击右上角“新建模板”即可开始搭建新的模板。" tone="empty" />
+        ) : (
+          <TableContainer>
+            <Table size="small" sx={{ minWidth: 920 }}>
+              <TableHead>
                 <TableRow>
-                  <TableCell colSpan={7}>
-                    <Stack spacing={0.75} sx={{ py: 4, alignItems: 'center' }}>
-                      <Typography variant="subtitle2">当前没有模板记录</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        点击右上角“新建模板”即可开始搭建新的提示词或阶段模板。
-                      </Typography>
-                    </Stack>
-                  </TableCell>
+                  <TableCell>模板名称</TableCell>
+                  <TableCell>版本</TableCell>
+                  <TableCell>启用状态</TableCell>
+                  <TableCell>摘要</TableCell>
+                  <TableCell>阶段数</TableCell>
+                  <TableCell>更新时间</TableCell>
+                  <TableCell align="right">操作</TableCell>
                 </TableRow>
-              ) : null}
-              {items.map((item) => {
-                const isSelected = item.id === selectedId;
+              </TableHead>
+              <TableBody>
+                {items.map((item) => {
+                  const isSelected = item.id === selectedId;
 
-                return (
-                  <TableRow
-                    key={item.id}
-                    hover
-                    selected={isSelected}
-                    onClick={() => onSelectTemplate(item.id)}
-                    sx={{ cursor: 'pointer' }}
-                  >
-                    <TableCell>
-                      <Stack spacing={0.5}>
-                        <Typography variant="subtitle2">{item.name}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          由 {item.updatedBy} 更新
+                  return (
+                    <TableRow
+                      key={item.id}
+                      hover
+                      selected={isSelected}
+                      onClick={() => onSelectTemplate(item.id)}
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <TableCell>
+                        <Stack spacing={0.5}>
+                          <Typography variant="subtitle2">{item.name}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            由 {item.updatedBy} 更新
+                          </Typography>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Chip size="small" label={item.version} />
+                      </TableCell>
+                      <TableCell>
+                        <StatusChip status={item.enabled ? 'active' : 'disabled'} />
+                      </TableCell>
+                      <TableCell sx={{ maxWidth: 320 }}>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {item.summary}
                         </Typography>
-                      </Stack>
-                    </TableCell>
-                    <TableCell>
-                      <Chip size="small" label={item.version} />
-                    </TableCell>
-                    <TableCell>
-                      <StatusChip status={item.enabled ? 'active' : 'disabled'} />
-                    </TableCell>
-                    <TableCell sx={{ maxWidth: 320 }}>
-                      <Typography variant="body2" color="text.secondary" noWrap>
-                        {item.summary}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{item.stages.length}</TableCell>
-                    <TableCell>{item.updatedAt}</TableCell>
-                    <TableCell align="right">
-                      <Button
-                        size="small"
-                        variant="text"
-                        startIcon={<MoreHorizRoundedIcon />}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleOpenMenu(event, item.id);
-                        }}
-                      >
-                        操作
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                      </TableCell>
+                      <TableCell>{item.stages.length}</TableCell>
+                      <TableCell>{item.updatedAt}</TableCell>
+                      <TableCell align="right">
+                        <Button
+                          size="small"
+                          variant="text"
+                          startIcon={<MoreHorizRoundedIcon />}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleOpenMenu(event, item.id);
+                          }}
+                        >
+                          操作
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
       </Stack>
 
       <Menu anchorEl={menuAnchorEl} open={menuOpen} onClose={handleCloseMenu}>

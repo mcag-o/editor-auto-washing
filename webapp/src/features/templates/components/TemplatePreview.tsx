@@ -7,17 +7,21 @@ import Divider from '@mui/material/Divider';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import PageState from '../../../components/PageState';
 import type { TemplateRecord } from '../TemplatesPage';
 import StatusChip from '../../../components/StatusChip';
 
 type TemplatePreviewProps = {
   template: TemplateRecord | null;
+  loading: boolean;
 };
 
-export default function TemplatePreview({ template }: TemplatePreviewProps) {
+export default function TemplatePreview({ template, loading }: TemplatePreviewProps) {
   return (
     <Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, border: '1px solid', borderColor: 'divider' }}>
-      {template ? (
+      {loading ? (
+        <PageState title="正在加载模板预览" description="列表同步完成后即可查看模板详细内容。" tone="loading" />
+      ) : template ? (
         <Stack spacing={2.25}>
           <Stack direction="row" spacing={1.5} justifyContent="space-between" alignItems="flex-start">
             <Box>
@@ -107,9 +111,7 @@ export default function TemplatePreview({ template }: TemplatePreviewProps) {
       ) : (
         <Stack spacing={1.25}>
           <Typography variant="h5">内容预览</Typography>
-          <Typography variant="body2" color="text.secondary">
-            请选择一个模板查看右侧预览内容。
-          </Typography>
+          <PageState title="未选择模板" description="请选择一个模板查看详细内容。" tone="empty" />
         </Stack>
       )}
     </Paper>

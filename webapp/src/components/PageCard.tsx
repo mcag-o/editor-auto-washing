@@ -9,11 +9,12 @@ type PageCardProps = PropsWithChildren<{
   title: string;
   description?: string;
   action?: ReactNode;
+  testId?: string;
 }>
 
-export default function PageCard({ title, description, action, children }: PageCardProps) {
+export default function PageCard({ title, description, action, children, testId }: PageCardProps) {
   return (
-    <Card elevation={0}>
+    <Card elevation={0} data-testid={testId}>
       <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
         <Stack spacing={2.5}>
           <Stack

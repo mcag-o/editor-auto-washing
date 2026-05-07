@@ -17,6 +17,7 @@ import Typography from '@mui/material/Typography';
 import { ApiError, getAudit, listAudit } from '../../lib/api/client';
 import type { AuditLog } from '../../lib/api/types';
 import PageCard from '../../components/PageCard';
+import PageState from '../../components/PageState';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
 import type { AppPage } from '../../layout/AppShell';
@@ -162,68 +163,66 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
 
       <Stack direction={{ xs: 'column', xl: 'row' }} spacing={3} alignItems="stretch">
         <PageCard
+          testId="audit-list-card"
           title="审计记录表"
           description="保留操作编号、时间、资源、等级与详情字段，并支持点击查看详情。"
           action={loading ? <CircularProgress size={18} /> : <StatusChip status="completed" label={`共 ${filteredRows.length} 条`} />}
         >
-          <TableContainer>
-            <Table sx={{ minWidth: 960 }}>
-              <TableHead>
-                <TableRow>
-                  <TableCell>记录编号</TableCell>
-                  <TableCell>时间</TableCell>
-                  <TableCell>操作人</TableCell>
-                  <TableCell>资源</TableCell>
-                  <TableCell>动作</TableCell>
-                  <TableCell>等级</TableCell>
-                  <TableCell>详情</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredRows.map((row) => {
-                  const level = logLevel(row);
-                  return (
-                    <TableRow key={row.id} hover selected={selectedLogID === row.id} onClick={() => void handleSelectLog(row)} sx={{ cursor: 'pointer' }}>
-                      <TableCell>{row.id}</TableCell>
-                      <TableCell>{formatTime(row.created_at)}</TableCell>
-                      <TableCell>{row.actor}</TableCell>
-                      <TableCell>{row.resource}</TableCell>
-                      <TableCell>{row.action}</TableCell>
-                      <TableCell>
-                        <StatusChip status={level === '错误' ? 'failed' : level === '警告' ? 'pending' : 'completed'} label={level} />
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          {row.message}
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {!loading && filteredRows.length === 0 ? (
+          {loading ? (
+            <PageState title="正在加载审计记录" description="正在同步最新的操作审计数据，请稍候。" tone="loading" />
+          ) : listError ? (
+            <PageState title="审计记录暂时不可用" description={listError} tone="error" />
+          ) : filteredRows.length === 0 ? (
+            <PageState title="暂无审计记录" description="当前筛选条件下没有可显示的审计记录。" tone="empty" />
+          ) : (
+            <TableContainer>
+              <Table sx={{ minWidth: 960 }}>
+                <TableHead>
                   <TableRow>
-                    <TableCell colSpan={7}>
-                      <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-                        当前过滤条件下没有匹配的审计记录。
-                      </Typography>
-                    </TableCell>
+                    <TableCell>记录编号</TableCell>
+                    <TableCell>时间</TableCell>
+                    <TableCell>操作人</TableCell>
+                    <TableCell>资源</TableCell>
+                    <TableCell>动作</TableCell>
+                    <TableCell>等级</TableCell>
+                    <TableCell>详情</TableCell>
                   </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {filteredRows.map((row) => {
+                    const level = logLevel(row);
+                    return (
+                      <TableRow key={row.id} hover selected={selectedLogID === row.id} onClick={() => void handleSelectLog(row)} sx={{ cursor: 'pointer' }}>
+                        <TableCell>{row.id}</TableCell>
+                        <TableCell>{formatTime(row.created_at)}</TableCell>
+                        <TableCell>{row.actor}</TableCell>
+                        <TableCell>{row.resource}</TableCell>
+                        <TableCell>{row.action}</TableCell>
+                        <TableCell>
+                          <StatusChip status={level === '错误' ? 'failed' : level === '警告' ? 'pending' : 'completed'} label={level} />
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary">
+                            {row.message}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </PageCard>
 
         <PageCard
+          testId="audit-detail-card"
           title="审计详情"
           description="显示选中记录的 message、资源 ID 与 metadata。"
           action={detailLoading ? <CircularProgress size={18} /> : <StatusChip status={selectedLogID ? (selectedLog ? 'active' : 'failed') : 'disabled'} label={selectedLogID ? (selectedLog ? '已加载' : '加载失败') : '未选择'} />}
         >
-          {detailError ? <Alert severity="error">{detailError}</Alert> : null}
           {detailLoading && selectedLogID ? (
-            <Typography variant="body2" color="text.secondary">
-              正在加载选中记录的审计详情。
-            </Typography>
+            <PageState title="正在加载审计详情" description="正在同步当前选中记录的详细信息。" tone="loading" />
           ) : selectedLog ? (
             <Stack spacing={1.5}>
               <Typography variant="subtitle1">{selectedLog.action}</Typography>
@@ -236,14 +235,12 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
               <Typography variant="body2">{selectedLog.message || '无补充说明'}</Typography>
               <TextField multiline minRows={10} label="Metadata" value={JSON.stringify(selectedLog.metadata ?? {}, null, 2)} InputProps={{ readOnly: true }} />
             </Stack>
+          ) : detailError ? (
+            <PageState title="审计详情暂时不可用" description="当前记录详情暂时不可用，请重新选择或稍后重试。" tone="error" />
           ) : selectedLogID ? (
-            <Typography variant="body2" color="text.secondary">
-              当前选中记录的审计详情暂时不可用。
-            </Typography>
+            <PageState title="审计详情暂时不可用" description="当前记录详情暂时不可用，请重新选择或稍后重试。" tone="error" />
           ) : (
-            <Typography variant="body2" color="text.secondary">
-              点击左侧记录查看详情。
-            </Typography>
+            <PageState title="未选择审计记录" description="请选择一条记录查看审计详情。" tone="empty" />
           )}
         </PageCard>
       </Stack>

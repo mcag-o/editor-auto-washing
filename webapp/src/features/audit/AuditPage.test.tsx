@@ -133,9 +133,12 @@ describe('AuditPage', () => {
 
     renderAuditPage();
 
-    expect(await screen.findByText('当前过滤条件下没有匹配的审计记录。')).toBeInTheDocument();
+    const listCard = await screen.findByTestId('audit-list-card');
+    expect(within(listCard).getByTestId('page-state-empty')).toBeInTheDocument();
+    expect(within(listCard).getByText('暂无审计记录')).toBeInTheDocument();
     expect(screen.getByText('当前结果 0 条，列表与详情都来自现有审计 API。')).toBeInTheDocument();
-    expect(screen.getByText('点击左侧记录查看详情。')).toBeInTheDocument();
+    expect(within(screen.getByTestId('audit-detail-card')).getByTestId('page-state-empty')).toBeInTheDocument();
+    expect(screen.getByText('请选择一条记录查看审计详情。')).toBeInTheDocument();
   });
 
   it('keeps the list visible when detail fetch fails', async () => {
@@ -150,11 +153,12 @@ describe('AuditPage', () => {
     const detailCard = screen.getByRole('heading', { name: '审计详情' }).closest('.MuiCard-root');
     expect(detailCard).not.toBeNull();
 
-    expect(await within(detailCard as HTMLElement).findByText('审计详情加载失败')).toBeInTheDocument();
+    expect(await within(detailCard as HTMLElement).findByTestId('page-state-error')).toBeInTheDocument();
     expect(screen.getByText('流程暂停')).toBeInTheDocument();
     expect(screen.getByText('任务恢复')).toBeInTheDocument();
-    expect(within(detailCard as HTMLElement).getByText('当前选中记录的审计详情暂时不可用。')).toBeInTheDocument();
-    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(within(detailCard as HTMLElement).getByTestId('page-state-error')).toBeInTheDocument();
+    expect(within(detailCard as HTMLElement).getByText('当前记录详情暂时不可用，请重新选择或稍后重试。')).toBeInTheDocument();
+    expect(within(detailCard as HTMLElement).getAllByRole('alert')).toHaveLength(1);
   });
 
   it('keeps the latest failed selection without showing stale prior detail', async () => {
@@ -175,7 +179,7 @@ describe('AuditPage', () => {
     const detailCard = screen.getByRole('heading', { name: '审计详情' }).closest('.MuiCard-root');
     expect(detailCard).not.toBeNull();
 
-    expect(await within(detailCard as HTMLElement).findByText('审计详情加载失败')).toBeInTheDocument();
+    expect(await within(detailCard as HTMLElement).findByTestId('page-state-error')).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /log-2/i })).toHaveClass('Mui-selected');
     expect(within(detailCard as HTMLElement).queryByText('资源：system / system-1')).not.toBeInTheDocument();
     expect(within(detailCard as HTMLElement).queryByDisplayValue(/"operator": "A-01"/)).not.toBeInTheDocument();
