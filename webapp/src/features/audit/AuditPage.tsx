@@ -159,8 +159,8 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
     <Stack spacing={3}>
       <PageToolbar
         title="操作审计"
-        description="使用 Material UI Table 组织真实审计记录、等级过滤与关键词查询，不引入 DataGrid。"
-        leading={<StatusChip status="active" label="后端审计视图" />}
+        description="使用 Material UI Table 组织真实操作留痕、等级过滤与关键词查询，不引入 DataGrid。"
+        leading={<StatusChip status="active" label="操作留痕" />}
         actions={
           <>
             <Button color="inherit" variant="text" onClick={() => onNavigate?.('overview')}>
@@ -195,7 +195,7 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
               />
             </Stack>
             <Typography variant="body2" color="text.secondary">
-              当前结果 {filteredRows.length} 条，列表与详情都来自现有审计 API。
+              当前结果 {filteredRows.length} 条，列表与详情都来自当前操作留痕。
             </Typography>
           </Stack>
         }

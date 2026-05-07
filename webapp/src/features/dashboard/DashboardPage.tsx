@@ -86,8 +86,8 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     const total = Math.max(articles.length, 1);
     return [
       { key: 'rewrite', label: '标准改写链路', progress: articles.length === 0 ? 0 : Math.round(((runningCount + completedCount) / total) * 100), detail: `运行中 ${runningCount} 条，已完成 ${completedCount} 条。` },
-      { key: 'review', label: '人工复核队列', progress: articles.length === 0 ? 0 : Math.round((failedCount / total) * 100), detail: `失败文章 ${failedCount} 条，建议优先进入文章队列处理。` },
-      { key: 'render', label: '渲染输出准备', progress: articles.length === 0 ? 0 : Math.round((completedCount / total) * 100), detail: `已完成 ${completedCount} 条，可进入后续草稿/渲染观察。` },
+      { key: 'review', label: '人工审核准备', progress: articles.length === 0 ? 0 : Math.round((failedCount / total) * 100), detail: `失败文章 ${failedCount} 条需人工处理；审核与发布保持为后续可选步骤。` },
+      { key: 'render', label: '草稿与渲染结果', progress: articles.length === 0 ? 0 : Math.round((completedCount / total) * 100), detail: `已完成 ${completedCount} 条，默认自动结果停在草稿生成与渲染。` },
     ];
   }, [articles.length, completedCount, failedCount, runningCount]);
 
@@ -109,7 +109,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       {
         key: 'audit',
         title: latestAudit ? `最近审计：${latestAudit.action}` : '暂无审计记录',
-        description: latestAudit?.message || '当前审计 API 未返回最新记录。',
+        description: latestAudit?.message || '当前还没有新的操作留痕。',
         status: latestAudit?.result === 'failure' ? ('failed' as const) : latestAudit ? ('completed' as const) : ('disabled' as const),
       },
     ];
@@ -119,7 +119,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     <Stack spacing={3}>
       <PageToolbar
         title="控制台总览"
-        description="汇总系统状态、文章队列、模板与审计摘要。"
+        description="汇总系统状态、文章队列、模板与操作留痕，并强调默认草稿+渲染结果。"
         leading={<StatusChip status="active" label="运营总览" />}
         actions={
           <>
@@ -146,7 +146,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       >
         <PageCard
           title="处理链路概览"
-          description="基于当前已加载数据汇总导入、改写、复核与输出进度。"
+          description="基于当前已加载数据汇总导入、改写、草稿生成与渲染进度。"
           action={loading ? <CircularProgress size={18} /> : <StatusChip status="completed" label="摘要就绪" />}
         >
           <Stack spacing={2}>
@@ -169,10 +169,11 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
         <PageCard
           title="运营提醒"
-          description="基于最近一次加载结果汇总系统状态、失败积压与审计记录。"
+          description="基于最近一次加载结果汇总系统状态、失败积压与操作留痕。"
           action={<StatusChip status={failedCount > 0 ? 'failed' : 'pending'} label="需持续关注" />}
         >
           <Stack spacing={1.5}>
+            <Alert severity="info">默认自动结果停在草稿生成与渲染，审核发布作为后续人工步骤。</Alert>
             {alerts.map((item) => (
               <Stack
                 key={item.key}

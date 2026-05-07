@@ -220,8 +220,8 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
   return (
     <Stack spacing={3}>
       <PageToolbar
-        title="流程控制"
-        description="管理主链路运行状态，并查看系统状态与队列摘要。"
+        title="运行控制"
+        description="管理默认自动处理链路的运行状态，并查看系统状态与队列摘要。"
         leading={<StatusChip status={stateSummary.chipStatus} label={stateSummary.chipLabel} />}
         actions={
           <>
@@ -235,7 +235,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
         }
         filters={
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ xs: 'flex-start', md: 'center' }}>
-            <StatusChip status="completed" label="已接入控制 API" />
+            <StatusChip status="completed" label="浏览器控制已接通" />
             <Typography variant="body2" color="text.secondary">
               状态更新时间：{systemLoading ? '加载中' : systemLoadError ? '加载失败' : systemState?.updated_at ? new Date(systemState.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未记录'}
             </Typography>
@@ -309,7 +309,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
                 {[
                   '启动会按当前并发上限拉起主链路，仅对未启动状态生效。',
                   '暂停会提交协作暂停请求，不会强制中断已在执行中的任务。',
-                  '恢复只对已暂停状态生效，会继续处理当前待处理队列。',
+                  '恢复只对已暂停状态生效，会继续处理当前待处理队列；审核与发布仍保持人工后续步骤。',
                 ].map((item) => (
                   <Typography key={item} variant="body2" color="text.secondary">
                     {item}

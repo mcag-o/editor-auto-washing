@@ -89,6 +89,7 @@ describe('DashboardPage', () => {
 
     expect(screen.getByRole('heading', { name: '控制台总览' })).toBeInTheDocument();
     expect(await screen.findByText('系统当前状态：运行中')).toBeInTheDocument();
+    expect(screen.getByText('默认自动结果停在草稿生成与渲染，审核发布作为后续人工步骤。')).toBeInTheDocument();
     expect(await screen.findByText('2 个已启用')).toBeInTheDocument();
     expect(screen.getAllByText('失败文章 1 条，建议优先进入文章队列处理。').length).toBeGreaterThan(0);
     expect(screen.getByText('来源于文章队列中的 pending 状态。')).toBeInTheDocument();

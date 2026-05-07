@@ -1,6 +1,6 @@
 # content-hub
 
-> 当前默认主实现（Go 版，仓库根目录），以 `8123` 上的中文 React + Vite web control plane 作为唯一 active operator surface，覆盖浏览器上传/粘贴 intake、rewrite/draft/render、审核发布能力与作业自动化主链路。
+> 当前默认主实现（Go 版，仓库根目录），以 `8123` 上的中文 React + Vite web control plane 作为唯一 active operator surface，覆盖浏览器上传/粘贴 intake、workflow/template 浏览器管理、默认 draft/render 主链路，以及后续可选的审核发布能力。
 
 ---
 
@@ -14,7 +14,7 @@
 - browser upload / paste intake
 - article workspace 生命周期
 - 结构化 draft / render / validate / asset persistence
-- review / publish gate / publish history
+- review / publish gate / publish history（后续可选人工步骤）
 - workflow / jobs / automation
 - React + Vite web control plane（Material UI + React Flow，唯一 active operator surface）/ HTTP API / CLI（开发调试支持）/ 基础 TUI
 
@@ -144,7 +144,7 @@ go mod download
 go run ./cmd/server
 ```
 
-默认监听 `http://localhost:8123`，浏览器操作以 React + Vite web control plane 为主，且当前操作 UI 为中文。业务配置、workflow/template 管理与日常 intake 都通过该浏览器 UI 完成，其中 workflow/template 管理采用组件化界面并建立在 Material UI 与 React Flow 之上；browser upload / paste 是当前唯一面向操作人员的 active intake 路径；CLI 仅用于开发/调试支持，folder-intake 仅保留为后端/内部兼容能力。启动后可检查：
+默认监听 `http://localhost:8123`，浏览器操作以 React + Vite web control plane 为主，且当前操作 UI 为中文。业务配置、workflow/template 管理与日常 intake 都通过该浏览器 UI 完成，其中 workflow/template 管理采用组件化界面并建立在 Material UI 与 React Flow 之上；browser upload / paste 是当前唯一面向操作人员的 active intake 路径；默认自动结果停在 draft + render，review / publish 保持后续可选人工步骤；CLI 仅用于开发/调试支持，folder-intake 仅保留为后端/内部兼容能力。启动后可检查：
 
 ```bash
 curl http://localhost:8123/health

@@ -153,7 +153,7 @@ describe('AuditPage', () => {
     const listCard = await screen.findByTestId('audit-list-card');
     expect(within(listCard).getByTestId('page-state-empty')).toBeInTheDocument();
     expect(within(listCard).getByText('暂无审计记录')).toBeInTheDocument();
-    expect(screen.getByText('当前结果 0 条，列表与详情都来自现有审计 API。')).toBeInTheDocument();
+    expect(screen.getByText('当前结果 0 条，列表与详情都来自当前操作留痕。')).toBeInTheDocument();
     expect(within(screen.getByTestId('audit-detail-card')).getByTestId('page-state-empty')).toBeInTheDocument();
     expect(screen.getByText('请选择一条记录查看审计详情。')).toBeInTheDocument();
   });
@@ -307,14 +307,14 @@ describe('AuditPage', () => {
     renderAuditPage();
 
     expect(await screen.findByRole('row', { name: /log-1/i })).toHaveClass('Mui-selected');
-    expect(screen.getByText('system / system-1')).toBeInTheDocument();
+    const detailCard = screen.getByTestId('audit-detail-card');
+    expect(await within(detailCard).findByText('system / system-1')).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText('搜索操作人、资源、动作或详情'), {
       target: { value: 'not-found-keyword' },
     });
 
     expect(await screen.findByText('暂无审计记录')).toBeInTheDocument();
-    const detailCard = screen.getByTestId('audit-detail-card');
     expect(await within(detailCard).findByTestId('page-state-empty')).toBeInTheDocument();
     expect(within(detailCard).getByText('请选择一条记录查看审计详情。')).toBeInTheDocument();
     expect(within(detailCard).queryByText('system / system-1')).not.toBeInTheDocument();

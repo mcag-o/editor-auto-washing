@@ -33,7 +33,7 @@ const navigationItems = [
   { key: 'overview' as const, label: '控制台总览', icon: <AppsRoundedIcon fontSize="small" /> },
   { key: 'intake' as const, label: '文章导入', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
   { key: 'articles' as const, label: '文章队列', icon: <DescriptionRoundedIcon fontSize="small" /> },
-  { key: 'control' as const, label: '流程控制', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
+  { key: 'control' as const, label: '运行控制', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
   { key: 'workflows' as const, label: '工作流编辑', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
   { key: 'templates' as const, label: '模板管理', icon: <AutoAwesomeRoundedIcon fontSize="small" /> },
   { key: 'audit', label: '操作审计', icon: <HistoryRoundedIcon fontSize="small" /> },
@@ -78,9 +78,9 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
           <Typography variant="h4" sx={{ color: '#ffffff' }}>
             Content Hub
           </Typography>
-          <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
-            统一处理文章导入、流程控制、模板配置与审计查看。
-          </Typography>
+            <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
+              统一处理上传/粘贴导入、草稿渲染、模板配置与操作审计。
+            </Typography>
         </Stack>
       </Box>
       <Divider sx={{ borderColor: alpha('#ffffff', 0.08) }} />
@@ -151,7 +151,7 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
                 Content Hub 控制台
               </Typography>
               <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.72), display: { xs: 'none', sm: 'block' } }}>
-                自动改写、草稿生成与运营管理
+                中文操作台，默认自动结果停在草稿与渲染
               </Typography>
             </Box>
           </Stack>

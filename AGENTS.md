@@ -5,8 +5,10 @@ This repository is a post-migration workspace with one active Go codebase at the
 ## Repository Shape
 
 - Active project: repo root Go module `content-hub`
-- Only active documented operator surface: browser-based React + Vite web control plane on `8123` in the root Go runtime
+- Only active documented operator surface: browser-based Chinese React + Vite web control plane on `8123` in the root Go runtime
 - Only active documented operator intake path: browser upload / paste workflow in the root Go runtime
+- Workflow/template management is an active browser-backed capability on that same surface
+- Default automated result path stops at draft + render; review/publish are optional later manual steps
 - Archived reference projects:
   - `Archive/ArticleWashing/` - legacy Python content-hub implementation
   - `Archive/DataCollection/` - legacy Node.js collector implementation

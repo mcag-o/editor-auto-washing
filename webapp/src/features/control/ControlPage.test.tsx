@@ -1,5 +1,6 @@
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ControlPage from './ControlPage';
 import theme from '../../theme/theme';
@@ -117,7 +118,7 @@ describe('ControlPage', () => {
   it('uses clearer control wording and separates state, concurrency, queue, and actions', async () => {
     renderControlPage();
 
-    expect(await screen.findByRole('heading', { name: '流程控制' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '运行控制' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '运行状态与控制' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '队列与并发' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '启动主链路' })).toBeDisabled();
@@ -125,7 +126,7 @@ describe('ControlPage', () => {
     expect(screen.getByRole('button', { name: '恢复已暂停主链路' })).toBeEnabled();
     expect(screen.getByText('启动会按当前并发上限拉起主链路，仅对未启动状态生效。')).toBeInTheDocument();
     expect(screen.getByText('暂停会提交协作暂停请求，不会强制中断已在执行中的任务。')).toBeInTheDocument();
-    expect(screen.getByText('恢复只对已暂停状态生效，会继续处理当前待处理队列。')).toBeInTheDocument();
+    expect(screen.getByText('恢复只对已暂停状态生效，会继续处理当前待处理队列；审核与发布仍保持人工后续步骤。')).toBeInTheDocument();
   });
 
   it('does not show normal stopped or zero-value semantics while loading', async () => {
@@ -303,7 +304,10 @@ describe('ControlPage', () => {
 
     renderControlPage();
 
-    expect(await screen.findByRole('button', { name: '恢复已暂停主链路' })).toBeEnabled();
+    await screen.findByText('文章队列加载失败，请稍后重试。');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '恢复已暂停主链路' })).toBeEnabled();
+    });
     expect(screen.getAllByText('主链路已暂停').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('文章队列加载失败，请稍后重试。')).toBeInTheDocument();
     expect(screen.getByText('队列摘要暂时不可用。')).toBeInTheDocument();
