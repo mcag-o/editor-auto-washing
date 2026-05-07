@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import AutoFixHighRoundedIcon from '@mui/icons-material/AutoFixHighRounded';
+import ChevronLeftRoundedIcon from '@mui/icons-material/ChevronLeftRounded';
+import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
 import FitScreenRoundedIcon from '@mui/icons-material/FitScreenRounded';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
@@ -211,6 +214,7 @@ export default function WorkflowTemplatesPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [fitViewRequest, setFitViewRequest] = useState(0);
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
 
   const loadWorkflows = async () => {
     setLoading(true);
@@ -628,7 +632,7 @@ export default function WorkflowTemplatesPage() {
           <WorkflowEdgePanel selectedEdge={selectedEdgeSummary} onDeleteEdge={handleDeleteEdge} />
         </Stack>
 
-        <Stack spacing={3} flex={1} minWidth={0}>
+        <Stack spacing={3} flex={1} minWidth={0} data-testid="workflow-canvas-column" data-panel-state={isRightPanelCollapsed ? 'collapsed' : 'expanded'}>
           <WorkflowGraphPanel
             nodes={graphNodes}
             edges={graphEdges}
@@ -656,8 +660,42 @@ export default function WorkflowTemplatesPage() {
           />
         </Stack>
 
-        <Stack spacing={3} sx={{ width: { xs: '100%', xl: 360 }, flexShrink: 0 }}>
-          <WorkflowNodeDrawer selectedNodeId={selectedNodeId} entryNodeLabel={entryNodeLabel} value={selectedNodeFormValue} onChange={handleNodeChange} />
+        <Stack
+          spacing={2}
+          data-testid="workflow-side-panel"
+          data-panel-state={isRightPanelCollapsed ? 'collapsed' : 'expanded'}
+          sx={{
+            width: {
+              xs: '100%',
+              xl: isRightPanelCollapsed ? 72 : 360,
+            },
+            flexShrink: 0,
+            transition: (theme) => theme.transitions.create(['width'], {
+              duration: theme.transitions.duration.shorter,
+            }),
+          }}
+        >
+          <Stack direction="row" justifyContent={isRightPanelCollapsed ? 'center' : 'space-between'} alignItems="center">
+            {isRightPanelCollapsed ? null : (
+              <Stack spacing={0.5}>
+                <Typography variant="subtitle2">右侧配置面板</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  按节点与连线分组配置，折叠后画布会回收宽度。
+                </Typography>
+              </Stack>
+            )}
+            <IconButton
+              aria-label={isRightPanelCollapsed ? '展开右侧配置面板' : '折叠右侧配置面板'}
+              onClick={() => setIsRightPanelCollapsed((current) => !current)}
+              size="small"
+            >
+              {isRightPanelCollapsed ? <ChevronLeftRoundedIcon /> : <ChevronRightRoundedIcon />}
+            </IconButton>
+          </Stack>
+
+          {isRightPanelCollapsed ? null : (
+            <WorkflowNodeDrawer selectedNodeId={selectedNodeId} entryNodeLabel={entryNodeLabel} value={selectedNodeFormValue} onChange={handleNodeChange} />
+          )}
         </Stack>
       </Stack>
     </Stack>

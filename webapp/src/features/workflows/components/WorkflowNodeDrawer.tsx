@@ -1,8 +1,11 @@
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
 import Stack from '@mui/material/Stack';
+import Tab from '@mui/material/Tab';
+import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { useEffect, useId, useState } from 'react';
 import PageCard from '../../../components/PageCard';
 
 export const commonWorkflowNodeTypes = ['input', 'rewrite', 'review', 'render'] as const;
@@ -38,6 +41,16 @@ export default function WorkflowNodeDrawer({
   value,
   onChange,
 }: WorkflowNodeDrawerProps) {
+  const [activeTab, setActiveTab] = useState('basic');
+  const tabsId = useId();
+
+  useEffect(() => {
+    setActiveTab('basic');
+  }, [selectedNodeId]);
+
+  const tabPanelId = (tab: string) => `${tabsId}-${tab}-panel`;
+  const tabId = (tab: string) => `${tabsId}-${tab}-tab`;
+
   return (
     <PageCard
       title="节点配置"
@@ -50,62 +63,111 @@ export default function WorkflowNodeDrawer({
     >
       {value ? (
         <Stack spacing={2}>
-          <Box>
-            <Typography variant="subtitle2">当前节点</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {selectedNodeId}
-            </Typography>
-          </Box>
+          <Tabs
+            value={activeTab}
+            onChange={(_event, nextValue: string) => setActiveTab(nextValue)}
+            variant="scrollable"
+            scrollButtons="auto"
+            aria-label="节点配置分组"
+          >
+            <Tab label="基础信息" value="basic" id={tabId('basic')} aria-controls={tabPanelId('basic')} />
+            <Tab label="模板绑定" value="template" id={tabId('template')} aria-controls={tabPanelId('template')} />
+            <Tab label="模型参数" value="model" id={tabId('model')} aria-controls={tabPanelId('model')} />
+            <Tab label="上下文" value="context" id={tabId('context')} aria-controls={tabPanelId('context')} />
+          </Tabs>
 
           <Divider />
 
-          <TextField label="节点名称" value={value.label} onChange={(event) => onChange('label', event.target.value)} fullWidth />
+          <Box role="tabpanel" hidden={activeTab !== 'basic'} id={tabPanelId('basic')} aria-labelledby={tabId('basic')}>
+            {activeTab === 'basic' ? (
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="subtitle2">当前节点</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedNodeId}
+                  </Typography>
+                </Box>
 
-          <TextField
-            label="节点类型"
-            value={value.rawType}
-            onChange={(event) => onChange('rawType', event.target.value)}
-            helperText={commonWorkflowNodeTypes.includes(value.rawType as WorkflowNodeType) ? '常用类型可直接输入或从浏览器自动补全中选择。' : '保留当前后端类型值，保存时会原样写入节点 config_json。'}
-            placeholder="例如：rewrite、review、moderate"
-            inputProps={{ list: 'workflow-node-type-options' }}
-            fullWidth
-          />
-          <datalist id="workflow-node-type-options">
-            {commonWorkflowNodeTypes.map((type) => (
-              <option key={type} value={type}>
-                {nodeTypeLabels[type]}
-              </option>
-            ))}
-          </datalist>
+                <TextField label="节点名称" value={value.label} onChange={(event) => onChange('label', event.target.value)} fullWidth />
 
-          <TextField
-            label="模板标识"
-            value={value.template}
-            onChange={(event) => onChange('template', event.target.value)}
-            helperText="写入节点 config_json.template，供后端在执行时按约定解析。"
-            placeholder="例如：rewrite.standard"
-            fullWidth
-          />
+                <TextField
+                  label="节点类型"
+                  value={value.rawType}
+                  onChange={(event) => onChange('rawType', event.target.value)}
+                  helperText={commonWorkflowNodeTypes.includes(value.rawType as WorkflowNodeType) ? '常用类型可直接输入或从浏览器自动补全中选择。' : '保留当前后端类型值，保存时会原样写入节点 config_json。'}
+                  placeholder="例如：rewrite、review、moderate"
+                  inputProps={{ list: 'workflow-node-type-options' }}
+                  fullWidth
+                />
+                <datalist id="workflow-node-type-options">
+                  {commonWorkflowNodeTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {nodeTypeLabels[type]}
+                    </option>
+                  ))}
+                </datalist>
+              </Stack>
+            ) : null}
+          </Box>
 
-          <TextField
-            label="模型名称"
-            value={value.model}
-            onChange={(event) => onChange('model', event.target.value)}
-            helperText="写入节点 config_json.model；是否生效由后端节点实现决定。"
-            placeholder="例如：gpt-4.1-mini"
-            fullWidth
-          />
+          <Box role="tabpanel" hidden={activeTab !== 'template'} id={tabPanelId('template')} aria-labelledby={tabId('template')}>
+            {activeTab === 'template' ? (
+              <Stack spacing={2}>
+                <Typography variant="subtitle2">模板绑定</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  配置执行该节点时要绑定的模板标识。
+                </Typography>
+                <TextField
+                  label="模板标识"
+                  value={value.template}
+                  onChange={(event) => onChange('template', event.target.value)}
+                  helperText="写入节点 config_json.template，供后端在执行时按约定解析。"
+                  placeholder="例如：rewrite.standard"
+                  fullWidth
+                />
+              </Stack>
+            ) : null}
+          </Box>
 
-          <TextField
-            label="上下文说明"
-            value={value.context}
-            onChange={(event) => onChange('context', event.target.value)}
-            multiline
-            minRows={6}
-            helperText="写入节点 config_json.context，用于保存节点上下文说明。"
-            placeholder="描述该节点需要的上下文、提示词片段或业务约束。"
-            fullWidth
-          />
+          <Box role="tabpanel" hidden={activeTab !== 'model'} id={tabPanelId('model')} aria-labelledby={tabId('model')}>
+            {activeTab === 'model' ? (
+              <Stack spacing={2}>
+                <Typography variant="subtitle2">模型参数</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  为节点记录模型名称等执行侧参数。
+                </Typography>
+                <TextField
+                  label="模型名称"
+                  value={value.model}
+                  onChange={(event) => onChange('model', event.target.value)}
+                  helperText="写入节点 config_json.model；是否生效由后端节点实现决定。"
+                  placeholder="例如：gpt-4.1-mini"
+                  fullWidth
+                />
+              </Stack>
+            ) : null}
+          </Box>
+
+          <Box role="tabpanel" hidden={activeTab !== 'context'} id={tabPanelId('context')} aria-labelledby={tabId('context')}>
+            {activeTab === 'context' ? (
+              <Stack spacing={2}>
+                <Typography variant="subtitle2">上下文</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  保存节点上下文说明、提示词片段或业务约束。
+                </Typography>
+                <TextField
+                  label="上下文说明"
+                  value={value.context}
+                  onChange={(event) => onChange('context', event.target.value)}
+                  multiline
+                  minRows={8}
+                  helperText="写入节点 config_json.context，用于保存节点上下文说明。"
+                  placeholder="描述该节点需要的上下文、提示词片段或业务约束。"
+                  fullWidth
+                />
+              </Stack>
+            ) : null}
+          </Box>
         </Stack>
       ) : (
         <Stack spacing={1}>

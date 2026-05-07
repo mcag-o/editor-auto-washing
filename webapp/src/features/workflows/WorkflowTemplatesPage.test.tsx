@@ -356,4 +356,59 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(screen.getByText('已选择节点: 导入文章')).toBeInTheDocument();
     expect(screen.getByText('已选择连线: 当前未选择连线')).toBeInTheDocument();
   });
+
+  it('collapses and expands the right panel to reclaim canvas space', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    const canvasColumn = screen.getByTestId('workflow-canvas-column');
+    const sidePanel = screen.getByTestId('workflow-side-panel');
+
+    expect(sidePanel).toHaveAttribute('data-panel-state', 'expanded');
+    expect(canvasColumn).toHaveAttribute('data-panel-state', 'expanded');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '折叠右侧配置面板' }));
+    });
+
+    expect(sidePanel).toHaveAttribute('data-panel-state', 'collapsed');
+    expect(canvasColumn).toHaveAttribute('data-panel-state', 'collapsed');
+    expect(screen.queryByText('节点配置')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '展开右侧配置面板' })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '展开右侧配置面板' }));
+    });
+
+    expect(sidePanel).toHaveAttribute('data-panel-state', 'expanded');
+    expect(canvasColumn).toHaveAttribute('data-panel-state', 'expanded');
+    expect(screen.getByText('节点配置')).toBeInTheDocument();
+  });
+
+  it('uses sectioned content instead of one long scrolling side panel', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    expect(screen.getByRole('tab', { name: '基础信息' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '模板绑定' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '模型参数' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '上下文' })).toBeInTheDocument();
+    expect(screen.getByText('条件/分支')).toBeInTheDocument();
+    expect(screen.getByText('当前节点')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('tab', { name: '模板绑定' }));
+    });
+
+    expect(screen.getByLabelText('模板标识')).toBeInTheDocument();
+    expect(screen.queryByLabelText('模型名称')).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('tab', { name: '模型参数' }));
+    });
+
+    expect(screen.getByLabelText('模型名称')).toBeInTheDocument();
+  });
 });
