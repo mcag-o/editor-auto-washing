@@ -78,6 +78,7 @@ export default function WorkflowListPanel({
               }}
             >
               <ListItemText
+                secondaryTypographyProps={{ component: 'div' }}
                 primary={
                   <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
                     <Typography variant="subtitle2">{item.name}</Typography>
@@ -86,10 +87,10 @@ export default function WorkflowListPanel({
                 }
                 secondary={
                   <Stack spacing={0.75} sx={{ mt: 0.75 }}>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block' }}>
                       {item.description}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                       最近更新：{item.updatedAt}
                     </Typography>
                   </Stack>

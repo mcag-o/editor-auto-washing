@@ -153,6 +153,21 @@ function renderNodes(nodes: Array<Node<WorkflowCanvasNodeData>>, entryNodeId: st
   }));
 }
 
+function renderEdges(edges: Array<Edge<WorkflowEdgeData>>, selectedEdgeId: string | null) {
+  return edges.map((edge) => ({
+    ...edge,
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      color: edge.id === selectedEdgeId ? '#5b3df5' : '#0f62fe',
+    },
+    style: {
+      stroke: edge.id === selectedEdgeId ? '#5b3df5' : '#0f62fe',
+      strokeWidth: edge.id === selectedEdgeId ? 4 : 2,
+    },
+    selected: edge.id === selectedEdgeId,
+  }));
+}
+
 function workflowNodeType(type: string): WorkflowNodeType {
   if (commonWorkflowNodeTypes.includes(type as WorkflowNodeType)) {
     return type as WorkflowNodeType;
@@ -195,6 +210,7 @@ export default function WorkflowTemplatesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [fitViewRequest, setFitViewRequest] = useState(0);
 
   const loadWorkflows = async () => {
     setLoading(true);
@@ -227,6 +243,10 @@ export default function WorkflowTemplatesPage() {
 
   const selectedNode = selectedTemplate?.nodes.find((node) => node.id === selectedNodeId) ?? null;
   const selectedEdge = selectedTemplate?.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
+  const selectedNodeLabel = selectedNode?.data.label ?? null;
+  const selectedEdgeLabel = selectedEdge && selectedTemplate
+    ? `${selectedTemplate.nodes.find((node) => node.id === selectedEdge.source)?.data.label ?? selectedEdge.source} -> ${selectedTemplate.nodes.find((node) => node.id === selectedEdge.target)?.data.label ?? selectedEdge.target}`
+    : null;
 
   const selectedNodeFormValue: WorkflowNodeFormValue | null = selectedNode
       ? {
@@ -413,6 +433,15 @@ export default function WorkflowTemplatesPage() {
     [selectedNodeId, selectedTemplate],
   );
 
+  const graphEdges = useMemo(
+    () => renderEdges(selectedTemplate?.edges ?? [], selectedEdgeId),
+    [selectedEdgeId, selectedTemplate],
+  );
+
+  const handleFitView = () => {
+    setFitViewRequest((current) => current + 1);
+  };
+
   const handleNodesChange = (changes: NodeChange[]) => {
     updateSelectedTemplate((template) => ({
       ...template,
@@ -581,9 +610,15 @@ export default function WorkflowTemplatesPage() {
         nodeCount={selectedTemplate?.nodes.length ?? 0}
         edgeCount={selectedTemplate?.edges.length ?? 0}
         hasSelection={Boolean(selectedNodeId)}
+        canFitView={Boolean(selectedTemplate)}
         canDeleteNode={(selectedTemplate?.nodes.length ?? 0) > 0 && Boolean(selectedNodeId)}
+        canSetEntryNode={Boolean(selectedNodeId)}
+        selectedNodeLabel={selectedNodeLabel}
+        selectedEdgeLabel={selectedEdgeLabel}
+        entryNodeLabel={entryNodeLabel}
         onAddNode={handleAddNode}
         onDeleteNode={handleDeleteNode}
+        onFitView={handleFitView}
         onSelectEntryNode={handleSelectEntryNode}
       />
 
@@ -596,8 +631,12 @@ export default function WorkflowTemplatesPage() {
         <Stack spacing={3} flex={1} minWidth={0}>
           <WorkflowGraphPanel
             nodes={graphNodes}
-            edges={selectedTemplate?.edges ?? []}
+            edges={graphEdges}
+            fitViewRequest={fitViewRequest}
+            selectedEdgeId={selectedEdgeId}
+            selectedEdgeLabel={selectedEdgeLabel}
             selectedNodeId={selectedNodeId}
+            selectedNodeLabel={selectedNodeLabel}
             selectedTemplateName={selectedTemplate?.name ?? '未选择模板'}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
