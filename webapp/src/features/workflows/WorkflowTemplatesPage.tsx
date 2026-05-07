@@ -656,7 +656,12 @@ export default function WorkflowTemplatesPage() {
       />
 
       <Stack direction={isNarrowLayout ? 'column' : 'row'} spacing={3} alignItems="stretch">
-        <Stack spacing={3} sx={{ width: { xs: '100%', xl: 340 }, flexShrink: 0 }} data-testid="workflow-list-column">
+        <Stack
+          spacing={3}
+          sx={{ width: { xs: '100%', lg: 340 }, flexShrink: 0 }}
+          data-testid="workflow-list-column"
+          data-width-mode={isNarrowLayout ? 'fluid' : 'fixed'}
+        >
           <WorkflowListPanel items={workflowItems} loading={loading} error={loadError} selectedId={selectedTemplate?.id ?? ''} onCreateTemplate={handleCreateTemplate} onSelectTemplate={handleSelectTemplate} onDeleteTemplate={() => void handleDeleteTemplate()} />
         </Stack>
 
@@ -702,10 +707,11 @@ export default function WorkflowTemplatesPage() {
           data-panel-state={isRightPanelCollapsed ? 'collapsed' : 'expanded'}
           data-layout-mode={isNarrowLayout ? 'stacked' : 'side-by-side'}
           data-collapsed-footprint={isRightPanelCollapsed ? (isNarrowLayout ? 'compact' : 'rail') : 'full'}
+          data-width-mode={isNarrowLayout ? 'fluid' : 'fixed'}
           sx={{
             width: {
               xs: isRightPanelCollapsed && isNarrowLayout ? 'fit-content' : '100%',
-              xl: isRightPanelCollapsed ? 72 : 360,
+              lg: isRightPanelCollapsed ? 72 : 360,
             },
             alignSelf: isRightPanelCollapsed && isNarrowLayout ? 'flex-end' : 'stretch',
             flexShrink: 0,

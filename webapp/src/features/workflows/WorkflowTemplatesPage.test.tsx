@@ -545,6 +545,25 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(screen.getByText('节点配置')).toBeInTheDocument();
   });
 
+  it('uses finite side columns as soon as the layout switches to row mode at lg widths', async () => {
+    installMatchMedia(1280);
+
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    const listColumn = screen.getByTestId('workflow-list-column');
+    const canvasColumn = screen.getByTestId('workflow-canvas-column');
+    const sidePanel = screen.getByTestId('workflow-side-panel');
+
+    expect(canvasColumn).toHaveAttribute('data-layout-mode', 'side-by-side');
+    expect(listColumn).toHaveAttribute('data-width-mode', 'fixed');
+    expect(sidePanel).toHaveAttribute('data-layout-mode', 'side-by-side');
+    expect(sidePanel).toHaveAttribute('data-width-mode', 'fixed');
+    expect(sidePanel).toHaveAttribute('data-collapsed-footprint', 'full');
+    expect(screen.getByText('节点配置')).toBeInTheDocument();
+  });
+
   it('uses sectioned content instead of one long scrolling side panel', async () => {
     renderWorkflowTemplatesPage();
 
