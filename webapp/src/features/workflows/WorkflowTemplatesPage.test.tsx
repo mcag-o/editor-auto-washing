@@ -8,6 +8,35 @@ import theme from '../../theme/theme';
 
 const fitViewSpy = vi.fn();
 
+function installMatchMedia(width: number) {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    writable: true,
+    value: width,
+  });
+
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => {
+      const minWidth = Number(/min-width:\s*(\d+(?:\.\d+)?)px/.exec(query)?.[1] ?? Number.NEGATIVE_INFINITY);
+      const maxWidth = Number(/max-width:\s*(\d+(?:\.\d+)?)px/.exec(query)?.[1] ?? Number.POSITIVE_INFINITY);
+      const matches = width >= minWidth && width <= maxWidth;
+
+      return {
+        matches,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      };
+    },
+  });
+}
+
 vi.mock('reactflow', async () => {
   const actual = await vi.importActual<typeof import('reactflow')>('reactflow');
 
@@ -224,6 +253,7 @@ describe('WorkflowTemplatesPage local edge helpers', () => {
 
 describe('WorkflowTemplatesPage editor interactions', () => {
   beforeEach(async () => {
+    installMatchMedia(1440);
     fitViewSpy.mockReset();
 
     const api = await import('../../lib/api/client');
@@ -487,6 +517,32 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(sidePanel).toHaveAttribute('data-panel-state', 'expanded');
     expect(canvasColumn).toHaveAttribute('data-panel-state', 'expanded');
     expect(within(sidePanel).getByText('条件/分支')).toBeInTheDocument();
+  });
+
+  it('defaults to a compact collapsed side panel on narrow layouts', async () => {
+    installMatchMedia(900);
+
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    const canvasColumn = screen.getByTestId('workflow-canvas-column');
+    const sidePanel = screen.getByTestId('workflow-side-panel');
+
+    expect(canvasColumn).toHaveAttribute('data-layout-mode', 'stacked');
+    expect(sidePanel).toHaveAttribute('data-layout-mode', 'stacked');
+    expect(sidePanel).toHaveAttribute('data-panel-state', 'collapsed');
+    expect(sidePanel).toHaveAttribute('data-collapsed-footprint', 'compact');
+    expect(screen.queryByText('节点配置')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '展开右侧配置面板' })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '展开右侧配置面板' }));
+    });
+
+    expect(sidePanel).toHaveAttribute('data-panel-state', 'expanded');
+    expect(sidePanel).toHaveAttribute('data-collapsed-footprint', 'full');
+    expect(screen.getByText('节点配置')).toBeInTheDocument();
   });
 
   it('uses sectioned content instead of one long scrolling side panel', async () => {

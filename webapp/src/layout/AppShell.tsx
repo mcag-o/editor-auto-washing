@@ -48,6 +48,7 @@ type AppShellProps = PropsWithChildren<{
 export default function AppShell({ children, currentPage, onNavigate }: AppShellProps) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
+  const isCompactHeader = useMediaQuery(theme.breakpoints.down('sm'));
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const handleOpenMobileNav = () => {
@@ -127,18 +128,18 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <AppBar position="fixed">
-        <Toolbar sx={{ minHeight: 72, px: { xs: 2, md: 3 } }}>
+        <Toolbar sx={{ minHeight: { xs: 64, sm: 72 }, px: { xs: 1.5, sm: 2, md: 3 }, gap: 1.5 }}>
           <Stack direction="row" spacing={2} alignItems="center" sx={{ flexGrow: 1 }}>
             {!isDesktop ? (
-              <IconButton color="inherit" edge="start" onClick={handleOpenMobileNav} sx={{ ml: -1 }}>
+              <IconButton color="inherit" edge="start" onClick={handleOpenMobileNav} aria-label="open navigation" sx={{ ml: -0.5 }}>
                 <MenuRoundedIcon />
               </IconButton>
             ) : null}
             <Avatar
               variant="rounded"
               sx={{
-                width: 44,
-                height: 44,
+                width: { xs: 38, sm: 44 },
+                height: { xs: 38, sm: 44 },
                 bgcolor: alpha('#ffffff', 0.12),
                 color: '#ffffff',
               }}
@@ -149,14 +150,14 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
               <Typography variant="subtitle1" sx={{ color: '#ffffff' }}>
                 Content Hub 控制台
               </Typography>
-              <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.72) }}>
+              <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.72), display: { xs: 'none', sm: 'block' } }}>
                 自动改写、草稿生成与运营管理
               </Typography>
             </Box>
           </Stack>
           <Stack direction="row" spacing={1.25} alignItems="center">
-              <Button variant="contained" color="secondary" onClick={() => onNavigate('intake')}>
-                新建导入
+              <Button variant="contained" color="secondary" size={isCompactHeader ? 'small' : 'medium'} onClick={() => onNavigate('intake')}>
+                {isCompactHeader ? '导入' : '新建导入'}
               </Button>
             </Stack>
           </Toolbar>
@@ -171,7 +172,7 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
           width: drawerWidth,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
-            width: drawerWidth,
+            width: { xs: 224, sm: drawerWidth },
             boxSizing: 'border-box',
             borderRight: `1px solid ${alpha('#ffffff', 0.08)}`,
           },
@@ -185,11 +186,11 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
         sx={{
           ml: { md: `${drawerWidth}px` },
           width: { md: `calc(100% - ${drawerWidth}px)` },
-          pt: '88px',
+          pt: { xs: '80px', sm: '88px' },
           pb: 5,
         }}
       >
-        <Container maxWidth="xl" sx={{ px: { xs: 2, md: 3 } }}>
+        <Container maxWidth="xl" sx={{ px: { xs: 1.5, sm: 2, md: 3 } }}>
           {children}
         </Container>
       </Box>

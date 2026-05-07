@@ -9,6 +9,8 @@ import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme } from '@mui/material/styles';
 import {
   MarkerType,
   Position,
@@ -206,6 +208,8 @@ function decorateWorkflowTemplate(template: WorkflowFormTemplate): WorkflowTempl
 }
 
 export default function WorkflowTemplatesPage() {
+  const theme = useTheme();
+  const isNarrowLayout = useMediaQuery(theme.breakpoints.down('lg'));
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -217,6 +221,12 @@ export default function WorkflowTemplatesPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [fitViewRequest, setFitViewRequest] = useState(0);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (isNarrowLayout) {
+      setIsRightPanelCollapsed(true);
+    }
+  }, [isNarrowLayout]);
 
   const loadWorkflows = async () => {
     setLoading(true);
@@ -645,12 +655,19 @@ export default function WorkflowTemplatesPage() {
         onSelectEntryNode={handleSelectEntryNode}
       />
 
-      <Stack direction={{ xs: 'column', xl: 'row' }} spacing={3} alignItems="stretch">
+      <Stack direction={isNarrowLayout ? 'column' : 'row'} spacing={3} alignItems="stretch">
         <Stack spacing={3} sx={{ width: { xs: '100%', xl: 340 }, flexShrink: 0 }} data-testid="workflow-list-column">
           <WorkflowListPanel items={workflowItems} loading={loading} error={loadError} selectedId={selectedTemplate?.id ?? ''} onCreateTemplate={handleCreateTemplate} onSelectTemplate={handleSelectTemplate} onDeleteTemplate={() => void handleDeleteTemplate()} />
         </Stack>
 
-        <Stack spacing={3} flex={1} minWidth={0} data-testid="workflow-canvas-column" data-panel-state={isRightPanelCollapsed ? 'collapsed' : 'expanded'}>
+        <Stack
+          spacing={3}
+          flex={1}
+          minWidth={0}
+          data-testid="workflow-canvas-column"
+          data-panel-state={isRightPanelCollapsed ? 'collapsed' : 'expanded'}
+          data-layout-mode={isNarrowLayout ? 'stacked' : 'side-by-side'}
+        >
           <WorkflowGraphPanel
             nodes={graphNodes}
             edges={graphEdges}
@@ -683,11 +700,14 @@ export default function WorkflowTemplatesPage() {
           spacing={2}
           data-testid="workflow-side-panel"
           data-panel-state={isRightPanelCollapsed ? 'collapsed' : 'expanded'}
+          data-layout-mode={isNarrowLayout ? 'stacked' : 'side-by-side'}
+          data-collapsed-footprint={isRightPanelCollapsed ? (isNarrowLayout ? 'compact' : 'rail') : 'full'}
           sx={{
             width: {
-              xs: '100%',
+              xs: isRightPanelCollapsed && isNarrowLayout ? 'fit-content' : '100%',
               xl: isRightPanelCollapsed ? 72 : 360,
             },
+            alignSelf: isRightPanelCollapsed && isNarrowLayout ? 'flex-end' : 'stretch',
             flexShrink: 0,
             transition: (theme) => theme.transitions.create(['width'], {
               duration: theme.transitions.duration.shorter,
