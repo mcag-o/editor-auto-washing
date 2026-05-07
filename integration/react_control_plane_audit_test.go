@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,6 +23,16 @@ func TestReactAuditPageDataPathRemainsStable(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(rootBody), "<title>Content Hub Control Plane</title>")
 	require.Contains(t, string(rootBody), `<div id="root"></div>`)
+	require.Contains(t, string(rootBody), "/ui/assets/")
+
+	assetPath := regexp.MustCompile(`/ui/assets/[^"]+\.js`).FindString(string(rootBody))
+	require.NotEmpty(t, assetPath)
+
+	assetResp, err := http.Get(serverURL + assetPath)
+	require.NoError(t, err)
+	defer assetResp.Body.Close()
+	require.Equal(t, http.StatusOK, assetResp.StatusCode)
+	require.Contains(t, assetResp.Header.Get("Content-Type"), "javascript")
 
 	pasteResp := postJSON(t, serverURL+"/api/intake/paste", map[string]any{
 		"title": "Audit Page Source",
@@ -77,7 +88,7 @@ func TestReactAuditPageDataPathRemainsStable(t *testing.T) {
 	require.Equal(t, startAudit.ID, auditDetail.ID)
 	require.Equal(t, "control_plane.started", auditDetail.Action)
 	require.Equal(t, "success", auditDetail.Result)
-	if limit, ok := auditDetail.Metadata["concurrency_limit"].(float64); ok {
-		require.Equal(t, 1.0, limit)
-	}
+	limit, ok := auditDetail.Metadata["concurrency_limit"].(float64)
+	require.True(t, ok)
+	require.Equal(t, 1.0, limit)
 }
