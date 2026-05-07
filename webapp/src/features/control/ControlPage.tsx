@@ -58,7 +58,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
         chipStatus: 'active' as const,
         chipLabel: '主链路运行中',
         headline: '自动改写主链路正在运行',
-        description: '当前状态来自系统控制接口，页面仅提交启动、暂停请求与恢复请求。',
+        description: '当前状态来自系统控制接口，页面用于提交控制请求并查看最近一次返回结果。',
       };
     }
 
@@ -66,16 +66,16 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
       return {
         chipStatus: 'pending' as const,
         chipLabel: '主链路已暂停',
-        headline: '系统处于暂停观察态',
-        description: '当前运行已进入暂停态，满足后端条件时才可恢复进入队列。',
+        headline: '主链路已暂停',
+        description: '系统当前处于暂停状态，可继续查看队列摘要并按需恢复。',
       };
     }
 
     return {
       chipStatus: 'disabled' as const,
       chipLabel: '主链路未启动',
-      headline: '系统等待启动',
-        description: '系统当前未运行，可设置并发上限后请求启动主链路。',
+      headline: '主链路未启动',
+      description: '系统当前未运行，可设置并发上限后提交启动请求。',
     };
   }, [runtimeState]);
 
@@ -149,7 +149,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
     <Stack spacing={3}>
       <PageToolbar
         title="流程控制"
-        description="面向运营值守的控制页，展示系统状态、启动/暂停/恢复请求入口与队列摘要。"
+        description="管理主链路运行状态，并查看系统状态与队列摘要。"
         leading={<StatusChip status={stateSummary.chipStatus} label={stateSummary.chipLabel} />}
         actions={
           <>
@@ -165,7 +165,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ xs: 'flex-start', md: 'center' }}>
             <StatusChip status="completed" label="已接入控制 API" />
             <Typography variant="body2" color="text.secondary">
-              最近更新：{systemState?.updated_at ? new Date(systemState.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未加载'}
+              状态更新时间：{systemState?.updated_at ? new Date(systemState.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未加载'}
             </Typography>
             <Button size="small" variant="outlined" onClick={() => void loadData()} disabled={loading || actionLoading}>
               刷新状态
@@ -203,7 +203,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
                   请求暂停
                 </Button>
                 <Button variant="outlined" startIcon={<RestartAltRoundedIcon />} disabled={runtimeState !== 'paused' || actionLoading} onClick={() => void handleResume()}>
-                  尝试恢复
+                  请求恢复
                 </Button>
               </Stack>
               <Typography variant="body2" color="text.secondary">
@@ -214,8 +214,8 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
 
           <PageCard
             title="主链路观察"
-            description="基于系统状态与文章队列摘要展示导入、改写、草稿渲染三个关键阶段。"
-            action={<StatusChip status="pending" label="当前状态快照" />}
+            description="基于最近一次加载结果展示导入、改写与草稿渲染三个关键阶段。"
+            action={<StatusChip status="pending" label="手动刷新" />}
           >
             <Stack spacing={2}>
               {stages.map((stage) => (
@@ -239,7 +239,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
         <Stack spacing={3} flex={0.9} minWidth={{ xl: 340 }}>
           <PageCard
             title="值守提醒"
-            description="基于当前状态保留系统值守的快速观察位。"
+            description="整理当前状态、失败积压与并发设置，便于值守处理。"
             action={<StatusChip status="active" label="持续观察" />}
           >
             <Stack spacing={1.5}>

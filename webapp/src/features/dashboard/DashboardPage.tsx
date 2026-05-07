@@ -119,8 +119,8 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     <Stack spacing={3}>
       <PageToolbar
         title="控制台总览"
-        description="聚合展示当前浏览器控制面的主要入口与运营摘要，保持中文工作台体验。"
-        leading={<StatusChip status="active" label="浏览器控制面" />}
+        description="汇总系统状态、文章队列、模板与审计摘要。"
+        leading={<StatusChip status="active" label="运营总览" />}
         actions={
           <>
             <Button variant="outlined" onClick={() => onNavigate?.('articles')}>
@@ -146,7 +146,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       >
         <PageCard
           title="处理链路概览"
-          description="以系统状态、文章队列和模板摘要呈现浏览器控制面的主链路观察。"
+          description="基于当前已加载数据汇总导入、改写、复核与输出进度。"
           action={loading ? <CircularProgress size={18} /> : <StatusChip status="completed" label="摘要就绪" />}
         >
           <Stack spacing={2}>
@@ -169,7 +169,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
         <PageCard
           title="运营提醒"
-          description="集中展示系统状态、失败积压与最近审计结果，不代表完整实时告警流。"
+          description="基于最近一次加载结果汇总系统状态、失败积压与审计记录。"
           action={<StatusChip status={failedCount > 0 ? 'failed' : 'pending'} label="需持续关注" />}
         >
           <Stack spacing={1.5}>

@@ -30,9 +30,9 @@ function createEmptyDraft(templateCount: number): TemplateDraft {
     name: '新模板',
     version: `v${templateCount + 1}.0.0`,
     enabled: false,
-    summary: '请输入模板摘要，说明适用场景、目标渠道和输出风格。',
-    prompt: '在这里填写模板提示词。',
-    stagesText: '输入理解: 说明第一阶段要做什么。\n输出整理: 说明最终输出要求。',
+    summary: '说明适用场景、目标渠道和输出风格。',
+    prompt: '输入模板提示词。',
+    stagesText: '输入理解: 提取原文重点与限制条件。\n输出整理: 生成符合渠道要求的最终内容。',
     type: 'prompt',
   };
 }
@@ -270,7 +270,7 @@ export default function TemplatesPage() {
             <Stack direction="row" spacing={1} alignItems="center">
               <PreviewRoundedIcon color="primary" fontSize="small" />
               <Typography variant="body2" color="text.secondary">
-                右侧面板实时展示主提示词、阶段结构、版本与启用状态。
+                右侧面板显示当前模板的提示词、阶段结构、版本与启用状态。
               </Typography>
             </Stack>
             <Stack direction="row" spacing={1} alignItems="center">

@@ -302,7 +302,7 @@ export default function WorkflowTemplatesPage() {
     const newTemplate = decorateWorkflowTemplate({
       id: nextId,
       name: `工作流模板 ${nextLabelIndex}`,
-      description: '请补充该工作流的用途、入口条件和关键处理节点。',
+      description: '补充工作流用途、入口条件和关键处理节点。',
       version: `v${nextLabelIndex}.0.0`,
       enabled: true,
       updatedBy: 'react-webapp',
@@ -584,7 +584,7 @@ export default function WorkflowTemplatesPage() {
     <Stack spacing={3}>
       <PageToolbar
         title="工作流模板"
-        description="基于 React Flow 的工作流图编辑器，当前使用工作流列表与保存/删除接口维护定义。"
+        description="使用工作流列表与保存接口维护流程定义，并在画布中编辑节点与连线。"
         leading={<StatusChip status="active" label="React Flow 编辑器" />}
         actions={
           <>
@@ -598,9 +598,9 @@ export default function WorkflowTemplatesPage() {
         }
         filters={
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ xs: 'flex-start', md: 'center' }}>
-            <StatusChip status="completed" label="支持新增/删除节点" />
-            <StatusChip status="completed" label="支持连接/断开连线" />
-            <StatusChip status="completed" label="已接入工作流接口" />
+            <StatusChip status="completed" label="节点编辑" />
+            <StatusChip status="completed" label="连线编辑" />
+            <StatusChip status="completed" label="工作流接口已连接" />
             <Typography variant="body2" color="text.secondary">
               当前选中模板：{selectedTemplate?.name ?? '未选择'}
             </Typography>
@@ -679,7 +679,7 @@ export default function WorkflowTemplatesPage() {
               <Stack spacing={0.5}>
                 <Typography variant="subtitle2">右侧配置面板</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  按节点与连线分组配置，折叠后画布会回收宽度。
+                  按节点或连线查看与编辑当前配置，折叠后为画布释放更多宽度。
                 </Typography>
               </Stack>
             )}

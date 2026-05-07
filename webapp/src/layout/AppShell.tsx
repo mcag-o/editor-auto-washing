@@ -72,13 +72,13 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
           }}
         >
           <Typography variant="overline" sx={{ color: alpha('#ffffff', 0.64) }}>
-            Operator Mode
+            运营工作台
           </Typography>
           <Typography variant="h4" sx={{ color: '#ffffff' }}>
-            控制面板
+            Content Hub
           </Typography>
           <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
-            后续页面将在同一外壳中接入文章、模板与审计视图。
+            统一处理文章导入、流程控制、模板配置与审计查看。
           </Typography>
         </Stack>
       </Box>
@@ -150,7 +150,7 @@ export default function AppShell({ children, currentPage, onNavigate }: AppShell
                 Content Hub 控制台
               </Typography>
               <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.72) }}>
-                自动改写、草稿生成与运维管理
+                自动改写、草稿生成与运营管理
               </Typography>
             </Box>
           </Stack>
