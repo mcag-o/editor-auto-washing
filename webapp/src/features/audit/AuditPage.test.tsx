@@ -1,0 +1,147 @@
+import { CssBaseline, ThemeProvider } from '@mui/material';
+import { act } from 'react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import AuditPage from './AuditPage';
+import theme from '../../theme/theme';
+
+function jsonResponse(body: unknown, init: ResponseInit = {}) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+    ...init,
+  });
+}
+
+function renderAuditPage() {
+  return render(
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <AuditPage />
+    </ThemeProvider>,
+  );
+}
+
+describe('AuditPage', () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/audit') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({
+            data: [
+              {
+                id: 'log-1',
+                actor: 'local-admin',
+                action: 'pause',
+                resource: 'system',
+                resource_id: 'system-1',
+                result: 'failure',
+                message: '流程暂停',
+                metadata: { reason: 'manual' },
+                created_at: '2026-05-07T03:00:00Z',
+              },
+              {
+                id: 'log-2',
+                actor: 'workflow-bot',
+                action: 'resume',
+                resource: 'article',
+                resource_id: 'article-2',
+                result: 'success',
+                message: '任务恢复',
+                metadata: { source: 'scheduler' },
+                created_at: '2026-05-07T04:00:00Z',
+              },
+            ],
+          }),
+        );
+      }
+
+      if (url.endsWith('/api/audit/log-1') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({
+            id: 'log-1',
+            actor: 'local-admin',
+            action: 'pause',
+            resource: 'system',
+            resource_id: 'system-1',
+            result: 'failure',
+            message: '流程暂停',
+            metadata: { reason: 'manual', operator: 'A-01' },
+            created_at: '2026-05-07T03:00:00Z',
+          }),
+        );
+      }
+
+      if (url.endsWith('/api/audit/log-2') && method === 'GET') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ message: '审计详情加载失败' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('loads audit rows and renders the detail panel without crashing', async () => {
+    renderAuditPage();
+
+    expect(screen.getByRole('heading', { name: '操作审计' })).toBeInTheDocument();
+    expect(await screen.findByText('流程暂停')).toBeInTheDocument();
+    expect(screen.getByText('任务恢复')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('row', { name: /log-1/i }));
+    });
+
+    expect(await screen.findByText('资源：system / system-1')).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/"operator": "A-01"/)).toBeInTheDocument();
+  });
+
+  it('shows an empty state when no audit records are returned', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/audit') && method === 'GET') {
+        return Promise.resolve(jsonResponse({ data: [] }));
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+
+    renderAuditPage();
+
+    expect(await screen.findByText('当前过滤条件下没有匹配的审计记录。')).toBeInTheDocument();
+    expect(screen.getByText('当前结果 0 条，列表与详情都来自现有审计 API。')).toBeInTheDocument();
+    expect(screen.getByText('点击左侧记录查看详情。')).toBeInTheDocument();
+  });
+
+  it('keeps the list visible when detail fetch fails', async () => {
+    renderAuditPage();
+
+    expect(await screen.findByText('流程暂停')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('row', { name: /log-2/i }));
+    });
+
+    const detailCard = screen.getByRole('heading', { name: '审计详情' }).closest('.MuiCard-root');
+    expect(detailCard).not.toBeNull();
+
+    expect(await within(detailCard as HTMLElement).findByText('审计详情加载失败')).toBeInTheDocument();
+    expect(screen.getByText('流程暂停')).toBeInTheDocument();
+    expect(screen.getByText('任务恢复')).toBeInTheDocument();
+    expect(within(detailCard as HTMLElement).getByText('点击左侧记录查看详情。')).toBeInTheDocument();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+});

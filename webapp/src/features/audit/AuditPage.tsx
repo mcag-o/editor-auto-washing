@@ -48,7 +48,8 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [levelFilter, setLevelFilter] = useState<AuditLevel>('全部');
   const [keyword, setKeyword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -59,7 +60,7 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
         if (controller.signal.aborted) {
           return;
         }
-        setError(apiError instanceof ApiError ? apiError.message : '审计记录加载失败');
+        setListError(apiError instanceof ApiError ? apiError.message : '审计记录加载失败');
       })
       .finally(() => {
         if (!controller.signal.aborted) {
@@ -85,13 +86,13 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
 
   const handleSelectLog = async (log: AuditLog) => {
     setDetailLoading(true);
-    setError(null);
+    setDetailError(null);
 
     try {
       const detail = await getAudit(log.id);
       setSelectedLog(detail);
     } catch (apiError) {
-      setError(apiError instanceof ApiError ? apiError.message : '审计详情加载失败');
+      setDetailError(apiError instanceof ApiError ? apiError.message : '审计详情加载失败');
     } finally {
       setDetailLoading(false);
     }
@@ -143,7 +144,7 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
         }
       />
 
-      {error ? <Alert severity="error">{error}</Alert> : null}
+      {listError ? <Alert severity="error">{listError}</Alert> : null}
 
       <Stack direction={{ xs: 'column', xl: 'row' }} spacing={3} alignItems="stretch">
         <PageCard
@@ -204,6 +205,7 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
           description="显示选中记录的 message、资源 ID 与 metadata。"
           action={detailLoading ? <CircularProgress size={18} /> : <StatusChip status={selectedLog ? 'active' : 'disabled'} label={selectedLog ? '已加载' : '未选择'} />}
         >
+          {detailError ? <Alert severity="error">{detailError}</Alert> : null}
           {selectedLog ? (
             <Stack spacing={1.5}>
               <Typography variant="subtitle1">{selectedLog.action}</Typography>
