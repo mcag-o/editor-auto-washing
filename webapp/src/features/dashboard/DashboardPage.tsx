@@ -123,7 +123,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
         leading={<StatusChip status="active" label="运营总览" />}
         actions={
           <>
-            <Button variant="outlined" onClick={() => onNavigate?.('articles')}>
+            <Button color="inherit" variant="text" onClick={() => onNavigate?.('articles')}>
               查看文章队列
             </Button>
             <Button variant="contained" startIcon={<CloudUploadRoundedIcon />} onClick={() => onNavigate?.('intake')}>

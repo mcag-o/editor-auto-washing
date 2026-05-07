@@ -121,7 +121,7 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
         leading={<StatusChip status="active" label="后端审计视图" />}
         actions={
           <>
-            <Button variant="outlined" onClick={() => onNavigate?.('overview')}>
+            <Button color="inherit" variant="text" onClick={() => onNavigate?.('overview')}>
               返回总览
             </Button>
             <Button variant="contained" onClick={() => onNavigate?.('config')}>
@@ -176,7 +176,7 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
             <PageState title="暂无审计记录" description="当前筛选条件下没有可显示的审计记录。" tone="empty" />
           ) : (
             <TableContainer>
-              <Table sx={{ minWidth: 960 }}>
+              <Table size="small" sx={{ minWidth: 960 }}>
                 <TableHead>
                   <TableRow>
                     <TableCell>记录编号</TableCell>
@@ -192,7 +192,13 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
                   {filteredRows.map((row) => {
                     const level = logLevel(row);
                     return (
-                      <TableRow key={row.id} hover selected={selectedLogID === row.id} onClick={() => void handleSelectLog(row)} sx={{ cursor: 'pointer' }}>
+                      <TableRow
+                        key={row.id}
+                        hover
+                        selected={selectedLogID === row.id}
+                        onClick={() => void handleSelectLog(row)}
+                        sx={{ cursor: 'pointer', '& .MuiTableCell-root': { py: 1.25, verticalAlign: 'top' } }}
+                      >
                         <TableCell>{row.id}</TableCell>
                         <TableCell>{formatTime(row.created_at)}</TableCell>
                         <TableCell>{row.actor}</TableCell>

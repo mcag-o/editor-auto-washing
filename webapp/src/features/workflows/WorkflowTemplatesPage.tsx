@@ -597,7 +597,7 @@ export default function WorkflowTemplatesPage() {
         leading={<StatusChip status="active" label="React Flow 编辑器" />}
         actions={
           <>
-            <Button variant="outlined" startIcon={<FitScreenRoundedIcon />} onClick={() => void loadWorkflows()} disabled={loading || saving}>
+            <Button color="inherit" variant="text" startIcon={<FitScreenRoundedIcon />} onClick={() => void loadWorkflows()} disabled={loading || saving}>
               刷新画布
             </Button>
             <Button variant="contained" startIcon={<AutoFixHighRoundedIcon />} onClick={() => void handleSaveTemplate()} disabled={!selectedTemplate || saving}>
@@ -606,7 +606,7 @@ export default function WorkflowTemplatesPage() {
           </>
         }
         filters={
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ xs: 'flex-start', md: 'center' }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', md: 'center' }}>
             <StatusChip status="completed" label="节点编辑" />
             <StatusChip status="completed" label="连线编辑" />
             <StatusChip status="completed" label="工作流能力已接入" />

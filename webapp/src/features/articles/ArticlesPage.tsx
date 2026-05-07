@@ -247,7 +247,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
           leading={<StatusChip status="active" label="队列视图" />}
           actions={
             <>
-              <Button variant="outlined" onClick={() => onNavigate?.('overview')}>
+              <Button color="inherit" variant="text" onClick={() => onNavigate?.('overview')}>
                 返回总览
               </Button>
               <Button variant="contained" onClick={() => onNavigate?.('intake')}>
@@ -327,7 +327,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
           ) : (
             <>
               <TableContainer>
-                <Table sx={{ minWidth: 880 }}>
+                <Table size="small" sx={{ minWidth: 880 }}>
                   <TableHead>
                     <TableRow>
                       <TableCell>文章编号</TableCell>
@@ -341,7 +341,13 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
                   </TableHead>
                   <TableBody>
                     {visibleRows.map((row) => (
-                      <TableRow key={row.id} hover selected={selectedArticleId === row.id} onClick={() => setSelectedArticleId(row.id)} sx={{ cursor: 'pointer' }}>
+                      <TableRow
+                        key={row.id}
+                        hover
+                        selected={selectedArticleId === row.id}
+                        onClick={() => setSelectedArticleId(row.id)}
+                        sx={{ cursor: 'pointer', '& .MuiTableCell-root': { py: 1.25, verticalAlign: 'top' } }}
+                      >
                         <TableCell>{row.id}</TableCell>
                         <TableCell>
                           <Stack spacing={0.5}>
@@ -402,6 +408,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
                 }}
                 rowsPerPageOptions={pageSizeOptions}
                 labelRowsPerPage="每页条数"
+                sx={{ mt: 0.5 }}
               />
             </>
           )}

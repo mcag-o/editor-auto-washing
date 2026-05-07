@@ -267,7 +267,7 @@ export default function TemplatesPage() {
           </>
         }
         filters={
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', lg: 'center' }}>
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ xs: 'flex-start', lg: 'center' }}>
             <Stack direction="row" spacing={1} alignItems="center">
               <PreviewRoundedIcon color="primary" fontSize="small" />
               <Typography variant="body2" color="text.secondary">
@@ -290,7 +290,7 @@ export default function TemplatesPage() {
       <Box
         sx={{
           display: 'grid',
-          gap: 2.5,
+          gap: 2,
           gridTemplateColumns: {
             xs: '1fr',
             xl: 'minmax(0, 1.65fr) minmax(340px, 0.95fr)',

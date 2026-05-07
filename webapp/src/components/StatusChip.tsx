@@ -22,15 +22,19 @@ export default function StatusChip({ status, label }: StatusChipProps) {
 
   return (
     <Chip
+      data-status={status}
       label={label ?? statusLabelMap[status]}
       size="small"
+      variant="outlined"
       sx={{
         color,
-        bgcolor: alpha(color, 0.12),
+        bgcolor: alpha(color, 0.1),
         border: '1px solid',
-        borderColor: alpha(color, 0.22),
+        borderColor: alpha(color, 0.24),
+        height: 28,
         '& .MuiChip-label': {
-          px: 1.25,
+          px: 1.125,
+          lineHeight: 1.1,
         },
       }}
     />

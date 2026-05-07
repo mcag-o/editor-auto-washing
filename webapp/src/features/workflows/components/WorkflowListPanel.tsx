@@ -61,57 +61,57 @@ export default function WorkflowListPanel({
           </Typography>
         </Box>
 
-          <Divider />
+        <Divider />
 
-          <Button size="small" color="error" variant="outlined" startIcon={<DeleteOutlineRoundedIcon />} onClick={onDeleteTemplate} disabled={!selectedId}>
-            删除当前模板
-          </Button>
+        <Button size="small" color="error" variant="outlined" startIcon={<DeleteOutlineRoundedIcon />} onClick={onDeleteTemplate} disabled={!selectedId}>
+          删除当前模板
+        </Button>
 
-          {loading ? (
-            <PageState title="正在加载工作流模板" description="正在同步当前工作流定义，请稍候。" tone="loading" />
-          ) : error ? (
-            <PageState title="工作流模板暂时不可用" description={error} tone="error" />
-          ) : items.length === 0 ? (
-            <PageState title="暂无工作流模板" description="点击上方“新建模板”开始配置新的流程定义。" tone="empty" />
-          ) : (
-            <List disablePadding sx={{ display: 'grid', gap: 1 }}>
-              {items.map((item) => (
-                <ListItemButton
-                  key={item.id}
-                  selected={item.id === selectedId}
-                  onClick={() => onSelectTemplate(item.id)}
-                  sx={{
-                    borderRadius: 3,
-                    border: '1px solid',
-                    borderColor: item.id === selectedId ? 'primary.main' : 'divider',
-                    alignItems: 'flex-start',
-                    px: 1.5,
-                    py: 1.25,
-                  }}
-                >
-                  <ListItemText
-                    secondaryTypographyProps={{ component: 'div' }}
-                    primary={
-                      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                        <Typography variant="subtitle2">{item.name}</Typography>
-                        <Chip size="small" label={`${item.nodeCount} 节点`} />
-                      </Stack>
-                    }
-                    secondary={
-                      <Stack spacing={0.75} sx={{ mt: 0.75 }}>
-                        <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block' }}>
-                          {item.description}
-                        </Typography>
-                        <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                          最近更新：{item.updatedAt}
-                        </Typography>
-                      </Stack>
-                    }
-                  />
-                </ListItemButton>
-              ))}
-            </List>
-          )}
+        {loading ? (
+          <PageState title="正在加载工作流模板" description="正在同步当前工作流定义，请稍候。" tone="loading" />
+        ) : error ? (
+          <PageState title="工作流模板暂时不可用" description={error} tone="error" />
+        ) : items.length === 0 ? (
+          <PageState title="暂无工作流模板" description="点击上方“新建模板”开始配置新的流程定义。" tone="empty" />
+        ) : (
+          <List disablePadding sx={{ display: 'grid', gap: 1 }}>
+            {items.map((item) => (
+              <ListItemButton
+                key={item.id}
+                selected={item.id === selectedId}
+                onClick={() => onSelectTemplate(item.id)}
+                sx={{
+                  borderRadius: 3,
+                  border: '1px solid',
+                  borderColor: item.id === selectedId ? 'primary.main' : 'divider',
+                  alignItems: 'flex-start',
+                  px: 1.5,
+                  py: 1.25,
+                }}
+              >
+                <ListItemText
+                  secondaryTypographyProps={{ component: 'div' }}
+                  primary={
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                      <Typography variant="subtitle2">{item.name}</Typography>
+                      <Chip size="small" label={`${item.nodeCount} 节点`} />
+                    </Stack>
+                  }
+                  secondary={
+                    <Stack spacing={0.75} sx={{ mt: 0.75 }}>
+                      <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block' }}>
+                        {item.description}
+                      </Typography>
+                      <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        最近更新：{item.updatedAt}
+                      </Typography>
+                    </Stack>
+                  }
+                />
+              </ListItemButton>
+            ))}
+          </List>
+        )}
       </Stack>
     </PageCard>
   );

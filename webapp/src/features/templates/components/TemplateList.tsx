@@ -89,8 +89,8 @@ export default function TemplateList({
   };
 
   return (
-    <Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, border: '1px solid', borderColor: 'divider' }}>
-      <Stack spacing={2}>
+    <Paper elevation={0} sx={{ p: { xs: 2, md: 2.25 }, border: '1px solid', borderColor: 'divider' }}>
+      <Stack spacing={1.75}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
           <Box>
             <Typography variant="h5">模板列表</Typography>
@@ -98,7 +98,7 @@ export default function TemplateList({
               以表格形式展示模板版本、启用状态、更新时间与操作入口。
             </Typography>
           </Box>
-          <Chip label={`${items.length} 个模板`} variant="outlined" />
+          <Chip size="small" label={`${items.length} 个模板`} variant="outlined" />
         </Stack>
 
         {loading ? (
@@ -131,7 +131,7 @@ export default function TemplateList({
                       hover
                       selected={isSelected}
                       onClick={() => onSelectTemplate(item.id)}
-                      sx={{ cursor: 'pointer' }}
+                      sx={{ cursor: 'pointer', '& .MuiTableCell-root': { py: 1.25, verticalAlign: 'top' } }}
                     >
                       <TableCell>
                         <Stack spacing={0.5}>
