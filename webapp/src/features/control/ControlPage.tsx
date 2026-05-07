@@ -215,7 +215,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
           <PageCard
             title="主链路观察"
             description="基于最近一次加载结果展示导入、改写与草稿渲染三个关键阶段。"
-            action={<StatusChip status="pending" label="手动刷新" />}
+            action={<StatusChip status="pending" label="需手动刷新" />}
           >
             <Stack spacing={2}>
               {stages.map((stage) => (

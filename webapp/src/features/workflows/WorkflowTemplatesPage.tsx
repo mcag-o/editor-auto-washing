@@ -600,7 +600,7 @@ export default function WorkflowTemplatesPage() {
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ xs: 'flex-start', md: 'center' }}>
             <StatusChip status="completed" label="节点编辑" />
             <StatusChip status="completed" label="连线编辑" />
-            <StatusChip status="completed" label="工作流接口已连接" />
+            <StatusChip status="completed" label="工作流能力已接入" />
             <Typography variant="body2" color="text.secondary">
               当前选中模板：{selectedTemplate?.name ?? '未选择'}
             </Typography>
