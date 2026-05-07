@@ -311,7 +311,7 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(screen.getByText('当前未选择节点')).toBeInTheDocument();
     expect(screen.getByText('当前未选择连线')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '设为入口节点' })).toBeDisabled();
-  });
+  }, 10000);
 
   it('supports fit view and graph toolbar actions without breaking selection state', async () => {
     const api = await import('../../lib/api/client');

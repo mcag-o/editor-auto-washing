@@ -257,7 +257,9 @@ describe('ControlPage', () => {
 
     renderControlPage();
 
-    expect(await screen.findByRole('button', { name: '恢复已暂停主链路' })).toBeEnabled();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '恢复已暂停主链路' })).toBeEnabled();
+    });
     expect(screen.getAllByText('已暂停').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('1 条').length).toBeGreaterThanOrEqual(1);
 
