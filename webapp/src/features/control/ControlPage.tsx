@@ -27,36 +27,52 @@ type ControlPageProps = {
 export default function ControlPage({ onNavigate }: ControlPageProps) {
   const [systemState, setSystemState] = useState<SystemControlState | null>(null);
   const [articles, setArticles] = useState<SourceDocument[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [systemLoading, setSystemLoading] = useState(true);
+  const [queueLoading, setQueueLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [systemLoadError, setSystemLoadError] = useState<string | null>(null);
+  const [queueLoadError, setQueueLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [concurrencyLimit, setConcurrencyLimit] = useState('2');
 
   const loadData = async () => {
-    setLoading(true);
-    setLoadError(null);
+    setSystemLoading(true);
+    setQueueLoading(true);
+    setSystemLoadError(null);
+    setQueueLoadError(null);
 
-    try {
-      const [state, queue] = await Promise.all([getSystemStatus(), listArticles()]);
-      setSystemState(state);
-      setArticles(queue);
-    } catch (apiError) {
-      setLoadError(apiError instanceof ApiError ? apiError.message : '系统状态加载失败');
-    } finally {
-      setLoading(false);
+    const [stateResult, queueResult] = await Promise.allSettled([getSystemStatus(), listArticles()]);
+
+    if (stateResult.status === 'fulfilled') {
+      setSystemState(stateResult.value);
+    } else {
+      const apiError = stateResult.reason;
+      setSystemState(null);
+      setSystemLoadError(apiError instanceof ApiError ? apiError.message : '系统状态加载失败');
     }
+
+    if (queueResult.status === 'fulfilled') {
+      setArticles(queueResult.value);
+    } else {
+      const apiError = queueResult.reason;
+      setArticles([]);
+      setQueueLoadError(apiError instanceof ApiError ? apiError.message : '文章队列加载失败');
+    }
+
+    setSystemLoading(false);
+    setQueueLoading(false);
   };
 
   useEffect(() => {
     void loadData();
   }, []);
 
+  const loading = systemLoading || queueLoading;
   const runtimeState = systemState?.state ?? null;
 
   const stateSummary = useMemo(() => {
-    if (loading) {
+    if (systemLoading) {
       return {
         chipStatus: 'pending' as const,
         chipLabel: '状态加载中',
@@ -65,7 +81,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
       };
     }
 
-    if (loadError) {
+    if (systemLoadError) {
       return {
         chipStatus: 'failed' as const,
         chipLabel: '状态加载失败',
@@ -98,16 +114,16 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
       headline: '主链路未启动',
       description: '系统当前未运行，可设置并发上限后提交启动请求。',
     };
-  }, [loadError, loading, runtimeState]);
+  }, [runtimeState, systemLoadError, systemLoading]);
 
   const pendingCount = articles.filter((item) => item.status === 'pending').length;
   const processingCount = articles.filter((item) => item.status === 'processing' || item.status === 'claimed').length;
   const failedCount = articles.filter((item) => item.status === 'failed').length;
   const activeConcurrency = systemState?.metadata?.concurrency_limit == null ? null : Number(systemState.metadata.concurrency_limit);
 
-  const runtimeMetricValue = loading
+  const runtimeMetricValue = systemLoading
     ? '加载中'
-    : loadError
+    : systemLoadError
       ? '加载失败'
       : runtimeState === 'running'
         ? '运行中'
@@ -115,9 +131,9 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
           ? '已暂停'
           : '待启动';
 
-  const pendingMetricValue = loading ? '加载中' : loadError ? '加载失败' : String(pendingCount);
-  const processingMetricValue = loading ? '加载中' : loadError ? '加载失败' : String(processingCount);
-  const failedMetricValue = loading ? '加载中' : loadError ? '加载失败' : String(failedCount);
+  const pendingMetricValue = queueLoading ? '加载中' : queueLoadError ? '加载失败' : String(pendingCount);
+  const processingMetricValue = queueLoading ? '加载中' : queueLoadError ? '加载失败' : String(processingCount);
+  const failedMetricValue = queueLoading ? '加载中' : queueLoadError ? '加载失败' : String(failedCount);
 
   const metrics = [
     { key: 'runtime', label: '当前状态', value: runtimeMetricValue, hint: '由系统状态接口返回', icon: <PlayArrowRoundedIcon fontSize="small" /> },
@@ -180,20 +196,20 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
     {
       key: 'intake',
       label: '导入接收',
-      progress: loading || loadError ? 0 : articles.length > 0 ? 100 : 10,
-      detail: loading ? '正在加载队列摘要。' : loadError ? '队列摘要暂时不可用。' : `当前队列文章数 ${articles.length}。`,
+      progress: queueLoading || queueLoadError ? 0 : articles.length > 0 ? 100 : 10,
+      detail: queueLoading ? '正在加载队列摘要。' : queueLoadError ? '队列摘要暂时不可用。' : `当前队列文章数 ${articles.length}。`,
     },
     {
       key: 'rewrite',
       label: '自动改写',
-      progress: loading || loadError ? 0 : articles.length > 0 ? Math.min(100, Math.round((processingCount / Math.max(articles.length, 1)) * 100) + (runtimeState === 'running' ? 30 : 0)) : 0,
-      detail: loading ? '正在加载处理进度。' : loadError ? '处理进度暂时不可用。' : `处理中 ${processingCount} 条，失败 ${failedCount} 条。`,
+      progress: queueLoading || queueLoadError ? 0 : articles.length > 0 ? Math.min(100, Math.round((processingCount / Math.max(articles.length, 1)) * 100) + (runtimeState === 'running' ? 30 : 0)) : 0,
+      detail: queueLoading ? '正在加载处理进度。' : queueLoadError ? '处理进度暂时不可用。' : `处理中 ${processingCount} 条，失败 ${failedCount} 条。`,
     },
     {
       key: 'render',
       label: '草稿渲染',
-      progress: loading || loadError ? 0 : articles.length > 0 ? Math.round((articles.filter((item) => item.status === 'completed').length / Math.max(articles.length, 1)) * 100) : 0,
-      detail: loading ? '正在加载完成进度。' : loadError ? '完成进度暂时不可用。' : `已完成 ${articles.filter((item) => item.status === 'completed').length} 条。`,
+      progress: queueLoading || queueLoadError ? 0 : articles.length > 0 ? Math.round((articles.filter((item) => item.status === 'completed').length / Math.max(articles.length, 1)) * 100) : 0,
+      detail: queueLoading ? '正在加载完成进度。' : queueLoadError ? '完成进度暂时不可用。' : `已完成 ${articles.filter((item) => item.status === 'completed').length} 条。`,
     },
   ];
 
@@ -217,7 +233,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ xs: 'flex-start', md: 'center' }}>
             <StatusChip status="completed" label="已接入控制 API" />
             <Typography variant="body2" color="text.secondary">
-              状态更新时间：{loading ? '加载中' : loadError ? '加载失败' : systemState?.updated_at ? new Date(systemState.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未记录'}
+              状态更新时间：{systemLoading ? '加载中' : systemLoadError ? '加载失败' : systemState?.updated_at ? new Date(systemState.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未记录'}
             </Typography>
             <Button size="small" variant="outlined" onClick={() => void loadData()} disabled={loading || actionLoading}>
               刷新状态
@@ -226,7 +242,8 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
         }
       />
 
-      {loadError ? <Alert severity="error">{loadError}</Alert> : null}
+      {systemLoadError ? <Alert severity="error">{systemLoadError}</Alert> : null}
+      {queueLoadError ? <Alert severity="error">{queueLoadError}</Alert> : null}
       {actionError ? <Alert severity="error">{actionError}</Alert> : null}
       {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
 
@@ -244,9 +261,9 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
 
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} flexWrap="wrap" useFlexGap>
                 {[
-                  { label: '当前状态', value: loading ? '加载中' : loadError ? '加载失败' : runtimeState === 'running' ? '运行中' : runtimeState === 'paused' ? '已暂停' : '未启动' },
-                  { label: '最近操作人', value: loading ? '加载中' : loadError ? '加载失败' : systemState?.updated_by || '未记录' },
-                  { label: '状态原因', value: loading ? '加载中' : loadError ? '加载失败' : systemState?.reason || '未提供' },
+                  { label: '当前状态', value: systemLoading ? '加载中' : systemLoadError ? '加载失败' : runtimeState === 'running' ? '运行中' : runtimeState === 'paused' ? '已暂停' : '未启动' },
+                  { label: '最近操作人', value: systemLoading ? '加载中' : systemLoadError ? '加载失败' : systemState?.updated_by || '未记录' },
+                  { label: '状态原因', value: systemLoading ? '加载中' : systemLoadError ? '加载失败' : systemState?.reason || '未提供' },
                 ].map((item) => (
                   <Box
                     key={item.label}
@@ -273,13 +290,13 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
 
               <Typography variant="subtitle1">控制动作</Typography>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-                 <Button variant="contained" startIcon={<PlayArrowRoundedIcon />} disabled={loading || Boolean(loadError) || runtimeState === 'running' || runtimeState === 'paused' || actionLoading} onClick={() => void handleStart()}>
+                 <Button variant="contained" startIcon={<PlayArrowRoundedIcon />} disabled={systemLoading || Boolean(systemLoadError) || runtimeState === 'running' || runtimeState === 'paused' || actionLoading} onClick={() => void handleStart()}>
                    启动主链路
                  </Button>
-                 <Button variant="outlined" color="warning" startIcon={<PauseCircleOutlineRoundedIcon />} disabled={loading || Boolean(loadError) || runtimeState !== 'running' || actionLoading} onClick={() => void handlePause()}>
+                 <Button variant="outlined" color="warning" startIcon={<PauseCircleOutlineRoundedIcon />} disabled={systemLoading || Boolean(systemLoadError) || runtimeState !== 'running' || actionLoading} onClick={() => void handlePause()}>
                    提交暂停请求
                  </Button>
-                 <Button variant="outlined" startIcon={<RestartAltRoundedIcon />} disabled={loading || Boolean(loadError) || runtimeState !== 'paused' || actionLoading} onClick={() => void handleResume()}>
+                 <Button variant="outlined" startIcon={<RestartAltRoundedIcon />} disabled={systemLoading || Boolean(systemLoadError) || runtimeState !== 'paused' || actionLoading} onClick={() => void handleResume()}>
                    恢复已暂停主链路
                  </Button>
               </Stack>
@@ -309,14 +326,14 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
                 value={concurrencyLimit}
                 onChange={(event) => setConcurrencyLimit(event.target.value)}
                 disabled={runtimeState === 'running' || runtimeState === 'paused' || actionLoading}
-                 helperText={`当前系统记录并发上限：${loading ? '加载中' : loadError ? '加载失败' : activeConcurrency ?? '未设置'}，只有点击“启动主链路”时才会提交。`}
+                 helperText={`当前系统记录并发上限：${systemLoading ? '加载中' : systemLoadError ? '加载失败' : activeConcurrency ?? '未设置'}，只有点击“启动主链路”时才会提交。`}
                />
 
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} flexWrap="wrap" useFlexGap>
                 {[
-                   { label: '待处理队列', value: loading ? '加载中' : loadError ? '加载失败' : `${pendingCount} 条` },
-                   { label: '处理中', value: loading ? '加载中' : loadError ? '加载失败' : `${processingCount} 条` },
-                   { label: '已完成', value: loading ? '加载中' : loadError ? '加载失败' : `${completedCount} 条` },
+                   { label: '待处理队列', value: queueLoading ? '加载中' : queueLoadError ? '加载失败' : `${pendingCount} 条` },
+                   { label: '处理中', value: queueLoading ? '加载中' : queueLoadError ? '加载失败' : `${processingCount} 条` },
+                   { label: '已完成', value: queueLoading ? '加载中' : queueLoadError ? '加载失败' : `${completedCount} 条` },
                  ].map((item) => (
                   <Box
                     key={item.label}
@@ -367,19 +384,19 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
           >
             <Stack spacing={1.5}>
               {[
-                 loading
+                 systemLoading
                    ? '系统状态与失败积压正在加载。'
-                   : loadError
+                   : systemLoadError
                      ? '系统状态暂时不可用，请刷新后重试。'
                      : `系统状态：${runtimeState}`,
-                 loading
+                 queueLoading
                    ? '失败积压正在加载。'
-                   : loadError
+                   : queueLoadError
                      ? '失败文章摘要暂时不可用。'
                      : `失败文章：${failedCount} 条${failedCount > 0 ? '，建议进入文章队列逐条处理。' : '，当前没有失败积压。'}`,
-                 loading
+                 systemLoading
                    ? '并发上限正在加载。'
-                   : loadError
+                   : systemLoadError
                      ? '并发上限暂时不可用。'
                      : `并发上限：${activeConcurrency ?? (Number(concurrencyLimit) || 1)}，由系统控制状态 metadata 决定。`,
                ].map((item) => (

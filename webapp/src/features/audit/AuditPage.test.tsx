@@ -131,7 +131,8 @@ describe('AuditPage', () => {
 
     expect(await screen.findByRole('row', { name: /log-1/i })).toHaveClass('Mui-selected');
     expect(screen.getAllByText('local-admin').length).toBeGreaterThan(0);
-    expect(screen.getByText('system / system-1')).toBeInTheDocument();
+    expect(screen.getByText('system')).toBeInTheDocument();
+    expect(screen.getByText('system-1')).toBeInTheDocument();
   });
 
   it('shows an empty state when no audit records are returned', async () => {
@@ -300,5 +301,23 @@ describe('AuditPage', () => {
     expect(screen.getByDisplayValue(/"operator": "B-02"/)).toBeInTheDocument();
     expect(screen.queryByText('system / system-1')).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue(/"operator": "A-01"/)).not.toBeInTheDocument();
+  });
+
+  it('clears stale detail when filters reduce the visible list to zero rows', async () => {
+    renderAuditPage();
+
+    expect(await screen.findByRole('row', { name: /log-1/i })).toHaveClass('Mui-selected');
+    expect(screen.getByText('system / system-1')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('搜索操作人、资源、动作或详情'), {
+      target: { value: 'not-found-keyword' },
+    });
+
+    expect(await screen.findByText('暂无审计记录')).toBeInTheDocument();
+    const detailCard = screen.getByTestId('audit-detail-card');
+    expect(await within(detailCard).findByTestId('page-state-empty')).toBeInTheDocument();
+    expect(within(detailCard).getByText('请选择一条记录查看审计详情。')).toBeInTheDocument();
+    expect(within(detailCard).queryByText('system / system-1')).not.toBeInTheDocument();
+    expect(within(detailCard).queryByDisplayValue(/"operator": "A-01"/)).not.toBeInTheDocument();
   });
 });

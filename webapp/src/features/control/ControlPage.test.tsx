@@ -269,4 +269,44 @@ describe('ControlPage', () => {
     expect(screen.queryByText('状态加载失败')).not.toBeInTheDocument();
     expect(screen.queryByText('加载失败')).not.toBeInTheDocument();
   });
+
+  it('keeps control actions available when system status loads but queue loading fails', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/system/status') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({
+            id: 'system-1',
+            state: 'paused',
+            reason: 'manual pause',
+            metadata: { concurrency_limit: 3 },
+            updated_by: 'operator-a',
+            requested_at: '2026-05-07T03:00:00Z',
+            updated_at: '2026-05-07T03:05:00Z',
+          }),
+        );
+      }
+
+      if (url.endsWith('/api/articles') && method === 'GET') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ message: '文章队列加载失败，请稍后重试。' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+
+    renderControlPage();
+
+    expect(await screen.findByRole('button', { name: '恢复已暂停主链路' })).toBeEnabled();
+    expect(screen.getAllByText('主链路已暂停').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('文章队列加载失败，请稍后重试。')).toBeInTheDocument();
+    expect(screen.getByText('队列摘要暂时不可用。')).toBeInTheDocument();
+    expect(screen.queryByText('状态加载失败')).not.toBeInTheDocument();
+  });
 });

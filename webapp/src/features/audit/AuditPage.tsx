@@ -136,7 +136,16 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
   };
 
   useEffect(() => {
-    if (loading || filteredRows.length === 0) {
+    if (loading) {
+      return;
+    }
+
+    if (filteredRows.length === 0) {
+      detailRequestSequence.current += 1;
+      setSelectedLogID(null);
+      setSelectedLog(null);
+      setDetailLoading(false);
+      setDetailError(null);
       return;
     }
 
