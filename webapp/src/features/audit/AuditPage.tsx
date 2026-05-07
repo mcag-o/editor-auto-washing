@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
@@ -43,6 +43,7 @@ function formatTime(value: string) {
 
 export default function AuditPage({ onNavigate }: AuditPageProps) {
   const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [selectedLogID, setSelectedLogID] = useState<string | null>(null);
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -50,6 +51,7 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
   const [keyword, setKeyword] = useState('');
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const detailRequestSequence = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -85,16 +87,28 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
   const levels: AuditLevel[] = ['全部', '信息', '警告', '错误'];
 
   const handleSelectLog = async (log: AuditLog) => {
+    const requestSequence = detailRequestSequence.current + 1;
+    detailRequestSequence.current = requestSequence;
+    setSelectedLogID(log.id);
+    setSelectedLog(null);
     setDetailLoading(true);
     setDetailError(null);
 
     try {
       const detail = await getAudit(log.id);
+      if (detailRequestSequence.current !== requestSequence) {
+        return;
+      }
       setSelectedLog(detail);
     } catch (apiError) {
+      if (detailRequestSequence.current !== requestSequence) {
+        return;
+      }
       setDetailError(apiError instanceof ApiError ? apiError.message : '审计详情加载失败');
     } finally {
-      setDetailLoading(false);
+      if (detailRequestSequence.current === requestSequence) {
+        setDetailLoading(false);
+      }
     }
   };
 
@@ -169,7 +183,7 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
                 {filteredRows.map((row) => {
                   const level = logLevel(row);
                   return (
-                    <TableRow key={row.id} hover selected={selectedLog?.id === row.id} onClick={() => void handleSelectLog(row)} sx={{ cursor: 'pointer' }}>
+                    <TableRow key={row.id} hover selected={selectedLogID === row.id} onClick={() => void handleSelectLog(row)} sx={{ cursor: 'pointer' }}>
                       <TableCell>{row.id}</TableCell>
                       <TableCell>{formatTime(row.created_at)}</TableCell>
                       <TableCell>{row.actor}</TableCell>
@@ -203,10 +217,14 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
         <PageCard
           title="审计详情"
           description="显示选中记录的 message、资源 ID 与 metadata。"
-          action={detailLoading ? <CircularProgress size={18} /> : <StatusChip status={selectedLog ? 'active' : 'disabled'} label={selectedLog ? '已加载' : '未选择'} />}
+          action={detailLoading ? <CircularProgress size={18} /> : <StatusChip status={selectedLogID ? (selectedLog ? 'active' : 'failed') : 'disabled'} label={selectedLogID ? (selectedLog ? '已加载' : '加载失败') : '未选择'} />}
         >
           {detailError ? <Alert severity="error">{detailError}</Alert> : null}
-          {selectedLog ? (
+          {detailLoading && selectedLogID ? (
+            <Typography variant="body2" color="text.secondary">
+              正在加载选中记录的审计详情。
+            </Typography>
+          ) : selectedLog ? (
             <Stack spacing={1.5}>
               <Typography variant="subtitle1">{selectedLog.action}</Typography>
               <Typography variant="body2" color="text.secondary">
@@ -218,6 +236,10 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
               <Typography variant="body2">{selectedLog.message || '无补充说明'}</Typography>
               <TextField multiline minRows={10} label="Metadata" value={JSON.stringify(selectedLog.metadata ?? {}, null, 2)} InputProps={{ readOnly: true }} />
             </Stack>
+          ) : selectedLogID ? (
+            <Typography variant="body2" color="text.secondary">
+              当前选中记录的审计详情暂时不可用。
+            </Typography>
           ) : (
             <Typography variant="body2" color="text.secondary">
               点击左侧记录查看详情。

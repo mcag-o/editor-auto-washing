@@ -5,6 +5,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AuditPage from './AuditPage';
 import theme from '../../theme/theme';
 
+function deferredResponse() {
+  let resolve: (response: Response) => void;
+  const promise = new Promise<Response>((res) => {
+    resolve = res;
+  });
+
+  return {
+    promise,
+    resolve: resolve!,
+  };
+}
+
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -141,7 +153,132 @@ describe('AuditPage', () => {
     expect(await within(detailCard as HTMLElement).findByText('审计详情加载失败')).toBeInTheDocument();
     expect(screen.getByText('流程暂停')).toBeInTheDocument();
     expect(screen.getByText('任务恢复')).toBeInTheDocument();
-    expect(within(detailCard as HTMLElement).getByText('点击左侧记录查看详情。')).toBeInTheDocument();
+    expect(within(detailCard as HTMLElement).getByText('当前选中记录的审计详情暂时不可用。')).toBeInTheDocument();
     expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
+  it('keeps the latest failed selection without showing stale prior detail', async () => {
+    renderAuditPage();
+
+    expect(await screen.findByText('流程暂停')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('row', { name: /log-1/i }));
+    });
+
+    expect(await screen.findByText('资源：system / system-1')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('row', { name: /log-2/i }));
+    });
+
+    const detailCard = screen.getByRole('heading', { name: '审计详情' }).closest('.MuiCard-root');
+    expect(detailCard).not.toBeNull();
+
+    expect(await within(detailCard as HTMLElement).findByText('审计详情加载失败')).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /log-2/i })).toHaveClass('Mui-selected');
+    expect(within(detailCard as HTMLElement).queryByText('资源：system / system-1')).not.toBeInTheDocument();
+    expect(within(detailCard as HTMLElement).queryByDisplayValue(/"operator": "A-01"/)).not.toBeInTheDocument();
+  });
+
+  it('ignores out-of-order detail responses and keeps the latest selection visible', async () => {
+    const firstDetail = deferredResponse();
+    const secondDetail = deferredResponse();
+
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/audit') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({
+            data: [
+              {
+                id: 'log-1',
+                actor: 'local-admin',
+                action: 'pause',
+                resource: 'system',
+                resource_id: 'system-1',
+                result: 'failure',
+                message: '流程暂停',
+                metadata: { reason: 'manual' },
+                created_at: '2026-05-07T03:00:00Z',
+              },
+              {
+                id: 'log-2',
+                actor: 'workflow-bot',
+                action: 'resume',
+                resource: 'article',
+                resource_id: 'article-2',
+                result: 'success',
+                message: '任务恢复',
+                metadata: { source: 'scheduler' },
+                created_at: '2026-05-07T04:00:00Z',
+              },
+            ],
+          }),
+        );
+      }
+
+      if (url.endsWith('/api/audit/log-1') && method === 'GET') {
+        return firstDetail.promise;
+      }
+
+      if (url.endsWith('/api/audit/log-2') && method === 'GET') {
+        return secondDetail.promise;
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+
+    renderAuditPage();
+
+    expect(await screen.findByText('流程暂停')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('row', { name: /log-1/i }));
+      fireEvent.click(screen.getByRole('row', { name: /log-2/i }));
+    });
+
+    await act(async () => {
+      secondDetail.resolve(
+        jsonResponse({
+          id: 'log-2',
+          actor: 'workflow-bot',
+          action: 'resume',
+          resource: 'article',
+          resource_id: 'article-2',
+          result: 'success',
+          message: '任务恢复',
+          metadata: { source: 'scheduler', operator: 'B-02' },
+          created_at: '2026-05-07T04:00:00Z',
+        }),
+      );
+    });
+
+    expect(await screen.findByText('资源：article / article-2')).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/"operator": "B-02"/)).toBeInTheDocument();
+
+    await act(async () => {
+      firstDetail.resolve(
+        jsonResponse({
+          id: 'log-1',
+          actor: 'local-admin',
+          action: 'pause',
+          resource: 'system',
+          resource_id: 'system-1',
+          result: 'failure',
+          message: '流程暂停',
+          metadata: { reason: 'manual', operator: 'A-01' },
+          created_at: '2026-05-07T03:00:00Z',
+        }),
+      );
+    });
+
+    expect(screen.getByRole('row', { name: /log-2/i })).toHaveClass('Mui-selected');
+    expect(screen.getByText('资源：article / article-2')).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/"operator": "B-02"/)).toBeInTheDocument();
+    expect(screen.queryByText('资源：system / system-1')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue(/"operator": "A-01"/)).not.toBeInTheDocument();
   });
 });
