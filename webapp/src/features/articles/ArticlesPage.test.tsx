@@ -165,4 +165,123 @@ describe('ArticlesPage', () => {
     const detailCard = screen.getByTestId('articles-detail-card');
     expect(await within(detailCard).findByText('阶段详情加载失败：运行记录不存在。')).toBeInTheDocument();
   });
+
+  it('shows explicit detail and queue action wording for operators', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/articles') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({
+            data: [
+              {
+                id: 'article-1',
+                source_type: 'upload',
+                original_filename: 'a.md',
+                original_path: '',
+                archived_path: '',
+                file_type: 'markdown',
+                title: '测试文章',
+                body: '正文内容',
+                summary: '',
+                metadata: {},
+                hash: 'hash-1',
+                imported_at: '2026-05-07T03:00:00Z',
+                status: 'paused',
+                workspace_article_id: '',
+                rewrite_run_id: 'run-1',
+                claimed_by: '',
+                claimed_at: null,
+                processing_started_at: '2026-05-07T03:05:00Z',
+                completed_at: null,
+                error_summary: '',
+              },
+            ],
+          }),
+        );
+      }
+
+      if (url.endsWith('/api/articles/article-1/stages') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({
+            article: {
+              id: 'article-1',
+              source_type: 'upload',
+              original_filename: 'a.md',
+              original_path: '',
+              archived_path: '',
+              file_type: 'markdown',
+              title: '测试文章',
+              body: '正文内容',
+              summary: '',
+              metadata: {},
+              hash: 'hash-1',
+              imported_at: '2026-05-07T03:00:00Z',
+              status: 'paused',
+              workspace_article_id: '',
+              rewrite_run_id: 'run-1',
+              claimed_by: '',
+              claimed_at: null,
+              processing_started_at: '2026-05-07T03:05:00Z',
+              completed_at: null,
+              error_summary: '',
+            },
+            run: {
+              id: 'run-1',
+              profile_id: 'profile-1',
+              profile_version: 'v1',
+              workspace_article_id: 'workspace-1',
+              collector_article_id: 'article-1',
+              target_type: 'web',
+              source_profile: 'default',
+              status: 'paused',
+              current_stage: 'rewrite',
+              started_at: '2026-05-07T03:05:00Z',
+              completed_at: null,
+              final_draft_id: '',
+              error_summary: '',
+              metadata: {},
+            },
+            stages: [
+              {
+                id: 'stage-1',
+                pipeline_run_id: 'run-1',
+                stage_name: 'rewrite',
+                stage_type: 'llm',
+                prompt_ref: 'prompt-1',
+                llm_profile_ref: 'model-1',
+                status: 'paused',
+                attempt: 2,
+                input_json: '{}',
+                output_json: '{}',
+                error_summary: '',
+                metadata: {},
+                started_at: '2026-05-07T03:05:00Z',
+                completed_at: null,
+              },
+            ],
+          }),
+        );
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+
+    renderArticlesPage();
+
+    expect(await screen.findByText('测试文章')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看阶段' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '恢复处理' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '提交暂停' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: '查看阶段' }));
+
+    const detailCard = screen.getByTestId('articles-detail-card');
+    expect(await within(detailCard).findByText('当前运行状态')).toBeInTheDocument();
+    expect(within(detailCard).getAllByText('已暂停').length).toBeGreaterThan(0);
+    expect(within(detailCard).getByText('当前阶段')).toBeInTheDocument();
+    expect(within(detailCard).getAllByText('rewrite').length).toBeGreaterThan(0);
+    expect(within(detailCard).getByText((_, element) => element?.textContent === '类型：llm / 第 2 次尝试')).toBeInTheDocument();
+  });
 });

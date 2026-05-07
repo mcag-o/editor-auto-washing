@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
 import InputAdornment from '@mui/material/InputAdornment';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
@@ -40,6 +42,26 @@ function logLevel(row: AuditLog): Exclude<AuditLevel, '全部'> {
 
 function formatTime(value: string) {
   return new Date(value).toLocaleString('zh-CN', { hour12: false });
+}
+
+function resultLabel(result: string) {
+  if (result === 'success') {
+    return '成功';
+  }
+  if (result === 'failure') {
+    return '失败';
+  }
+  return result || '未标注';
+}
+
+function metadataSummaryItems(log: AuditLog) {
+  return [
+    { label: '操作人', value: log.actor || '未记录' },
+    { label: '操作动作', value: log.action || '未记录' },
+    { label: '目标资源', value: `${log.resource || '未记录'} / ${log.resource_id || '未关联资源'}` },
+    { label: '操作结果', value: resultLabel(log.result) },
+    { label: '发生时间', value: formatTime(log.created_at) },
+  ];
 }
 
 export default function AuditPage({ onNavigate }: AuditPageProps) {
@@ -113,6 +135,17 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
     }
   };
 
+  useEffect(() => {
+    if (loading || filteredRows.length === 0) {
+      return;
+    }
+
+    const selectedVisible = selectedLogID ? filteredRows.some((row) => row.id === selectedLogID) : false;
+    if (!selectedVisible) {
+      void handleSelectLog(filteredRows[0]);
+    }
+  }, [filteredRows, loading, selectedLogID]);
+
   return (
     <Stack spacing={3}>
       <PageToolbar
@@ -165,7 +198,7 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
         <PageCard
           testId="audit-list-card"
           title="审计记录表"
-          description="保留操作编号、时间、资源、等级与详情字段，并支持点击查看详情。"
+          description="保留操作编号、时间、目标资源、等级与摘要，并支持快速查看详情。"
           action={loading ? <CircularProgress size={18} /> : <StatusChip status="completed" label={`共 ${filteredRows.length} 条`} />}
         >
           {loading ? (
@@ -192,18 +225,38 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
                   {filteredRows.map((row) => {
                     const level = logLevel(row);
                     return (
-                      <TableRow
-                        key={row.id}
-                        hover
-                        selected={selectedLogID === row.id}
+                     <TableRow
+                         key={row.id}
+                         hover
+                         selected={selectedLogID === row.id}
                         onClick={() => void handleSelectLog(row)}
                         sx={{ cursor: 'pointer', '& .MuiTableCell-root': { py: 1.25, verticalAlign: 'top' } }}
                       >
-                        <TableCell>{row.id}</TableCell>
-                        <TableCell>{formatTime(row.created_at)}</TableCell>
-                        <TableCell>{row.actor}</TableCell>
-                        <TableCell>{row.resource}</TableCell>
-                        <TableCell>{row.action}</TableCell>
+                         <TableCell>{row.id}</TableCell>
+                         <TableCell>{formatTime(row.created_at)}</TableCell>
+                         <TableCell>
+                           <Stack spacing={0.25}>
+                             <Typography variant="body2" fontWeight={600}>
+                               {row.actor}
+                             </Typography>
+                             <Typography variant="caption" color="text.secondary">
+                               执行动作：{row.action}
+                             </Typography>
+                           </Stack>
+                         </TableCell>
+                         <TableCell>
+                           <Stack spacing={0.25}>
+                             <Typography variant="body2" fontWeight={600}>
+                               {row.resource}
+                             </Typography>
+                             <Typography variant="caption" color="text.secondary">
+                               {row.resource_id || '未关联资源'}
+                             </Typography>
+                           </Stack>
+                         </TableCell>
+                         <TableCell>
+                           <Typography variant="body2">{row.action}</Typography>
+                         </TableCell>
                         <TableCell>
                           <StatusChip status={level === '错误' ? 'failed' : level === '警告' ? 'pending' : 'completed'} label={level} />
                         </TableCell>
@@ -224,20 +277,49 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
         <PageCard
           testId="audit-detail-card"
           title="审计详情"
-          description="显示选中记录的 message、资源 ID 与 metadata。"
+          description="突出操作人、动作、目标资源、结果与 metadata，便于快速判读。"
           action={detailLoading ? <CircularProgress size={18} /> : <StatusChip status={selectedLogID ? (selectedLog ? 'active' : 'failed') : 'disabled'} label={selectedLogID ? (selectedLog ? '已加载' : '加载失败') : '未选择'} />}
         >
           {detailLoading && selectedLogID ? (
             <PageState title="正在加载审计详情" description="正在同步当前选中记录的详细信息。" tone="loading" />
           ) : selectedLog ? (
-            <Stack spacing={1.5}>
-              <Typography variant="subtitle1">{selectedLog.action}</Typography>
-              <Typography variant="body2" color="text.secondary">
-                资源：{selectedLog.resource} / {selectedLog.resource_id || '未关联资源'}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                结果：{selectedLog.result}
-              </Typography>
+            <Stack spacing={2}>
+              <Stack spacing={1}>
+                <Typography variant="subtitle1">{selectedLog.message || selectedLog.action}</Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
+                  <StatusChip
+                    status={selectedLog.result === 'failure' ? 'failed' : selectedLog.result === 'success' ? 'completed' : 'pending'}
+                    label={`结果：${resultLabel(selectedLog.result)}`}
+                  />
+                  <StatusChip status="active" label={`动作：${selectedLog.action || '未记录'}`} />
+                </Stack>
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} flexWrap="wrap" useFlexGap>
+                {metadataSummaryItems(selectedLog).map((item) => (
+                  <Box
+                    key={item.label}
+                    sx={{
+                      flex: { xs: '1 1 100%', md: '1 1 calc(50% - 10px)' },
+                      p: 1.5,
+                      borderRadius: 3,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: 'background.default',
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      {item.label}
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5 }}>
+                      {item.value}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+
+              <Divider />
+
               <Typography variant="body2">{selectedLog.message || '无补充说明'}</Typography>
               <TextField multiline minRows={10} label="Metadata" value={JSON.stringify(selectedLog.metadata ?? {}, null, 2)} InputProps={{ readOnly: true }} />
             </Stack>

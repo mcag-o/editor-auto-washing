@@ -3,9 +3,11 @@ import PauseCircleOutlineRoundedIcon from '@mui/icons-material/PauseCircleOutlin
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import RestartAltRoundedIcon from '@mui/icons-material/RestartAltRounded';
 import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
 import LinearProgress from '@mui/material/LinearProgress';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
@@ -90,6 +92,8 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
     { key: 'active', label: '处理中任务', value: String(processingCount), hint: '包含 processing / claimed', icon: <Chip size="small" label="任务" /> },
     { key: 'alerts', label: '失败提醒', value: String(failedCount), hint: '来源于失败状态文章数量', icon: <PauseCircleOutlineRoundedIcon fontSize="small" /> },
   ];
+
+  const completedCount = articles.filter((item) => item.status === 'completed').length;
 
   const handleStart = async () => {
     setActionLoading(true);
@@ -182,42 +186,112 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
       <Stack direction={{ xs: 'column', xl: 'row' }} spacing={3} alignItems="stretch">
         <Stack spacing={3} flex={1.2} minWidth={0}>
           <PageCard
-            title="系统状态"
+            title="运行状态与控制"
             description={stateSummary.description}
             action={loading ? <CircularProgress size={18} /> : <StatusChip status={stateSummary.chipStatus} label={stateSummary.chipLabel} />}
           >
             <Stack spacing={2}>
               <Typography variant="h4">{stateSummary.headline}</Typography>
-              <TextField
-                label="启动并发上限"
-                value={concurrencyLimit}
-                onChange={(event) => setConcurrencyLimit(event.target.value)}
-                disabled={runtimeState === 'running' || actionLoading}
-                helperText={`当前系统记录并发上限：${activeConcurrency || '未设置'}，仅在发起启动请求时提交。`}
-              />
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} flexWrap="wrap" useFlexGap>
+                {[
+                  { label: '当前状态', value: runtimeState === 'running' ? '运行中' : runtimeState === 'paused' ? '已暂停' : '未启动' },
+                  { label: '最近操作人', value: systemState?.updated_by || '未记录' },
+                  { label: '状态原因', value: systemState?.reason || '未提供' },
+                ].map((item) => (
+                  <Box
+                    key={item.label}
+                    sx={{
+                      flex: { xs: '1 1 100%', md: '1 1 calc(33.33% - 10px)' },
+                      p: 1.5,
+                      borderRadius: 3,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: 'background.default',
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      {item.label}
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5 }}>
+                      {item.value}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+
+              <Divider />
+
+              <Typography variant="subtitle1">控制动作</Typography>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-                <Button variant="contained" startIcon={<PlayArrowRoundedIcon />} disabled={runtimeState === 'running' || actionLoading} onClick={() => void handleStart()}>
-                  请求启动
+                <Button variant="contained" startIcon={<PlayArrowRoundedIcon />} disabled={runtimeState === 'running' || runtimeState === 'paused' || actionLoading} onClick={() => void handleStart()}>
+                  启动主链路
                 </Button>
                 <Button variant="outlined" color="warning" startIcon={<PauseCircleOutlineRoundedIcon />} disabled={runtimeState !== 'running' || actionLoading} onClick={() => void handlePause()}>
-                  请求暂停
+                  提交暂停请求
                 </Button>
                 <Button variant="outlined" startIcon={<RestartAltRoundedIcon />} disabled={runtimeState !== 'paused' || actionLoading} onClick={() => void handleResume()}>
-                  请求恢复
+                  恢复已暂停主链路
                 </Button>
               </Stack>
-              <Typography variant="body2" color="text.secondary">
-                操作记录中的执行人由后端决定，页面仅负责调用现有系统控制接口并展示返回状态。
-              </Typography>
+
+              <Stack spacing={1}>
+                {[
+                  '启动会按当前并发上限拉起主链路，仅对未启动状态生效。',
+                  '暂停会提交协作暂停请求，不会强制中断已在执行中的任务。',
+                  '恢复只对已暂停状态生效，会继续处理当前待处理队列。',
+                ].map((item) => (
+                  <Typography key={item} variant="body2" color="text.secondary">
+                    {item}
+                  </Typography>
+                ))}
+              </Stack>
             </Stack>
           </PageCard>
 
           <PageCard
-            title="主链路观察"
-            description="基于最近一次加载结果展示导入、改写与草稿渲染三个关键阶段。"
+            title="队列与并发"
+            description="把并发上限、队列压力与完成进度放在同一视图中，便于判断是否需要启动、暂停或恢复。"
             action={<StatusChip status="pending" label="需手动刷新" />}
           >
             <Stack spacing={2}>
+              <TextField
+                label="启动并发上限"
+                value={concurrencyLimit}
+                onChange={(event) => setConcurrencyLimit(event.target.value)}
+                disabled={runtimeState === 'running' || runtimeState === 'paused' || actionLoading}
+                helperText={`当前系统记录并发上限：${activeConcurrency || '未设置'}，只有点击“启动主链路”时才会提交。`}
+              />
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} flexWrap="wrap" useFlexGap>
+                {[
+                  { label: '待处理队列', value: `${pendingCount} 条` },
+                  { label: '处理中', value: `${processingCount} 条` },
+                  { label: '已完成', value: `${completedCount} 条` },
+                ].map((item) => (
+                  <Box
+                    key={item.label}
+                    sx={{
+                      flex: { xs: '1 1 100%', md: '1 1 calc(33.33% - 10px)' },
+                      p: 1.5,
+                      borderRadius: 3,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: 'background.default',
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      {item.label}
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5 }}>
+                      {item.value}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+
+              <Divider />
+
               {stages.map((stage) => (
                 <Stack key={stage.key} spacing={1}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center">

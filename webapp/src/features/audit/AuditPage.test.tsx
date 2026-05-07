@@ -111,12 +111,27 @@ describe('AuditPage', () => {
     expect(await screen.findByText('流程暂停')).toBeInTheDocument();
     expect(screen.getByText('任务恢复')).toBeInTheDocument();
 
+    const detailCard = screen.getByTestId('audit-detail-card');
+    expect(await within(detailCard).findByText('操作人')).toBeInTheDocument();
+    expect(within(detailCard).getByText('local-admin')).toBeInTheDocument();
+    expect(within(detailCard).getByText('操作结果')).toBeInTheDocument();
+    expect(within(detailCard).getByText('结果：失败')).toBeInTheDocument();
+
     await act(async () => {
       fireEvent.click(screen.getByRole('row', { name: /log-1/i }));
     });
 
-    expect(await screen.findByText('资源：system / system-1')).toBeInTheDocument();
-    expect(screen.getByDisplayValue(/"operator": "A-01"/)).toBeInTheDocument();
+    expect(await within(detailCard).findByText('目标资源')).toBeInTheDocument();
+    expect(within(detailCard).getByText('system / system-1')).toBeInTheDocument();
+    expect(within(detailCard).getByDisplayValue(/"operator": "A-01"/)).toBeInTheDocument();
+  });
+
+  it('auto-selects the first visible record so list and detail stay in sync', async () => {
+    renderAuditPage();
+
+    expect(await screen.findByRole('row', { name: /log-1/i })).toHaveClass('Mui-selected');
+    expect(screen.getAllByText('local-admin').length).toBeGreaterThan(0);
+    expect(screen.getByText('system / system-1')).toBeInTheDocument();
   });
 
   it('shows an empty state when no audit records are returned', async () => {
@@ -171,7 +186,7 @@ describe('AuditPage', () => {
       fireEvent.click(screen.getByRole('row', { name: /log-1/i }));
     });
 
-    expect(await screen.findByText('资源：system / system-1')).toBeInTheDocument();
+    expect(await screen.findByText('system / system-1')).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('row', { name: /log-2/i }));
@@ -182,7 +197,7 @@ describe('AuditPage', () => {
 
     expect(await within(detailCard as HTMLElement).findByTestId('page-state-error')).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /log-2/i })).toHaveClass('Mui-selected');
-    expect(within(detailCard as HTMLElement).queryByText('资源：system / system-1')).not.toBeInTheDocument();
+    expect(within(detailCard as HTMLElement).queryByText('system / system-1')).not.toBeInTheDocument();
     expect(within(detailCard as HTMLElement).queryByDisplayValue(/"operator": "A-01"/)).not.toBeInTheDocument();
   });
 
@@ -261,7 +276,7 @@ describe('AuditPage', () => {
       );
     });
 
-    expect(await screen.findByText('资源：article / article-2')).toBeInTheDocument();
+    expect(await screen.findByText('article / article-2')).toBeInTheDocument();
     expect(screen.getByDisplayValue(/"operator": "B-02"/)).toBeInTheDocument();
 
     await act(async () => {
@@ -281,9 +296,9 @@ describe('AuditPage', () => {
     });
 
     expect(screen.getByRole('row', { name: /log-2/i })).toHaveClass('Mui-selected');
-    expect(screen.getByText('资源：article / article-2')).toBeInTheDocument();
+    expect(screen.getByText('article / article-2')).toBeInTheDocument();
     expect(screen.getByDisplayValue(/"operator": "B-02"/)).toBeInTheDocument();
-    expect(screen.queryByText('资源：system / system-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('system / system-1')).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue(/"operator": "A-01"/)).not.toBeInTheDocument();
   });
 });
