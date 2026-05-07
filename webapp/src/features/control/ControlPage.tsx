@@ -42,33 +42,37 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
     setSystemLoadError(null);
     setQueueLoadError(null);
 
-    const [stateResult, queueResult] = await Promise.allSettled([getSystemStatus(), listArticles()]);
+    const statusPromise = getSystemStatus()
+      .then((state) => {
+        setSystemState(state);
+      })
+      .catch((apiError: unknown) => {
+        setSystemState(null);
+        setSystemLoadError(apiError instanceof ApiError ? apiError.message : '系统状态加载失败');
+      })
+      .finally(() => {
+        setSystemLoading(false);
+      });
 
-    if (stateResult.status === 'fulfilled') {
-      setSystemState(stateResult.value);
-    } else {
-      const apiError = stateResult.reason;
-      setSystemState(null);
-      setSystemLoadError(apiError instanceof ApiError ? apiError.message : '系统状态加载失败');
-    }
+    const queuePromise = listArticles()
+      .then((queue) => {
+        setArticles(queue);
+      })
+      .catch((apiError: unknown) => {
+        setArticles([]);
+        setQueueLoadError(apiError instanceof ApiError ? apiError.message : '文章队列加载失败');
+      })
+      .finally(() => {
+        setQueueLoading(false);
+      });
 
-    if (queueResult.status === 'fulfilled') {
-      setArticles(queueResult.value);
-    } else {
-      const apiError = queueResult.reason;
-      setArticles([]);
-      setQueueLoadError(apiError instanceof ApiError ? apiError.message : '文章队列加载失败');
-    }
-
-    setSystemLoading(false);
-    setQueueLoading(false);
+    await Promise.allSettled([statusPromise, queuePromise]);
   };
 
   useEffect(() => {
     void loadData();
   }, []);
 
-  const loading = systemLoading || queueLoading;
   const runtimeState = systemState?.state ?? null;
 
   const stateSummary = useMemo(() => {
@@ -235,7 +239,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
             <Typography variant="body2" color="text.secondary">
               状态更新时间：{systemLoading ? '加载中' : systemLoadError ? '加载失败' : systemState?.updated_at ? new Date(systemState.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未记录'}
             </Typography>
-            <Button size="small" variant="outlined" onClick={() => void loadData()} disabled={loading || actionLoading}>
+            <Button size="small" variant="outlined" onClick={() => void loadData()} disabled={systemLoading || actionLoading}>
               刷新状态
             </Button>
           </Stack>
@@ -254,7 +258,7 @@ export default function ControlPage({ onNavigate }: ControlPageProps) {
           <PageCard
             title="运行状态与控制"
             description={stateSummary.description}
-            action={loading ? <CircularProgress size={18} /> : <StatusChip status={stateSummary.chipStatus} label={stateSummary.chipLabel} />}
+            action={systemLoading ? <CircularProgress size={18} /> : <StatusChip status={stateSummary.chipStatus} label={stateSummary.chipLabel} />}
           >
             <Stack spacing={2}>
               <Typography variant="h4">{stateSummary.headline}</Typography>

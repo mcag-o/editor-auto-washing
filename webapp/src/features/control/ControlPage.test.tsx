@@ -309,4 +309,42 @@ describe('ControlPage', () => {
     expect(screen.getByText('队列摘要暂时不可用。')).toBeInTheDocument();
     expect(screen.queryByText('状态加载失败')).not.toBeInTheDocument();
   });
+
+  it('keeps runtime controls usable while the queue is still loading', async () => {
+    const pendingArticles = deferredResponse();
+
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/system/status') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({
+            id: 'system-1',
+            state: 'paused',
+            reason: 'manual pause',
+            metadata: { concurrency_limit: 3 },
+            updated_by: 'operator-a',
+            requested_at: '2026-05-07T03:00:00Z',
+            updated_at: '2026-05-07T03:05:00Z',
+          }),
+        );
+      }
+
+      if (url.endsWith('/api/articles') && method === 'GET') {
+        return pendingArticles.promise;
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+
+    renderControlPage();
+
+    expect(await screen.findByRole('button', { name: '恢复已暂停主链路' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '刷新状态' })).toBeEnabled();
+    expect(screen.getAllByText('主链路已暂停').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('正在加载队列摘要。')).toBeInTheDocument();
+    expect(screen.getByText('待处理任务')).toBeInTheDocument();
+    expect(screen.getAllByText('加载中').length).toBeGreaterThanOrEqual(1);
+  });
 });
