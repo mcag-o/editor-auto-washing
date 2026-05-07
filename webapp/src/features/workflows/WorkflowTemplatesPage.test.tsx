@@ -457,8 +457,8 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     renderWorkflowTemplatesPage();
 
     expect((await screen.findAllByTestId('page-state-empty')).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText('暂无工作流模板')).toBeInTheDocument();
-    expect(screen.getByText('请选择一个工作流模板后再编辑节点配置。')).toBeInTheDocument();
+    expect(screen.getAllByText('暂无工作流模板').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('请在画布中选择一个节点后再编辑节点配置。')).toBeInTheDocument();
   });
 
   it('shows an explicit error state while keeping the editor layout visible', async () => {
@@ -472,5 +472,28 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(screen.getByTestId('workflow-list-column')).toBeInTheDocument();
     expect(screen.getByTestId('workflow-canvas-column')).toBeInTheDocument();
     expect(screen.getByTestId('workflow-side-panel')).toBeInTheDocument();
+  });
+
+  it('keeps the normal empty state when a workflow action fails on an empty dataset', async () => {
+    const api = await import('../../lib/api/client');
+    vi.mocked(api.listWorkflows).mockResolvedValue([]);
+    vi.mocked(api.createWorkflow).mockRejectedValue(new api.ApiError(409, '工作流保存失败：名称重复。'));
+
+    renderWorkflowTemplatesPage();
+
+    expect((await screen.findAllByText('暂无工作流模板')).length).toBeGreaterThanOrEqual(1);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+    });
+
+    expect(await screen.findByText('工作流保存失败：名称重复。')).toBeInTheDocument();
+    expect(within(screen.getByTestId('workflow-list-column')).getByTestId('page-state-empty')).toBeInTheDocument();
+    expect(screen.queryByText('工作流模板暂时不可用')).not.toBeInTheDocument();
+    expect(screen.queryByText('工作流编辑器暂时不可用')).not.toBeInTheDocument();
   });
 });

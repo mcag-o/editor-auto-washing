@@ -236,9 +236,9 @@ export default function AuditPage({ onNavigate }: AuditPageProps) {
               <TextField multiline minRows={10} label="Metadata" value={JSON.stringify(selectedLog.metadata ?? {}, null, 2)} InputProps={{ readOnly: true }} />
             </Stack>
           ) : detailError ? (
-            <PageState title="审计详情暂时不可用" description="当前记录详情暂时不可用，请重新选择或稍后重试。" tone="error" />
+            <PageState title="审计详情暂时不可用" description={detailError} tone="error" />
           ) : selectedLogID ? (
-            <PageState title="审计详情暂时不可用" description="当前记录详情暂时不可用，请重新选择或稍后重试。" tone="error" />
+            <PageState title="审计详情暂时不可用" description={detailError || '当前记录详情暂时不可用，请重新选择或稍后重试。'} tone="error" />
           ) : (
             <PageState title="未选择审计记录" description="请选择一条记录查看审计详情。" tone="empty" />
           )}

@@ -133,6 +133,7 @@ describe('AuditPage', () => {
 
     renderAuditPage();
 
+    expect(await screen.findByText('暂无审计记录')).toBeInTheDocument();
     const listCard = await screen.findByTestId('audit-list-card');
     expect(within(listCard).getByTestId('page-state-empty')).toBeInTheDocument();
     expect(within(listCard).getByText('暂无审计记录')).toBeInTheDocument();
@@ -157,7 +158,7 @@ describe('AuditPage', () => {
     expect(screen.getByText('流程暂停')).toBeInTheDocument();
     expect(screen.getByText('任务恢复')).toBeInTheDocument();
     expect(within(detailCard as HTMLElement).getByTestId('page-state-error')).toBeInTheDocument();
-    expect(within(detailCard as HTMLElement).getByText('当前记录详情暂时不可用，请重新选择或稍后重试。')).toBeInTheDocument();
+    expect(within(detailCard as HTMLElement).getByText('审计详情加载失败', { exact: false })).toBeInTheDocument();
     expect(within(detailCard as HTMLElement).getAllByRole('alert')).toHaveLength(1);
   });
 

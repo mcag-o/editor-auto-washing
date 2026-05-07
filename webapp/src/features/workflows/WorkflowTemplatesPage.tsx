@@ -212,14 +212,15 @@ export default function WorkflowTemplatesPage() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [fitViewRequest, setFitViewRequest] = useState(0);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
 
   const loadWorkflows = async () => {
     setLoading(true);
-    setError(null);
+    setLoadError(null);
 
     try {
       const items = await listWorkflows();
@@ -231,7 +232,7 @@ export default function WorkflowTemplatesPage() {
       setSelectedNodeId(selected?.entryNodeId ?? selected?.nodes[0]?.id ?? null);
       setSelectedEdgeId(null);
     } catch (apiError) {
-      setError(apiError instanceof ApiError ? apiError.message : '工作流列表加载失败');
+      setLoadError(apiError instanceof ApiError ? apiError.message : '工作流列表加载失败');
     } finally {
       setLoading(false);
     }
@@ -506,8 +507,9 @@ export default function WorkflowTemplatesPage() {
       return;
     }
 
+    const hadTemplatesBeforeSave = templates.some((template) => !template.id.startsWith('workflow-local'));
     setSaving(true);
-    setError(null);
+    setActionError(null);
     setSuccessMessage(null);
 
     try {
@@ -539,7 +541,13 @@ export default function WorkflowTemplatesPage() {
       setSelectedEdgeId(null);
       setSuccessMessage(temporaryTemplateId.startsWith('workflow-local') ? '工作流模板已创建。' : '工作流模板已保存。');
     } catch (apiError) {
-      setError(apiError instanceof ApiError ? apiError.message : '工作流保存失败');
+      if (selectedTemplate.id.startsWith('workflow-local') && !hadTemplatesBeforeSave) {
+        setTemplates((current) => current.filter((template) => template.id !== selectedTemplate.id));
+        setSelectedTemplateId('');
+        setSelectedNodeId(null);
+        setSelectedEdgeId(null);
+      }
+      setActionError(apiError instanceof ApiError ? apiError.message : '工作流保存失败');
     } finally {
       setSaving(false);
     }
@@ -560,7 +568,7 @@ export default function WorkflowTemplatesPage() {
     }
 
     setSaving(true);
-    setError(null);
+    setActionError(null);
     setSuccessMessage(null);
 
     try {
@@ -573,7 +581,7 @@ export default function WorkflowTemplatesPage() {
       setSelectedEdgeId(null);
       setSuccessMessage('工作流模板已删除。');
     } catch (apiError) {
-      setError(apiError instanceof ApiError ? apiError.message : '工作流删除失败');
+      setActionError(apiError instanceof ApiError ? apiError.message : '工作流删除失败');
     } finally {
       setSaving(false);
     }
@@ -609,7 +617,7 @@ export default function WorkflowTemplatesPage() {
         }
       />
 
-      {error && templates.length > 0 ? <Alert severity="error">{error}</Alert> : null}
+      {actionError ? <Alert severity="error">{actionError}</Alert> : null}
       {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
 
       <WorkflowToolbar
@@ -629,7 +637,7 @@ export default function WorkflowTemplatesPage() {
 
       <Stack direction={{ xs: 'column', xl: 'row' }} spacing={3} alignItems="stretch">
         <Stack spacing={3} sx={{ width: { xs: '100%', xl: 340 }, flexShrink: 0 }} data-testid="workflow-list-column">
-          <WorkflowListPanel items={workflowItems} loading={loading} error={templates.length === 0 ? error : null} selectedId={selectedTemplate?.id ?? ''} onCreateTemplate={handleCreateTemplate} onSelectTemplate={handleSelectTemplate} onDeleteTemplate={() => void handleDeleteTemplate()} />
+          <WorkflowListPanel items={workflowItems} loading={loading} error={loadError} selectedId={selectedTemplate?.id ?? ''} onCreateTemplate={handleCreateTemplate} onSelectTemplate={handleSelectTemplate} onDeleteTemplate={() => void handleDeleteTemplate()} />
         </Stack>
 
         <Stack spacing={3} flex={1} minWidth={0} data-testid="workflow-canvas-column" data-panel-state={isRightPanelCollapsed ? 'collapsed' : 'expanded'}>
@@ -695,8 +703,8 @@ export default function WorkflowTemplatesPage() {
 
           {isRightPanelCollapsed ? null : selectedEdgeSummary ? (
             <WorkflowEdgePanel selectedEdge={selectedEdgeSummary} onDeleteEdge={handleDeleteEdge} />
-          ) : error && templates.length === 0 ? (
-            <PageState title="工作流编辑器暂时不可用" description={error} tone="error" />
+          ) : loadError && templates.length === 0 ? (
+            <PageState title="工作流编辑器暂时不可用" description={loadError} tone="error" />
           ) : (
             <WorkflowNodeDrawer loading={loading} selectedNodeId={selectedNodeId} entryNodeLabel={entryNodeLabel} value={selectedNodeFormValue} onChange={handleNodeChange} />
           )}

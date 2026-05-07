@@ -16,7 +16,6 @@ import {
   type TemplateFormDraft,
   type TemplateFormRecord,
 } from '../../lib/mappers/template';
-import PageState from '../../components/PageState';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
 import TemplateEditorDrawer from './components/TemplateEditorDrawer';
@@ -57,13 +56,14 @@ export default function TemplatesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<TemplateDraft>(createEmptyDraft(0));
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const loadTemplates = async () => {
     setLoading(true);
-    setError(null);
+    setLoadError(null);
 
     try {
       const items = await listTemplates();
@@ -72,7 +72,7 @@ export default function TemplatesPage() {
       setSelectedId((current) => (mapped.some((item) => item.id === current) ? current : mapped[0]?.id ?? ''));
       setBannerMessage(`已加载 ${mapped.length} 个模板。`);
     } catch (apiError) {
-      setError(apiError instanceof ApiError ? apiError.message : '模板列表加载失败');
+      setLoadError(apiError instanceof ApiError ? apiError.message : '模板列表加载失败');
     } finally {
       setLoading(false);
     }
@@ -123,7 +123,7 @@ export default function TemplatesPage() {
     const payload = mapTemplateFormToApi(draft, { updatedBy: 'react-webapp' });
 
     setSaving(true);
-    setError(null);
+    setActionError(null);
 
     try {
       const saved = !editingId || isLocalTemplateId(targetId)
@@ -142,7 +142,7 @@ export default function TemplatesPage() {
       setBannerMessage(!editingId || isLocalTemplateId(targetId) ? '模板已创建。' : '模板已保存。');
       resetEditorState(editingId ? templates.length : templates.length + 1);
     } catch (apiError) {
-      setError(apiError instanceof ApiError ? apiError.message : '模板保存失败');
+      setActionError(apiError instanceof ApiError ? apiError.message : '模板保存失败');
     } finally {
       setSaving(false);
     }
@@ -155,7 +155,7 @@ export default function TemplatesPage() {
     }
 
     setSaving(true);
-    setError(null);
+    setActionError(null);
 
     try {
       const saved = await updateTemplate(
@@ -175,7 +175,7 @@ export default function TemplatesPage() {
       setSelectedId(templateId);
       setBannerMessage('模板启用状态已更新。');
     } catch (apiError) {
-      setError(apiError instanceof ApiError ? apiError.message : '模板状态更新失败');
+      setActionError(apiError instanceof ApiError ? apiError.message : '模板状态更新失败');
     } finally {
       setSaving(false);
     }
@@ -213,7 +213,7 @@ export default function TemplatesPage() {
     }
 
     setSaving(true);
-    setError(null);
+    setActionError(null);
 
     try {
       await deleteTemplate(templateId);
@@ -226,7 +226,7 @@ export default function TemplatesPage() {
       }
       setBannerMessage('模板已删除。');
     } catch (apiError) {
-      setError(apiError instanceof ApiError ? apiError.message : '模板删除失败');
+      setActionError(apiError instanceof ApiError ? apiError.message : '模板删除失败');
     } finally {
       setSaving(false);
     }
@@ -284,7 +284,7 @@ export default function TemplatesPage() {
         }
       />
 
-      {error && templates.length > 0 ? <Alert severity="error">{error}</Alert> : null}
+      {actionError ? <Alert severity="error">{actionError}</Alert> : null}
       {bannerMessage ? <Alert severity={loading ? 'info' : 'success'}>{bannerMessage}</Alert> : null}
 
       <Box
@@ -302,7 +302,7 @@ export default function TemplatesPage() {
           <TemplateList
             items={templates}
             loading={loading}
-            error={templates.length === 0 ? error : null}
+            error={loadError}
             selectedId={selectedId}
             onSelectTemplate={handleSelectTemplate}
             onEditTemplate={handleOpenEdit}

@@ -175,7 +175,7 @@ export default function WorkflowNodeDrawer({
           </Box>
         </Stack>
       ) : (
-        <PageState title="未选择节点" description="请选择一个工作流模板后再编辑节点配置。" tone="empty" />
+        <PageState title="未选择节点" description="请在画布中选择一个节点后再编辑节点配置。" tone="empty" />
       )}
     </PageCard>
   );

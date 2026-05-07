@@ -232,4 +232,42 @@ describe('TemplatesPage', () => {
     expect(screen.getByText('模板列表')).toBeInTheDocument();
     expect(screen.getByText('内容预览')).toBeInTheDocument();
   });
+
+  it('keeps the normal empty state when a template action fails on an empty dataset', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/templates') && method === 'GET') {
+        return Promise.resolve(jsonResponse({ data: [] }));
+      }
+
+      if (url.endsWith('/api/templates') && method === 'POST') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ message: '模板保存失败：名称重复。' }), {
+            status: 409,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+
+    renderTemplatesPage();
+
+    expect((await screen.findAllByText('暂无模板记录')).length).toBeGreaterThanOrEqual(1);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+    });
+
+    expect(await screen.findByText('模板保存失败：名称重复。')).toBeInTheDocument();
+    expect(screen.getAllByText('暂无模板记录').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('模板列表暂时不可用')).not.toBeInTheDocument();
+  });
 });

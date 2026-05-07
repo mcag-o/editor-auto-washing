@@ -419,7 +419,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
             ) : stagesLoading ? (
               <PageState title="正在加载阶段详情" description="正在同步当前文章的阶段执行记录。" tone="loading" />
             ) : detailError ? (
-              <PageState title="阶段详情暂时不可用" description="当前记录详情暂时不可用，请重新选择或稍后重试。" tone="error" />
+              <PageState title="阶段详情暂时不可用" description={detailError} tone="error" />
             ) : stageDetail ? (
               <>
                 <Typography variant="subtitle1">
@@ -447,7 +447,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
                 )}
               </>
             ) : (
-              <PageState title="阶段详情暂时不可用" description="当前记录详情暂时不可用，请重新选择或稍后重试。" tone="error" />
+              <PageState title="阶段详情暂时不可用" description={detailError || '当前记录详情暂时不可用，请重新选择或稍后重试。'} tone="error" />
             )}
           </Stack>
         </PageCard>
