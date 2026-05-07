@@ -3,6 +3,7 @@ import type { Connection, Edge, EdgeChange, Node, NodeChange } from 'reactflow';
 import { Background, Controls, MiniMap, Panel, ReactFlow, useReactFlow } from 'reactflow';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
+import Divider from '@mui/material/Divider';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
@@ -28,6 +29,7 @@ type WorkflowGraphPanelProps = {
   selectedNodeId: string | null;
   selectedNodeLabel: string | null;
   selectedTemplateName: string;
+  isPanelCollapsed: boolean;
 };
 
 function FitViewOnRequest({ request }: { request: number }) {
@@ -59,21 +61,91 @@ export default function WorkflowGraphPanel({
   selectedNodeId,
   selectedNodeLabel,
   selectedTemplateName,
+  isPanelCollapsed,
 }: WorkflowGraphPanelProps) {
+  const selectionKind = selectedEdgeId ? 'edge' : selectedNodeId ? 'node' : 'idle';
+
   return (
     <Box
+      component="section"
+      role="region"
+      aria-label="工作流画布"
+      data-testid="workflow-graph-panel"
+      data-emphasis="primary"
+      data-selection-kind={selectionKind}
+      data-panel-state={isPanelCollapsed ? 'collapsed' : 'expanded'}
       sx={{
         position: 'relative',
         minHeight: 760,
         borderRadius: 6,
         overflow: 'hidden',
-        border: `1px solid ${alpha('#15304f', 0.12)}`,
+        border: `1px solid ${selectionKind === 'edge' ? alpha('#5b3df5', 0.26) : alpha('#15304f', 0.12)}`,
         bgcolor: '#f6f9ff',
         backgroundImage:
           'radial-gradient(circle at top left, rgba(91, 61, 245, 0.16), transparent 28%), radial-gradient(circle at bottom right, rgba(15, 98, 254, 0.2), transparent 32%)',
-        boxShadow: '0 28px 64px rgba(20, 32, 51, 0.12)',
+        boxShadow:
+          selectionKind === 'edge'
+            ? '0 32px 72px rgba(91, 61, 245, 0.18)'
+            : selectionKind === 'node'
+              ? '0 32px 72px rgba(15, 98, 254, 0.16)'
+              : '0 28px 64px rgba(20, 32, 51, 0.12)',
       }}
     >
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        spacing={1.5}
+        justifyContent="space-between"
+        alignItems={{ xs: 'flex-start', md: 'center' }}
+        sx={{
+          position: 'absolute',
+          inset: 20,
+          bottom: 'auto',
+          zIndex: 5,
+          pointerEvents: 'none',
+        }}
+      >
+        <Stack
+          spacing={0.6}
+          sx={{
+            p: 1.5,
+            borderRadius: 4,
+            maxWidth: 520,
+            bgcolor: alpha('#081120', 0.72),
+            color: '#ffffff',
+            backdropFilter: 'blur(16px)',
+            boxShadow: '0 18px 48px rgba(8, 17, 32, 0.22)',
+          }}
+        >
+          <Typography variant="overline" sx={{ color: alpha('#ffffff', 0.78), letterSpacing: '0.16em' }}>
+            主画布
+          </Typography>
+          <Typography variant="h6">{selectedTemplateName}</Typography>
+          <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.84) }}>
+            拖拽、缩放与连线操作集中在此完成
+          </Typography>
+        </Stack>
+
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1}
+          useFlexGap
+          sx={{ pointerEvents: 'auto' }}
+        >
+          <Chip
+            size="small"
+            color={selectedNodeId ? 'primary' : 'default'}
+            variant={selectedNodeId ? 'filled' : 'outlined'}
+            label={selectedNodeLabel ? `节点: ${selectedNodeLabel}` : '当前未选择节点'}
+          />
+          <Chip
+            size="small"
+            color={selectedEdgeId ? 'secondary' : 'default'}
+            variant={selectedEdgeId ? 'filled' : 'outlined'}
+            label={selectedEdgeLabel ? `连线: ${selectedEdgeLabel}` : '当前未选择连线'}
+          />
+        </Stack>
+      </Stack>
+
       <ReactFlow
         fitView
         nodes={nodes}
@@ -100,21 +172,27 @@ export default function WorkflowGraphPanel({
           <Stack
             spacing={1}
             sx={{
+              mt: 11,
               p: 1.5,
               borderRadius: 4,
               bgcolor: alpha('#ffffff', 0.92),
               border: `1px solid ${alpha('#15304f', 0.1)}`,
               boxShadow: '0 12px 30px rgba(20, 32, 51, 0.08)',
+              maxWidth: 340,
             }}
           >
             <Typography variant="subtitle2">当前模板</Typography>
             <Typography variant="body2" color="text.secondary">
               {selectedTemplateName}
             </Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap flexWrap="wrap">
-              <Chip size="small" color={selectedNodeId ? 'primary' : 'default'} variant={selectedNodeId ? 'filled' : 'outlined'} label={selectedNodeLabel ? `节点: ${selectedNodeLabel}` : '当前未选择节点'} />
-              <Chip size="small" color={selectedEdgeId ? 'secondary' : 'default'} variant={selectedEdgeId ? 'filled' : 'outlined'} label={selectedEdgeLabel ? `连线: ${selectedEdgeLabel}` : '当前未选择连线'} />
-            </Stack>
+            <Divider />
+            <Typography variant="body2" color="text.secondary">
+              {selectionKind === 'edge'
+                ? '当前正在查看连线条件与去向。'
+                : selectionKind === 'node'
+                  ? '已锁定当前节点，可直接在右侧修改配置。'
+                  : '点击节点或连线后，右侧会同步显示对应配置。'}
+            </Typography>
             <Chip size="small" label="拖拽节点可调整布局，拖出连线即可建立连接" />
           </Stack>
         </Panel>

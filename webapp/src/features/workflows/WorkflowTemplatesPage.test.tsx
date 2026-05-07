@@ -306,6 +306,8 @@ describe('WorkflowTemplatesPage editor interactions', () => {
     expect(within(toolbar).getByRole('button', { name: '设为入口节点' })).toBeEnabled();
     expect(within(toolbar).getByRole('button', { name: '删除节点' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: '画布适配视图' })).not.toBeInTheDocument();
+    expect(within(toolbar).getByText('当前聚焦节点')).toBeInTheDocument();
+    expect(screen.getByTestId('workflow-graph-panel')).toHaveAttribute('data-selection-kind', 'node');
 
     await act(async () => {
       fireEvent.click(within(toolbar).getByRole('button', { name: '适配视图' }));
@@ -313,6 +315,7 @@ describe('WorkflowTemplatesPage editor interactions', () => {
 
     expect(fitViewSpy).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('node-node-rewrite')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('已锁定当前节点，可直接在右侧修改配置。')).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(within(toolbar).getByRole('button', { name: '设为入口节点' }));
@@ -335,6 +338,67 @@ describe('WorkflowTemplatesPage editor interactions', () => {
 
     expect(screen.queryByTestId('node-node-rewrite')).not.toBeInTheDocument();
     expect(within(toolbar).getByText('已选择节点: 导入文章')).toBeInTheDocument();
+  });
+
+  it('gives the canvas primary visual prominence over surrounding controls', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    const graphPanel = screen.getByTestId('workflow-graph-panel');
+    const canvasRegion = screen.getByRole('region', { name: '工作流画布' });
+    const toolbar = screen.getByRole('toolbar', { name: '工作流画布工具栏' });
+
+    expect(graphPanel).toHaveAttribute('data-emphasis', 'primary');
+    expect(graphPanel).toHaveAttribute('data-panel-state', 'expanded');
+    expect(graphPanel).toHaveAttribute('data-selection-kind', 'node');
+    expect(canvasRegion).toBeInTheDocument();
+    expect(screen.getByText('主画布')).toBeInTheDocument();
+    expect(screen.getByText('拖拽、缩放与连线操作集中在此完成')).toBeInTheDocument();
+    expect(within(toolbar).getByText('画布为主操作区，右侧面板跟随当前选择同步更新。')).toBeInTheDocument();
+  });
+
+  it('keeps selection, fit-view, and panel interactions coherent', async () => {
+    renderWorkflowTemplatesPage();
+
+    expect(await screen.findByText('当前选中模板：品牌改写主链路')).toBeInTheDocument();
+
+    const toolbar = screen.getByRole('toolbar', { name: '工作流画布工具栏' });
+    const graphPanel = screen.getByTestId('workflow-graph-panel');
+
+    expect(graphPanel).toHaveAttribute('data-selection-kind', 'node');
+    expect(within(toolbar).getByText('当前聚焦节点')).toBeInTheDocument();
+    expect(screen.getByText('正在编辑节点')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('edge-edge-node-input-node-rewrite-always-0'));
+    });
+
+    expect(graphPanel).toHaveAttribute('data-selection-kind', 'edge');
+    expect(within(toolbar).getByText('当前聚焦连线')).toBeInTheDocument();
+    expect(screen.getByText('当前正在查看连线条件与去向。')).toBeInTheDocument();
+    expect(screen.getByText('正在检查连线')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(within(toolbar).getByRole('button', { name: '适配视图' }));
+    });
+
+    expect(fitViewSpy).toHaveBeenCalledTimes(1);
+    expect(graphPanel).toHaveAttribute('data-selection-kind', 'edge');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '折叠右侧配置面板' }));
+    });
+
+    expect(graphPanel).toHaveAttribute('data-panel-state', 'collapsed');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '展开右侧配置面板' }));
+    });
+
+    expect(graphPanel).toHaveAttribute('data-panel-state', 'expanded');
+    expect(graphPanel).toHaveAttribute('data-selection-kind', 'edge');
+    expect(screen.getByText('当前正在查看连线条件与去向。')).toBeInTheDocument();
   });
 
   it('clears edge selection when save returns focus to a node', async () => {

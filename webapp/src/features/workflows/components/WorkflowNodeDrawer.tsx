@@ -1,4 +1,5 @@
 import Box from '@mui/material/Box';
+import Chip from '@mui/material/Chip';
 import Divider from '@mui/material/Divider';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
@@ -59,9 +60,12 @@ export default function WorkflowNodeDrawer({
       title="节点配置"
       description="右侧面板用于编辑节点配置，保存时会写入工作流定义中的节点配置 JSON。"
       action={
-        <Typography variant="caption" color="text.secondary">
-          {entryNodeLabel ? `入口节点：${entryNodeLabel}` : '尚未设置入口节点'}
-        </Typography>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Chip size="small" color="primary" variant="filled" label="正在编辑节点" />
+          <Typography variant="caption" color="text.secondary">
+            {entryNodeLabel ? `入口节点：${entryNodeLabel}` : '尚未设置入口节点'}
+          </Typography>
+        </Stack>
       }
     >
       {loading ? (

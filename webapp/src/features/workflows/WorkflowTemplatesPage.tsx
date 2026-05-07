@@ -588,6 +588,13 @@ export default function WorkflowTemplatesPage() {
   };
 
   const entryNodeLabel = selectedTemplate?.nodes.find((node) => node.id === selectedTemplate.entryNodeId)?.data.label ?? null;
+  const selectionKind = selectedEdgeId ? 'edge' : selectedNodeId ? 'node' : 'idle';
+  const toolbarFocusLabel = selectionKind === 'edge' ? '当前聚焦连线' : selectionKind === 'node' ? '当前聚焦节点' : '当前无聚焦对象';
+  const toolbarFocusDescription = selectionKind === 'edge'
+    ? '连线焦点已同步，右侧可检查条件与流向。'
+    : selectionKind === 'node'
+      ? '节点焦点已同步，右侧可直接修改配置。'
+      : '点击画布中的节点或连线后，可在右侧查看详细信息。';
 
   return (
     <Stack spacing={3}>
@@ -626,9 +633,12 @@ export default function WorkflowTemplatesPage() {
         canFitView={Boolean(selectedTemplate)}
         canDeleteNode={(selectedTemplate?.nodes.length ?? 0) > 0 && Boolean(selectedNodeId)}
         canSetEntryNode={Boolean(selectedNodeId)}
+        focusDescription={toolbarFocusDescription}
+        focusLabel={toolbarFocusLabel}
         selectedNodeLabel={selectedNodeLabel}
         selectedEdgeLabel={selectedEdgeLabel}
         entryNodeLabel={entryNodeLabel}
+        selectionKind={selectionKind}
         onAddNode={handleAddNode}
         onDeleteNode={handleDeleteNode}
         onFitView={handleFitView}
@@ -650,6 +660,7 @@ export default function WorkflowTemplatesPage() {
             selectedNodeId={selectedNodeId}
             selectedNodeLabel={selectedNodeLabel}
             selectedTemplateName={selectedTemplate?.name ?? (loading ? '正在加载模板' : '未选择模板')}
+            isPanelCollapsed={isRightPanelCollapsed}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onConnect={handleConnect}

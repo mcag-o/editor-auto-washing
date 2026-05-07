@@ -3,6 +3,7 @@ import Accordion from '@mui/material/Accordion';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import Button from '@mui/material/Button';
+import Chip from '@mui/material/Chip';
 import Divider from '@mui/material/Divider';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import Stack from '@mui/material/Stack';
@@ -27,16 +28,19 @@ export default function WorkflowEdgePanel({ selectedEdge, onDeleteEdge }: Workfl
       title="连线信息"
       description="右侧面板用于查看当前分支的来源、目标与条件配置，并支持本地断开连接。"
       action={
-        <Button
-          size="small"
-          variant="outlined"
-          color="error"
-          startIcon={<DeleteOutlineRoundedIcon />}
-          disabled={!selectedEdge}
-          onClick={onDeleteEdge}
-        >
-          删除连线
-        </Button>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Chip size="small" color="secondary" variant="filled" label="正在检查连线" />
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteOutlineRoundedIcon />}
+            disabled={!selectedEdge}
+            onClick={onDeleteEdge}
+          >
+            删除连线
+          </Button>
+        </Stack>
       }
     >
       {selectedEdge ? (
