@@ -4,32 +4,36 @@ import AccordionDetails from '@mui/material/AccordionDetails';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
-import Divider from '@mui/material/Divider';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import PageCard from '../../../components/PageCard';
+import Divider from '@mui/material/Divider';
+import WorkflowInspectorPanel from './WorkflowInspectorPanel';
 
 export type WorkflowEdgeSummary = {
   id: string;
   sourceLabel: string;
   targetLabel: string;
   condition: string;
+  priority: number;
 };
 
 type WorkflowEdgePanelProps = {
   selectedEdge: WorkflowEdgeSummary | null;
   onDeleteEdge: () => void;
+  onChange: (field: 'condition' | 'priority', value: string | number) => void;
 };
 
-export default function WorkflowEdgePanel({ selectedEdge, onDeleteEdge }: WorkflowEdgePanelProps) {
+export default function WorkflowEdgePanel({ selectedEdge, onDeleteEdge, onChange }: WorkflowEdgePanelProps) {
   return (
-    <PageCard
-      title="连线信息"
-      description="右侧面板用于查看当前分支的来源、目标与条件配置，并支持本地断开连接。"
+    <WorkflowInspectorPanel
+      mode={selectedEdge ? 'edge' : 'idle'}
+      title={selectedEdge ? '连线检查器' : '工作流检查器'}
+      description={selectedEdge ? '右侧面板用于编辑当前分支的来源、目标、条件与优先级配置。' : '右侧检查器会跟随当前画布选择切换节点或连线配置。'}
       action={
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Chip size="small" color="secondary" variant="filled" label="正在检查连线" />
+          <Chip size="small" color="secondary" variant="filled" label={selectedEdge ? '正在检查连线' : '等待选择'} />
           <Button
             size="small"
             variant="outlined"
@@ -65,9 +69,18 @@ export default function WorkflowEdgePanel({ selectedEdge, onDeleteEdge }: Workfl
                 <Divider />
                 <Stack spacing={0.5}>
                   <Typography variant="subtitle2">条件分支</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {selectedEdge.condition}
-                  </Typography>
+                  <TextField label="条件分支" value={selectedEdge.condition} onChange={(event) => onChange('condition', event.target.value)} fullWidth />
+                </Stack>
+                <Divider />
+                <Stack spacing={0.5}>
+                  <Typography variant="subtitle2">优先级</Typography>
+                  <TextField
+                    label="优先级"
+                    type="number"
+                    value={selectedEdge.priority}
+                    onChange={(event) => onChange('priority', Number(event.target.value))}
+                    fullWidth
+                  />
                 </Stack>
                 <Typography variant="caption" color="text.secondary">
                   连线 ID：{selectedEdge.id}
@@ -76,16 +89,7 @@ export default function WorkflowEdgePanel({ selectedEdge, onDeleteEdge }: Workfl
             </AccordionDetails>
           </Accordion>
         </Stack>
-      ) : (
-        <Accordion defaultExpanded disableGutters elevation={0} sx={{ bgcolor: 'transparent', '&::before': { display: 'none' } }}>
-          <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>条件/分支</AccordionSummary>
-          <AccordionDetails>
-            <Typography variant="body2" color="text.secondary">
-              点击画布中的连线后，可在此断开连接。当前未选择任何连线。
-            </Typography>
-          </AccordionDetails>
-        </Accordion>
-      )}
-    </PageCard>
+      ) : null}
+    </WorkflowInspectorPanel>
   );
 }

@@ -1,14 +1,13 @@
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
-import Divider from '@mui/material/Divider';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useEffect, useId, useState } from 'react';
-import PageCard from '../../../components/PageCard';
 import PageState from '../../../components/PageState';
+import WorkflowInspectorPanel from './WorkflowInspectorPanel';
 
 export const commonWorkflowNodeTypes = ['input', 'rewrite', 'review', 'render'] as const;
 
@@ -54,14 +53,16 @@ export default function WorkflowNodeDrawer({
 
   const tabPanelId = (tab: string) => `${tabsId}-${tab}-panel`;
   const tabId = (tab: string) => `${tabsId}-${tab}-tab`;
+  const inspectorMode = loading ? 'node' : value ? 'node' : 'idle';
 
   return (
-    <PageCard
-      title="节点配置"
-      description="右侧面板用于编辑节点配置，保存时会写入工作流定义中的节点配置 JSON。"
+    <WorkflowInspectorPanel
+      mode={inspectorMode}
+      title={loading || value ? '节点检查器' : '工作流检查器'}
+      description={loading || value ? '右侧面板用于编辑节点配置，保存时会写入工作流定义中的节点配置 JSON。' : '右侧检查器会跟随当前画布选择切换节点或连线配置。'}
       action={
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Chip size="small" color="primary" variant="filled" label="正在编辑节点" />
+          <Chip size="small" color="primary" variant="filled" label={loading || value ? '正在编辑节点' : '等待选择'} />
           <Typography variant="caption" color="text.secondary">
             {entryNodeLabel ? `入口节点：${entryNodeLabel}` : '尚未设置入口节点'}
           </Typography>
@@ -84,8 +85,6 @@ export default function WorkflowNodeDrawer({
             <Tab label="模型参数" value="model" id={tabId('model')} aria-controls={tabPanelId('model')} />
             <Tab label="上下文" value="context" id={tabId('context')} aria-controls={tabPanelId('context')} />
           </Tabs>
-
-          <Divider />
 
           <Box role="tabpanel" hidden={activeTab !== 'basic'} id={tabPanelId('basic')} aria-labelledby={tabId('basic')}>
             {activeTab === 'basic' ? (
@@ -178,9 +177,7 @@ export default function WorkflowNodeDrawer({
             ) : null}
           </Box>
         </Stack>
-      ) : (
-        <PageState title="未选择节点" description="请在画布中选择一个节点后再编辑节点配置。" tone="empty" />
-      )}
-    </PageCard>
+      ) : null}
+    </WorkflowInspectorPanel>
   );
 }

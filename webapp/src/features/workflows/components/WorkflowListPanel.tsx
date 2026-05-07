@@ -17,6 +17,7 @@ export type WorkflowTemplateSummary = {
   id: string;
   name: string;
   description: string;
+  isDirty: boolean;
   nodeCount: number;
   updatedAt: string;
 };
@@ -94,7 +95,10 @@ export default function WorkflowListPanel({
                   primary={
                     <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
                       <Typography variant="subtitle2">{item.name}</Typography>
-                      <Chip size="small" label={`${item.nodeCount} 节点`} />
+                      <Stack direction="row" spacing={0.75} alignItems="center">
+                        {item.isDirty ? <Chip size="small" color="warning" variant="filled" label="未保存" /> : null}
+                        <Chip size="small" label={`${item.nodeCount} 节点`} />
+                      </Stack>
                     </Stack>
                   }
                   secondary={

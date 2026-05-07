@@ -2,12 +2,15 @@ import { useEffect } from 'react';
 import type { Connection, Edge, EdgeChange, Node, NodeChange } from 'reactflow';
 import { Background, Controls, MiniMap, Panel, ReactFlow, useReactFlow } from 'reactflow';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Divider from '@mui/material/Divider';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
+import WorkflowCanvasQuickActions from './WorkflowCanvasQuickActions';
 import type { WorkflowNodeFormValue } from './WorkflowNodeDrawer';
+import WorkflowNodeCreateMenu from './WorkflowNodeCreateMenu';
 
 export type WorkflowCanvasNodeData = WorkflowNodeFormValue & {
   isEntry?: boolean;
@@ -17,9 +20,17 @@ export type WorkflowCanvasNodeData = WorkflowNodeFormValue & {
 type WorkflowGraphPanelProps = {
   edges: Edge[];
   fitViewRequest: number;
+  isDirty: boolean;
   nodes: Array<Node<WorkflowCanvasNodeData>>;
   onConnect: (params: Connection) => void;
+  onOpenAppendMenu: () => void;
+  onOpenCreateMenu: () => void;
+  onCloseCreateMenu: () => void;
+  onCreateNode: (type: WorkflowCanvasNodeData['type']) => void;
   onClearSelection: () => void;
+  onDeleteSelection: () => void;
+  onDuplicateNode: () => void;
+  onSetEntryNode: () => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onEdgeClick: (edge: Edge) => void;
   onNodeClick: (node: Node<WorkflowCanvasNodeData> | null) => void;
@@ -30,6 +41,7 @@ type WorkflowGraphPanelProps = {
   selectedNodeLabel: string | null;
   selectedTemplateName: string;
   isPanelCollapsed: boolean;
+  createMenuMode: 'create' | 'append' | null;
 };
 
 function FitViewOnRequest({ request }: { request: number }) {
@@ -49,9 +61,17 @@ function FitViewOnRequest({ request }: { request: number }) {
 export default function WorkflowGraphPanel({
   edges,
   fitViewRequest,
+  isDirty,
   nodes,
   onConnect,
+  onOpenAppendMenu,
+  onOpenCreateMenu,
+  onCloseCreateMenu,
+  onCreateNode,
   onClearSelection,
+  onDeleteSelection,
+  onDuplicateNode,
+  onSetEntryNode,
   onEdgeClick,
   onEdgesChange,
   onNodeClick,
@@ -62,6 +82,7 @@ export default function WorkflowGraphPanel({
   selectedNodeLabel,
   selectedTemplateName,
   isPanelCollapsed,
+  createMenuMode,
 }: WorkflowGraphPanelProps) {
   const selectionKind = selectedEdgeId ? 'edge' : selectedNodeId ? 'node' : 'idle';
 
@@ -71,6 +92,7 @@ export default function WorkflowGraphPanel({
       role="region"
       aria-label="工作流画布"
       data-testid="workflow-graph-panel"
+      data-dirty-state={isDirty ? 'dirty' : 'clean'}
       data-emphasis="primary"
       data-selection-kind={selectionKind}
       data-panel-state={isPanelCollapsed ? 'collapsed' : 'expanded'}
@@ -131,6 +153,16 @@ export default function WorkflowGraphPanel({
           useFlexGap
           sx={{ pointerEvents: 'auto' }}
         >
+          {selectionKind === 'idle' ? (
+            <Button variant="contained" color="primary" onClick={onOpenCreateMenu}>
+              在空白画布创建节点
+            </Button>
+          ) : null}
+          {selectionKind === 'node' ? (
+            <Button variant="contained" color="primary" onClick={onOpenAppendMenu}>
+              为当前节点追加下游节点
+            </Button>
+          ) : null}
           <Chip
             size="small"
             color={selectedNodeId ? 'primary' : 'default'}
@@ -196,6 +228,31 @@ export default function WorkflowGraphPanel({
             <Chip size="small" label="拖拽节点可调整布局，拖出连线即可建立连接" />
           </Stack>
         </Panel>
+
+        {selectionKind !== 'idle' ? (
+          <Panel position="top-center">
+            <Box sx={{ mt: 11 }}>
+              <WorkflowCanvasQuickActions
+                selectionKind={selectionKind}
+                focusLabel={selectedNodeLabel ?? selectedEdgeLabel ?? '当前选择'}
+                canDelete
+                canDuplicate={selectionKind === 'node'}
+                canSetEntryNode={selectionKind === 'node'}
+                onDelete={onDeleteSelection}
+                onDuplicate={onDuplicateNode}
+                onSetEntryNode={onSetEntryNode}
+              />
+            </Box>
+          </Panel>
+        ) : null}
+
+        {createMenuMode ? (
+          <Panel position="top-right">
+            <Box sx={{ mt: 11 }}>
+              <WorkflowNodeCreateMenu mode={createMenuMode} onClose={onCloseCreateMenu} onSelectType={onCreateNode} />
+            </Box>
+          </Panel>
+        ) : null}
       </ReactFlow>
     </Box>
   );
