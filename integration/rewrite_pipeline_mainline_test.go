@@ -94,7 +94,13 @@ func TestRewritePipelineMainlineMaterializesDraft(t *testing.T) {
 	require.Equal(t, domain.RewriteRunSucceeded, run.Status)
 	require.Equal(t, workspace.ID, run.FinalDraftID)
 	require.Equal(t, serviceRewriteMaterializeNodeIDForTest(), run.CurrentStage)
+	require.NotContains(t, run.Metadata, "active_token_set")
 	require.NotContains(t, run.Metadata, "rewrite_workflow_checkpoint")
+	routeSummary, ok := run.Metadata["workflow_route_latest"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, serviceRewriteMaterializeNodeIDForTest(), routeSummary["node_id"])
+	require.Equal(t, "no_match", routeSummary["outcome"])
+	require.Empty(t, routeSummary["evaluation_trace"])
 
 	storedWorkspace, err := repos.WorkspaceRepo.GetByID(t.Context(), workspace.ID)
 	require.NoError(t, err)
@@ -102,7 +108,13 @@ func TestRewritePipelineMainlineMaterializesDraft(t *testing.T) {
 
 	storedRun, err := repos.RewritePipelineRunRepo.GetByID(t.Context(), run.ID)
 	require.NoError(t, err)
+	require.NotContains(t, storedRun.Metadata, "active_token_set")
 	require.NotContains(t, storedRun.Metadata, "rewrite_workflow_checkpoint")
+	storedRouteSummary, ok := storedRun.Metadata["workflow_route_latest"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, serviceRewriteMaterializeNodeIDForTest(), storedRouteSummary["node_id"])
+	require.Equal(t, "no_match", storedRouteSummary["outcome"])
+	require.Empty(t, storedRouteSummary["evaluation_trace"])
 
 	draft, err := repos.DraftRepo.GetByID(t.Context(), workspace.ID)
 	require.NoError(t, err)

@@ -51,34 +51,47 @@ type WorkflowRun struct {
 }
 
 type WorkflowNodeExecution struct {
-	ID           string         `json:"id"`
-	WorkflowRunID string        `json:"workflow_run_id"`
-	NodeID       string         `json:"node_id"`
-	NodeType     string         `json:"node_type"`
-	Status       string         `json:"status"`
-	Attempt      int            `json:"attempt"`
-	InputJSON    string         `json:"input_json"`
-	OutputJSON   string         `json:"output_json"`
-	ErrorSummary string         `json:"error_summary"`
-	FailureClass string         `json:"failure_class"`
-	StartedAt    time.Time      `json:"started_at"`
-	CompletedAt  *time.Time     `json:"completed_at"`
-	Metadata     map[string]any `json:"metadata"`
+	ID            string         `json:"id"`
+	WorkflowRunID string         `json:"workflow_run_id"`
+	NodeID        string         `json:"node_id"`
+	NodeType      string         `json:"node_type"`
+	Status        string         `json:"status"`
+	Attempt       int            `json:"attempt"`
+	InputJSON     string         `json:"input_json"`
+	OutputJSON    string         `json:"output_json"`
+	ErrorSummary  string         `json:"error_summary"`
+	FailureClass  string         `json:"failure_class"`
+	StartedAt     time.Time      `json:"started_at"`
+	CompletedAt   *time.Time     `json:"completed_at"`
+	Metadata      map[string]any `json:"metadata"`
 }
 
 type WorkflowCheckpoint struct {
-	ID                     string         `json:"id"`
-	WorkflowRunID          string         `json:"workflow_run_id"`
-	NodeExecutionID        string         `json:"node_execution_id"`
-	NodeID                 string         `json:"node_id"`
-	State                  string         `json:"state"`
-	Resumable              bool           `json:"resumable"`
-	ResumeToken            string         `json:"resume_token"`
-	PayloadJSON            string         `json:"payload_json"`
-	FailureClass           string         `json:"failure_class"`
-	CreatedAt              time.Time      `json:"created_at"`
-	ConsumedAt             *time.Time     `json:"consumed_at"`
-	Metadata               map[string]any `json:"metadata"`
+	ID              string         `json:"id"`
+	WorkflowRunID   string         `json:"workflow_run_id"`
+	NodeExecutionID string         `json:"node_execution_id"`
+	NodeID          string         `json:"node_id"`
+	State           string         `json:"state"`
+	Resumable       bool           `json:"resumable"`
+	ResumeToken     string         `json:"resume_token"`
+	PayloadJSON     string         `json:"payload_json"`
+	FailureClass    string         `json:"failure_class"`
+	CreatedAt       time.Time      `json:"created_at"`
+	ConsumedAt      *time.Time     `json:"consumed_at"`
+	Metadata        map[string]any `json:"metadata"`
+}
+
+type WorkflowCheckpointActiveToken struct {
+	NodeID                    string         `json:"node_id"`
+	TokenID                   string         `json:"token_id"`
+	ParentTokenID             string         `json:"token_parent_id,omitempty"`
+	OriginTokenID             string         `json:"token_origin_id,omitempty"`
+	OriginRouteNodeID         string         `json:"token_origin_route_node_id,omitempty"`
+	OriginRouteEdgeID         string         `json:"token_origin_route_edge_id,omitempty"`
+	OriginRouteSelectedNodeID string         `json:"token_origin_route_selected_node_id,omitempty"`
+	BranchVariables           map[string]any `json:"token_branch_vars,omitempty"`
+	BranchResult              map[string]any `json:"token_branch_result,omitempty"`
+	BranchArtifacts           map[string]any `json:"token_branch_artifacts,omitempty"`
 }
 
 var workflowRunStatuses = map[string]struct{}{

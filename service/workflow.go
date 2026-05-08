@@ -4,7 +4,6 @@ import (
 	"content-hub/domain"
 	"context"
 	"fmt"
-	"strings"
 )
 
 type WorkflowNode interface {
@@ -50,25 +49,13 @@ func linearExecutionPath(wf *domain.WorkflowDefinition) ([]string, error) {
 			break
 		}
 		if len(edges) == 1 {
+			if !isWorkflowFallbackRoute(edges[0]) {
+				return nil, fmt.Errorf("context-dependent route selection at node %s", current)
+			}
 			current = edges[0].ToNodeID
 			continue
 		}
-		fallbackCount := 0
-		var fallback *domain.WorkflowEdge
-		for i := range edges {
-			condition := strings.TrimSpace(edges[i].Condition)
-			if condition != "" && condition != "always" {
-				return nil, fmt.Errorf("context-dependent route selection at node %s", current)
-			}
-			fallbackCount++
-			if fallback == nil || edges[i].Priority < fallback.Priority {
-				fallback = &edges[i]
-			}
-		}
-		if fallbackCount != 1 || fallback == nil {
-			return nil, fmt.Errorf("unsupported branching in workflow graph at node %s", current)
-		}
-		current = fallback.ToNodeID
+		return nil, fmt.Errorf("context-dependent route selection at node %s", current)
 	}
 	return path, nil
 }
