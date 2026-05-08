@@ -81,7 +81,7 @@ func TestRewritePipelineMainlineMaterializesDraft(t *testing.T) {
 	runtime, err := service.BuildRewriteRuntime(repos)
 	require.NoError(t, err)
 
-	run, err := runtime.Orchestrator.Run(t.Context(), service.RewriteRunRequest{
+	run, err := runtime.Orchestrator().Run(t.Context(), service.RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
 		CollectorArticleID: "collector-1",
 		Title:              workspace.Title,
@@ -93,10 +93,16 @@ func TestRewritePipelineMainlineMaterializesDraft(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domain.RewriteRunSucceeded, run.Status)
 	require.Equal(t, workspace.ID, run.FinalDraftID)
+	require.Equal(t, serviceRewriteMaterializeNodeIDForTest(), run.CurrentStage)
+	require.NotContains(t, run.Metadata, "rewrite_workflow_checkpoint")
 
 	storedWorkspace, err := repos.WorkspaceRepo.GetByID(t.Context(), workspace.ID)
 	require.NoError(t, err)
 	require.Equal(t, domain.ArticleWorkspaceStatusDraft, storedWorkspace.Status)
+
+	storedRun, err := repos.RewritePipelineRunRepo.GetByID(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.NotContains(t, storedRun.Metadata, "rewrite_workflow_checkpoint")
 
 	draft, err := repos.DraftRepo.GetByID(t.Context(), workspace.ID)
 	require.NoError(t, err)
@@ -109,4 +115,8 @@ func TestRewritePipelineMainlineMaterializesDraft(t *testing.T) {
 	require.Len(t, stageRuns, 1)
 	require.Equal(t, domain.RewriteStageSucceeded, stageRuns[0].Status)
 	require.Equal(t, "rewrite-default", stageRuns[0].LLMProfileRef)
+}
+
+func serviceRewriteMaterializeNodeIDForTest() string {
+	return "materialize_draft"
 }

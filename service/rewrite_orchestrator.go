@@ -6,6 +6,7 @@ import (
 	"content-hub/pkg/repo"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -18,12 +19,12 @@ const (
 )
 
 type RewriteRunRequest struct {
-	WorkspaceArticleID string `json:"workspace_article_id" binding:"required"`
-	CollectorArticleID string `json:"collector_article_id" binding:"required"`
-	Title              string `json:"title" binding:"required"`
-	TargetType         string `json:"target_type" binding:"required"`
-	SourceProfile      string `json:"source_profile" binding:"required"`
-	Version            string `json:"version" binding:"required"`
+	WorkspaceArticleID string         `json:"workspace_article_id" binding:"required"`
+	CollectorArticleID string         `json:"collector_article_id" binding:"required"`
+	Title              string         `json:"title" binding:"required"`
+	TargetType         string         `json:"target_type" binding:"required"`
+	SourceProfile      string         `json:"source_profile" binding:"required"`
+	Version            string         `json:"version" binding:"required"`
 	Metadata           map[string]any `json:"metadata"`
 }
 
@@ -34,6 +35,7 @@ type RewriteOrchestrator struct {
 	workspaces  repo.WorkspaceRepo
 	executor    *RewriteStageExecutor
 	materialize *DraftMaterializer
+	kernel      *RewriteKernelRunner
 }
 
 func NewRewriteOrchestrator(profiles *RewriteProfileRegistry, runs repo.RewritePipelineRunRepo, stageRuns repo.RewriteStageRunRepo, workspaces repo.WorkspaceRepo, executor *RewriteStageExecutor, materializer *DraftMaterializer) *RewriteOrchestrator {
@@ -44,6 +46,7 @@ func NewRewriteOrchestrator(profiles *RewriteProfileRegistry, runs repo.RewriteP
 		workspaces:  workspaces,
 		executor:    executor,
 		materialize: materializer,
+		kernel:      NewRewriteKernelRunner(runs, stageRuns, executor, materializer),
 	}
 }
 
@@ -62,6 +65,11 @@ func (o *RewriteOrchestrator) Run(ctx context.Context, req RewriteRunRequest) (*
 	if !profile.Enabled {
 		return nil, domain.NewValidationErr(fmt.Sprintf("rewrite profile %s/%s@%s is disabled", req.TargetType, req.SourceProfile, req.Version), nil)
 	}
+	workspaceSnapshot, err := o.workspaces.GetByID(ctx, strings.TrimSpace(req.WorkspaceArticleID))
+	if err != nil {
+		return nil, err
+	}
+	workspaceSnapshot = cloneArticleWorkspaceRecord(workspaceSnapshot)
 
 	run := domain.NewRewritePipelineRun(profile.ID, profile.Version, strings.TrimSpace(req.WorkspaceArticleID), strings.TrimSpace(req.CollectorArticleID), strings.TrimSpace(req.TargetType), strings.TrimSpace(req.SourceProfile))
 	run.Status = domain.RewriteRunRunning
@@ -76,13 +84,14 @@ func (o *RewriteOrchestrator) Run(ctx context.Context, req RewriteRunRequest) (*
 	}
 
 	if err := o.workspaces.TransitionStatus(ctx, req.WorkspaceArticleID, domain.ArticleWorkspaceStatusRewritePending, rewritePendingNote); err != nil {
-		return nil, err
+		return nil, o.rollbackCreatedRun(ctx, run, err)
 	}
 	if err := o.workspaces.TransitionStatus(ctx, req.WorkspaceArticleID, domain.ArticleWorkspaceStatusRewriting, rewritingNote); err != nil {
-		return nil, err
+		workspaceErr := o.restoreWorkspaceSnapshot(ctx, workspaceSnapshot)
+		return nil, o.rollbackCreatedRun(ctx, run, combineRewriteRollbackError(err, workspaceErr))
 	}
 
-	return o.executeRun(ctx, run, profile, strings.TrimSpace(req.WorkspaceArticleID), req.Title, nil)
+	return o.executeRun(ctx, run, profile, strings.TrimSpace(req.WorkspaceArticleID), req.Title, false)
 }
 
 func (o *RewriteOrchestrator) Resume(ctx context.Context, rewriteRunID string, title string) (*domain.RewritePipelineRun, error) {
@@ -123,138 +132,85 @@ func (o *RewriteOrchestrator) Resume(ctx context.Context, rewriteRunID string, t
 		}
 	}
 	if err := o.workspaces.TransitionStatus(ctx, run.WorkspaceArticleID, domain.ArticleWorkspaceStatusRewriting, rewritingNote); err != nil {
-		return nil, err
+		appErr, ok := err.(*domain.AppError)
+		if !ok || appErr.Code != domain.ErrConflict {
+			return nil, err
+		}
 	}
 	if err := o.runs.Update(ctx, run); err != nil {
 		return nil, err
 	}
-	stageRuns, err := o.stageRuns.ListByPipelineRunID(ctx, run.ID)
-	if err != nil {
-		return nil, err
-	}
-	return o.executeRun(ctx, run, profile, run.WorkspaceArticleID, title, stageRuns)
+	return o.executeRun(ctx, run, profile, run.WorkspaceArticleID, title, true)
 }
 
-func (o *RewriteOrchestrator) executeRun(ctx context.Context, run *domain.RewritePipelineRun, profile *domain.RewritePipelineProfile, workspaceArticleID string, title string, existingStageRuns []domain.RewriteStageRun) (*domain.RewritePipelineRun, error) {
-	vars, completedStages, finalOutput, err := buildRewriteResumeState(existingStageRuns, title)
+func (o *RewriteOrchestrator) rollbackCreatedRun(ctx context.Context, run *domain.RewritePipelineRun, cause error) error {
+	if run == nil {
+		return cause
+	}
+	if err := o.runs.Delete(ctx, run.ID); err != nil {
+		return fmt.Errorf("%w: rollback rewrite run create: %v", cause, err)
+	}
+	return cause
+}
+
+func combineRewriteRollbackError(cause error, rollbackErr error) error {
+	if rollbackErr == nil {
+		return cause
+	}
+	if cause == nil {
+		return rollbackErr
+	}
+	return fmt.Errorf("%w: rollback workspace transition: %v", cause, rollbackErr)
+}
+
+func (o *RewriteOrchestrator) restoreWorkspaceSnapshot(ctx context.Context, workspace *domain.ArticleWorkspaceRecord) error {
+	if workspace == nil {
+		return nil
+	}
+	if err := o.workspaces.Delete(ctx, workspace.ID); err != nil {
+		return err
+	}
+	restored := cloneArticleWorkspaceRecord(workspace)
+	if restored == nil {
+		return nil
+	}
+	return o.workspaces.Create(ctx, restored)
+}
+
+func cloneArticleWorkspaceRecord(workspace *domain.ArticleWorkspaceRecord) *domain.ArticleWorkspaceRecord {
+	if workspace == nil {
+		return nil
+	}
+	cloned := *workspace
+	cloned.StatusHistory = append([]string(nil), workspace.StatusHistory...)
+	cloned.LifecycleHistory = append([]domain.ArticleWorkspaceLifecycleEntry(nil), workspace.LifecycleHistory...)
+	if workspace.Metadata != nil {
+		cloned.Metadata = make(map[string]any, len(workspace.Metadata))
+		for key, value := range workspace.Metadata {
+			cloned.Metadata[key] = value
+		}
+	}
+	return &cloned
+}
+
+func (o *RewriteOrchestrator) executeRun(ctx context.Context, run *domain.RewritePipelineRun, profile *domain.RewritePipelineProfile, workspaceArticleID string, title string, resume bool) (*domain.RewritePipelineRun, error) {
+	var (
+		draftID string
+		err     error
+	)
+	if resume {
+		draftID, err = o.kernel.Resume(ctx, run, profile, workspaceArticleID, title)
+	} else {
+		draftID, err = o.kernel.Run(ctx, run, profile, workspaceArticleID, title)
+	}
 	if err != nil {
-		return o.failRun(ctx, run, domain.RewriteStageDefinition{Name: run.CurrentStage}, nil, err)
+		stage, inputVars, cause := rewriteKernelFailureContext(err, run.CurrentStage)
+		return o.failRun(ctx, run, stage, inputVars, cause)
 	}
-
-	stagesByName := indexRewriteStages(profile.Stages)
-	skippedStages := map[string]bool{}
-	executedAny := false
-	for _, stage := range profile.Stages {
-		if skippedStages[stage.Name] {
-			continue
-		}
-		if completedStages[stage.Name] {
-			continue
-		}
-		if !stage.Enabled {
-			continue
-		}
-		stage = applyProfileDefaultsToStage(profile, stage)
-		executedAny = true
-
-		run.CurrentStage = stage.Name
-		if err := o.runs.Update(ctx, run); err != nil {
-			return nil, err
-		}
-
-		inputVars := mergeStageVars(vars, stage.InputBindings)
-		for key, value := range run.Metadata {
-			inputVars[key] = value
-		}
-		stage = applyWorkflowOverride(stage, run.Metadata, inputVars)
-		result, err := o.executor.Execute(ctx, stage, StageExecutionInput{Vars: inputVars})
-		if err != nil {
-			return o.failRun(ctx, run, stage, inputVars, err)
-		}
-
-		stageRun, err := buildRewriteStageRun(run.ID, stage, inputVars, result)
-		if err != nil {
-			return o.failRun(ctx, run, stage, inputVars, err)
-		}
-		if err := o.stageRuns.Create(ctx, stageRun); err != nil {
-			return o.failRun(ctx, run, stage, inputVars, err)
-		}
-
-		if shouldRouteStageToRepair(stage, result.Quality) {
-			repairName := strings.TrimSpace(stage.OnFailure.RepairStage)
-			repairStage, ok := stagesByName[repairName]
-			if !ok {
-				return o.failRun(ctx, run, stage, inputVars, domain.NewNotFoundErr("repair stage", repairName))
-			}
-			if !repairStage.Enabled {
-				return o.failRun(ctx, run, stage, inputVars, domain.NewValidationErr(fmt.Sprintf("repair stage %s is disabled", repairName), nil))
-			}
-
-			repairStage = applyProfileDefaultsToStage(profile, repairStage)
-			repairInputVars := mergeStageVars(vars, repairStage.InputBindings)
-			for key, value := range run.Metadata {
-				repairInputVars[key] = value
-			}
-			for key, value := range result.StructuredOutput {
-				repairInputVars[key] = value
-			}
-			repairStage = applyWorkflowOverride(repairStage, run.Metadata, repairInputVars)
-
-			run.CurrentStage = repairStage.Name
-			if err := o.runs.Update(ctx, run); err != nil {
-				return nil, err
-			}
-
-			repairResult, err := o.executor.Execute(ctx, repairStage, StageExecutionInput{Vars: repairInputVars})
-			if err != nil {
-				return o.failRun(ctx, run, repairStage, repairInputVars, err)
-			}
-
-			repairStageRun, err := buildRewriteStageRun(run.ID, repairStage, repairInputVars, repairResult)
-			if err != nil {
-				return o.failRun(ctx, run, repairStage, repairInputVars, err)
-			}
-			if err := o.stageRuns.Create(ctx, repairStageRun); err != nil {
-				return o.failRun(ctx, run, repairStage, repairInputVars, err)
-			}
-			if repairResult.Quality.Action != QualityDecisionPass {
-				return o.failRun(ctx, run, repairStage, repairInputVars, domain.NewValidationErr(repairResult.Quality.Message, nil))
-			}
-
-			result = repairResult
-			completedStages[repairStage.Name] = true
-			skippedStages[repairStage.Name] = true
-		} else if result.Quality.Action == QualityDecisionRepair {
-			return o.failRun(ctx, run, stage, inputVars, domain.NewValidationErr(result.Quality.Message, nil))
-		}
-
-		completedStages[stage.Name] = true
-		for key, value := range result.StructuredOutput {
-			vars[key] = value
-		}
-		finalOutput = result.StructuredOutput
-	}
-	if !executedAny && strings.TrimSpace(run.FinalDraftID) != "" {
-		completedAt := time.Now().UTC()
-		run.Status = domain.RewriteRunSucceeded
-		run.CompletedAt = &completedAt
-		if err := o.runs.Update(ctx, run); err != nil {
-			return nil, err
-		}
-		return run, nil
-	}
-	if finalOutput == nil {
-		return o.failRun(ctx, run, domain.RewriteStageDefinition{Name: run.CurrentStage}, nil, domain.NewInternalErr("rewrite run has no output to materialize", nil))
-	}
-
-	draft, err := o.materialize.Materialize(ctx, workspaceArticleID, finalOutput)
-	if err != nil {
-		return o.failRun(ctx, run, domain.RewriteStageDefinition{Name: run.CurrentStage}, nil, err)
-	}
-
 	completedAt := time.Now().UTC()
 	run.Status = domain.RewriteRunSucceeded
-	run.FinalDraftID = draft.ID
+	run.FinalDraftID = draftID
+	run.CurrentStage = rewriteWorkflowMaterializeNodeID
 	run.CompletedAt = &completedAt
 	if err := o.runs.Update(ctx, run); err != nil {
 		return nil, err
@@ -263,31 +219,12 @@ func (o *RewriteOrchestrator) executeRun(ctx context.Context, run *domain.Rewrit
 	return run, nil
 }
 
-func buildRewriteResumeState(stageRuns []domain.RewriteStageRun, title string) (map[string]any, map[string]bool, map[string]any, error) {
-	vars := map[string]any{}
-	if strings.TrimSpace(title) != "" {
-		vars["title"] = strings.TrimSpace(title)
+func rewriteKernelFailureContext(err error, fallbackStageName string) (domain.RewriteStageDefinition, map[string]any, error) {
+	var stageErr *rewriteKernelStageFailure
+	if errors.As(err, &stageErr) && stageErr != nil {
+		return stageErr.Stage, cloneWorkflowPayload(stageErr.InputVars), stageErr.Cause
 	}
-	completedStages := map[string]bool{}
-	var finalOutput map[string]any
-	for _, stageRun := range stageRuns {
-		if stageRun.Status != domain.RewriteStageSucceeded {
-			continue
-		}
-		completedStages[stageRun.StageName] = true
-		if strings.TrimSpace(stageRun.OutputJSON) == "" {
-			continue
-		}
-		output := map[string]any{}
-		if err := json.Unmarshal([]byte(stageRun.OutputJSON), &output); err != nil {
-			return nil, nil, nil, fmt.Errorf("decode existing rewrite stage output: %w", err)
-		}
-		for key, value := range output {
-			vars[key] = value
-		}
-		finalOutput = output
-	}
-	return vars, completedStages, finalOutput, nil
+	return domain.RewriteStageDefinition{Name: fallbackStageName}, nil, err
 }
 
 func (o *RewriteOrchestrator) failRun(ctx context.Context, run *domain.RewritePipelineRun, stage domain.RewriteStageDefinition, inputVars map[string]any, runErr error) (*domain.RewritePipelineRun, error) {
@@ -320,7 +257,7 @@ func (o *RewriteOrchestrator) failRun(ctx context.Context, run *domain.RewritePi
 }
 
 func (o *RewriteOrchestrator) validate() error {
-	if o.profiles == nil || o.runs == nil || o.stageRuns == nil || o.workspaces == nil || o.executor == nil || o.materialize == nil {
+	if o.profiles == nil || o.runs == nil || o.stageRuns == nil || o.workspaces == nil || o.executor == nil || o.materialize == nil || o.kernel == nil {
 		return domain.NewInternalErr("rewrite orchestrator is not configured", nil)
 	}
 	return nil

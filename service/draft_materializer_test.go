@@ -141,6 +141,77 @@ func TestDraftMaterializerReturnsWorkspaceTransitionFailureAfterDraftPersist(t *
 	assert.Equal(t, domain.ArticleWorkspaceStatusImported, storedWorkspace.Status)
 }
 
+func TestDraftMaterializerReusesExistingDraftWhenWorkspaceAlreadyDraft(t *testing.T) {
+	provider := memory.NewProvider()
+	workspace := domain.NewArticleWorkspaceRecord("article-existing-draft", "Original Title", "Summary", domain.ArticleWorkspaceSource{SourceType: "collector"}, nil)
+	require.NoError(t, provider.WorkspaceRepo().Create(t.Context(), workspace))
+	require.NoError(t, provider.WorkspaceRepo().TransitionStatus(t.Context(), workspace.ID, domain.ArticleWorkspaceStatusDraft, draftMaterializedNote))
+	existing := &domain.ArticleDraft{
+		ID:         workspace.ID,
+		Template:   "daily-intelligence",
+		Headline:   map[string]any{"title": "Existing Title", "body": []string{"Existing body"}},
+		Meta:       map[string]any{"title": "Existing Title"},
+		Sections:   []any{},
+		SourceRefs: []any{},
+	}
+	require.NoError(t, provider.DraftRepo().Create(t.Context(), existing))
+
+	materializer := NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo())
+
+	draft, err := materializer.Materialize(t.Context(), workspace.ID, map[string]any{
+		"title":    "New Title",
+		"body":     "New body",
+		"template": "daily-intelligence",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, draft)
+	assert.Equal(t, workspace.ID, draft.ID)
+	assert.Equal(t, "Existing Title", draft.Headline["title"])
+	assert.Equal(t, []string{"Existing body"}, draft.Headline["body"])
+
+	storedDraft, getErr := provider.DraftRepo().GetByID(t.Context(), workspace.ID)
+	require.NoError(t, getErr)
+	assert.Equal(t, "Existing Title", storedDraft.Headline["title"])
+	assert.Equal(t, []string{"Existing body"}, storedDraft.Headline["body"])
+
+	storedWorkspace, workspaceErr := provider.WorkspaceRepo().GetByID(t.Context(), workspace.ID)
+	require.NoError(t, workspaceErr)
+	assert.Equal(t, domain.ArticleWorkspaceStatusDraft, storedWorkspace.Status)
+	assert.Equal(t, draftMaterializedNote, storedWorkspace.Notes)
+	assert.Equal(t, []string{domain.ArticleWorkspaceStatusImported, domain.ArticleWorkspaceStatusDraft}, storedWorkspace.StatusHistory)
+}
+
+func TestDraftMaterializerExistingDraftStillFailsForNonDraftWorkspaceLifecycleConflict(t *testing.T) {
+	provider := memory.NewProvider()
+	workspace := domain.NewArticleWorkspaceRecord("article-existing-rendered", "Original Title", "Summary", domain.ArticleWorkspaceSource{SourceType: "collector"}, nil)
+	require.NoError(t, provider.WorkspaceRepo().Create(t.Context(), workspace))
+	require.NoError(t, provider.WorkspaceRepo().TransitionStatus(t.Context(), workspace.ID, domain.ArticleWorkspaceStatusDraft, draftMaterializedNote))
+	require.NoError(t, provider.WorkspaceRepo().TransitionStatus(t.Context(), workspace.ID, domain.ArticleWorkspaceStatusRendered, "rendered"))
+	existing := &domain.ArticleDraft{
+		ID:         workspace.ID,
+		Template:   "daily-intelligence",
+		Headline:   map[string]any{"title": "Existing Title", "body": []string{"Existing body"}},
+		Meta:       map[string]any{"title": "Existing Title"},
+		Sections:   []any{},
+		SourceRefs: []any{},
+	}
+	require.NoError(t, provider.DraftRepo().Create(t.Context(), existing))
+
+	materializer := NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo())
+
+	draft, err := materializer.Materialize(t.Context(), workspace.ID, map[string]any{
+		"title":    "New Title",
+		"body":     "New body",
+		"template": "daily-intelligence",
+	})
+
+	require.Error(t, err)
+	require.Nil(t, draft)
+	assert.Contains(t, err.Error(), "draft already persisted but workspace transition failed")
+	assert.Contains(t, err.Error(), "cannot transition from rendered to draft")
+}
+
 func TestDraftMaterializerRejectsInvalidFinalOutput(t *testing.T) {
 	provider := memory.NewProvider()
 	workspace := domain.NewArticleWorkspaceRecord("article-4", "Original Title", "Summary", domain.ArticleWorkspaceSource{SourceType: "collector"}, nil)

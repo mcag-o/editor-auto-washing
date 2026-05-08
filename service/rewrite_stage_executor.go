@@ -65,6 +65,10 @@ func NewRewriteStageExecutorWithProfileResolver(prompts rewriteStagePromptRegist
 }
 
 func (e *RewriteStageExecutor) Execute(ctx context.Context, stage domain.RewriteStageDefinition, input StageExecutionInput) (*StageExecutionResult, error) {
+	return e.ExecuteStage(ctx, stage, input)
+}
+
+func (e *RewriteStageExecutor) ExecuteStage(ctx context.Context, stage domain.RewriteStageDefinition, input StageExecutionInput) (*StageExecutionResult, error) {
 	promptKey, promptVersion, err := parsePromptRef(stage.PromptRef)
 	if err != nil {
 		return nil, err

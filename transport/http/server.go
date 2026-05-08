@@ -240,7 +240,7 @@ func (s *Server) registerRoutes() {
 		Run(context.Context, service.RewriteRunRequest) (*domain.RewritePipelineRun, error)
 	}
 	if s.provider != nil && s.provider.RewriteRuntime != nil {
-		rewriteRunner = s.provider.RewriteRuntime.Orchestrator
+		rewriteRunner = s.provider.RewriteRuntime.Orchestrator()
 	}
 	rewriteHandler := handlers.NewRewriteHandler(rewriteRunner)
 	serveAdminAsset := func(contentType string, body []byte) gin.HandlerFunc {

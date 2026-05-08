@@ -128,6 +128,9 @@ func runWithConfig(cfg config.Config, workspaceRoot string, selectedStandaloneFa
 	if err != nil {
 		return err
 	}
+	if rewriteRuntime == nil || rewriteRuntime.Orchestrator() == nil {
+		return fmt.Errorf("build rewrite runtime: rewrite orchestrator is not configured")
+	}
 	webControlRuntime, err := service.BuildWebControlRuntime(runtimeRepos)
 	if err != nil {
 		return err

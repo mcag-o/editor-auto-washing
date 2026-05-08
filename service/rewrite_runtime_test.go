@@ -22,13 +22,7 @@ func TestBuildRewriteRuntimeReturnsReadyServices(t *testing.T) {
 	if runtime == nil {
 		t.Fatal("expected rewrite runtime to be configured")
 	}
-	if runtime.Orchestrator == nil {
-		t.Fatal("expected orchestrator to be configured")
-	}
-	if runtime.PromptRegistry == nil || runtime.ProfileRegistry == nil {
-		t.Fatal("expected rewrite runtime dependencies to be configured")
-	}
-	if runtime.QualityGate == nil || runtime.StageExecutor == nil || runtime.DraftMaterializer == nil {
-		t.Fatal("expected rewrite runtime services to be configured")
+	if runtime.Orchestrator() == nil {
+		t.Fatal("expected rewrite runtime orchestrator to be configured")
 	}
 }

@@ -141,6 +141,7 @@ func TestReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t *testing.T
 	require.Equal(t, domain.RewriteRunSucceeded, stagesPayload.Run.Status)
 	require.Equal(t, "react-mainline-workflow-template", stagesPayload.Run.Metadata["workflow_template_id"])
 	require.Equal(t, "generate_draft_alt@v2", stagesPayload.Run.Metadata["workflow_prompt_ref"])
+	require.NotContains(t, stagesPayload.Run.Metadata, "rewrite_workflow_checkpoint")
 	require.Len(t, stagesPayload.Stages, 1)
 	require.Equal(t, domain.RewriteStageSucceeded, stagesPayload.Stages[0].Status)
 

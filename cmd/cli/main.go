@@ -119,7 +119,7 @@ var runtimeRewriteServiceFactory = func(root string) (rewriteCLIService, func() 
 		_ = cleanup()
 		return nil, nil, err
 	}
-	return &runtimeRewriteCLIService{workspaceRepo: repos.WorkspaceRepo, runner: rewriteRuntime.Orchestrator}, cleanup, nil
+	return &runtimeRewriteCLIService{workspaceRepo: repos.WorkspaceRepo, runner: rewriteRuntime.Orchestrator()}, cleanup, nil
 }
 
 type runtimeAutomationCLIService struct {
