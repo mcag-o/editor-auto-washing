@@ -2,7 +2,9 @@ package service
 
 import (
 	"content-hub/domain"
+	"content-hub/pkg/repo"
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -38,6 +40,29 @@ func (r *stubAuditLogRepo) List(_ context.Context, limit int) ([]domain.AuditLog
 	out := make([]domain.AuditLog, 0, limit)
 	for i := 0; i < limit; i++ {
 		out = append(out, *r.logs[i])
+	}
+	return out, nil
+}
+
+func (r *stubAuditLogRepo) ListByQuery(_ context.Context, query repo.AuditLogQuery) ([]domain.AuditLog, error) {
+	out := make([]domain.AuditLog, 0, len(r.logs))
+	for _, log := range r.logs {
+		if query.Resource != "" && log.Resource != query.Resource {
+			continue
+		}
+		if query.WorkflowRunID != "" {
+			workflowRunID, _ := log.Metadata["workflow_run_id"].(string)
+			if workflowRunID != query.WorkflowRunID {
+				continue
+			}
+		}
+		if query.ActionPrefix != "" && !strings.HasPrefix(log.Action, query.ActionPrefix) {
+			continue
+		}
+		if query.ResourceID != "" && log.ResourceID != query.ResourceID {
+			continue
+		}
+		out = append(out, *log)
 	}
 	return out, nil
 }

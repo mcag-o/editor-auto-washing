@@ -12,7 +12,7 @@ import (
 )
 
 func TestReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t *testing.T) {
-	_, repos, serverURL := newWebControlPlaneIntegrationServer(t)
+	_, repos, _, _, serverURL := newWebControlPlaneIntegrationServer(t)
 
 	rootResp, err := http.Get(serverURL + "/")
 	require.NoError(t, err)

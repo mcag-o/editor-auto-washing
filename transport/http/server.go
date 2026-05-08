@@ -80,6 +80,8 @@ type Provider struct {
 	SourceDocumentRepo  repo.SourceDocumentRepo
 	RewriteRunRepo      repo.RewritePipelineRunRepo
 	RewriteStageRepo    repo.RewriteStageRunRepo
+	WorkflowRunRepo     repo.WorkflowRunRepo
+	WorkflowCheckpointRepo repo.WorkflowCheckpointRepo
 	AuditLogRepo        repo.AuditLogRepo
 	WorkspaceRoot       string
 }
@@ -236,6 +238,7 @@ func (s *Server) registerRoutes() {
 	apiAuditHandler := handlers.NewAPIAuditHandler(s.provider.WebControlRuntime.Audit, s.provider.AuditLogRepo)
 	apiWorkflowsHandler := handlers.NewAPIWorkflowsHandler(s.provider.WebControlRuntime.Workflows)
 	apiTemplatesHandler := handlers.NewAPITemplatesHandler(s.provider.WebControlRuntime.Templates)
+	apiWorkflowRunsHandler := handlers.NewAPIWorkflowRunsHandler(s.provider.WorkflowRunRepo, s.provider.WorkflowCheckpointRepo, s.provider.AuditLogRepo)
 	var rewriteRunner interface {
 		Run(context.Context, service.RewriteRunRequest) (*domain.RewritePipelineRun, error)
 	}
@@ -385,6 +388,12 @@ func (s *Server) registerRoutes() {
 		api.GET("/system/status", apiSystemHandler.Status)
 		api.GET("/audit", apiAuditHandler.List)
 		api.GET("/audit/:id", apiAuditHandler.Get)
+		if s.provider.WorkflowRunRepo != nil && s.provider.WorkflowCheckpointRepo != nil {
+			api.GET("/workflow-runs/:id", apiWorkflowRunsHandler.Get)
+			api.GET("/workflow-runs/:id/audit", apiWorkflowRunsHandler.Audit)
+			api.POST("/workflow-runs/:id/pause", apiWorkflowRunsHandler.Pause)
+			api.POST("/workflow-runs/:id/resume", apiWorkflowRunsHandler.Resume)
+		}
 		api.POST("/workflows", apiWorkflowsHandler.Create)
 		api.GET("/workflows", apiWorkflowsHandler.List)
 		api.GET("/workflows/:id", apiWorkflowsHandler.Get)

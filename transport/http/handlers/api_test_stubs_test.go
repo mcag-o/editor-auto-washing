@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"content-hub/domain"
+	"content-hub/pkg/repo"
 	"context"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -292,6 +294,29 @@ func (r *stubAuditLogRepo) List(_ context.Context, limit int) ([]domain.AuditLog
 	return out, nil
 }
 
+func (r *stubAuditLogRepo) ListByQuery(_ context.Context, query repo.AuditLogQuery) ([]domain.AuditLog, error) {
+	out := make([]domain.AuditLog, 0, len(r.logs))
+	for _, log := range r.logs {
+		if query.Resource != "" && log.Resource != query.Resource {
+			continue
+		}
+		if query.WorkflowRunID != "" {
+			workflowRunID, _ := log.Metadata["workflow_run_id"].(string)
+			if workflowRunID != query.WorkflowRunID {
+				continue
+			}
+		}
+		if query.ActionPrefix != "" && !strings.HasPrefix(log.Action, query.ActionPrefix) {
+			continue
+		}
+		if query.ResourceID != "" && log.ResourceID != query.ResourceID {
+			continue
+		}
+		out = append(out, *log)
+	}
+	return out, nil
+}
+
 type stubSystemControlStateRepo struct {
 	state *domain.SystemControlState
 }
@@ -457,4 +482,121 @@ func (r *stubRewriteStageRunRepo) Update(_ context.Context, run *domain.RewriteS
 		}
 	}
 	return domain.NewNotFoundErr("rewrite_stage_run", run.ID)
+}
+
+type stubWorkflowRunRepo struct {
+	runs map[string]*domain.WorkflowRun
+}
+
+func (r *stubWorkflowRunRepo) Create(_ context.Context, run *domain.WorkflowRun) error {
+	if r.runs == nil {
+		r.runs = map[string]*domain.WorkflowRun{}
+	}
+	copyRun := *run
+	r.runs[run.ID] = &copyRun
+	return nil
+}
+
+func (r *stubWorkflowRunRepo) Update(_ context.Context, run *domain.WorkflowRun) error {
+	if r.runs == nil {
+		r.runs = map[string]*domain.WorkflowRun{}
+	}
+	copyRun := *run
+	r.runs[run.ID] = &copyRun
+	return nil
+}
+
+func (r *stubWorkflowRunRepo) Delete(_ context.Context, id string) error {
+	if _, ok := r.runs[id]; !ok {
+		return domain.NewNotFoundErr("workflow_run", id)
+	}
+	delete(r.runs, id)
+	return nil
+}
+
+func (r *stubWorkflowRunRepo) GetByID(_ context.Context, id string) (*domain.WorkflowRun, error) {
+	run, ok := r.runs[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("workflow_run", id)
+	}
+	copyRun := *run
+	if run.Metadata != nil {
+		copyRun.Metadata = map[string]any{}
+		for k, v := range run.Metadata {
+			copyRun.Metadata[k] = v
+		}
+	}
+	if run.CompletedAt != nil {
+		completedAt := *run.CompletedAt
+		copyRun.CompletedAt = &completedAt
+	}
+	return &copyRun, nil
+}
+
+func (r *stubWorkflowRunRepo) List(_ context.Context, limit int) ([]domain.WorkflowRun, error) {
+	out := []domain.WorkflowRun{}
+	for _, run := range r.runs {
+		out = append(out, *run)
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+type stubWorkflowCheckpointRepo struct {
+	checkpoints map[string][]*domain.WorkflowCheckpoint
+	createErr   error
+	updateErr   error
+	listErr     error
+}
+
+func (r *stubWorkflowCheckpointRepo) Create(_ context.Context, checkpoint *domain.WorkflowCheckpoint) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
+	if r.checkpoints == nil {
+		r.checkpoints = map[string][]*domain.WorkflowCheckpoint{}
+	}
+	copyCheckpoint := *checkpoint
+	r.checkpoints[checkpoint.WorkflowRunID] = append(r.checkpoints[checkpoint.WorkflowRunID], &copyCheckpoint)
+	return nil
+}
+
+func (r *stubWorkflowCheckpointRepo) Update(_ context.Context, checkpoint *domain.WorkflowCheckpoint) error {
+	if r.updateErr != nil {
+		return r.updateErr
+	}
+	if r.checkpoints == nil {
+		r.checkpoints = map[string][]*domain.WorkflowCheckpoint{}
+	}
+	for workflowRunID, checkpoints := range r.checkpoints {
+		for i := range checkpoints {
+			if checkpoints[i].ID == checkpoint.ID {
+				copyCheckpoint := *checkpoint
+				r.checkpoints[workflowRunID][i] = &copyCheckpoint
+				return nil
+			}
+		}
+	}
+	return domain.NewNotFoundErr("workflow_checkpoint", checkpoint.ID)
+}
+
+func (r *stubWorkflowCheckpointRepo) DeleteByWorkflowRunID(_ context.Context, workflowRunID string) error {
+	if r.checkpoints == nil {
+		return nil
+	}
+	delete(r.checkpoints, workflowRunID)
+	return nil
+}
+
+func (r *stubWorkflowCheckpointRepo) ListByWorkflowRunID(_ context.Context, workflowRunID string) ([]domain.WorkflowCheckpoint, error) {
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
+	out := []domain.WorkflowCheckpoint{}
+	for _, checkpoint := range r.checkpoints[workflowRunID] {
+		out = append(out, *checkpoint)
+	}
+	return out, nil
 }

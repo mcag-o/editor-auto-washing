@@ -2,6 +2,7 @@ package main
 
 import (
 	"content-hub/domain"
+	"content-hub/pkg/repo"
 	"context"
 	"sort"
 	"time"
@@ -138,3 +139,6 @@ func (r *stubAuditLogRepo) GetByID(context.Context, string) (*domain.AuditLog, e
 	return nil, domain.NewNotFoundErr("audit_log", "missing")
 }
 func (r *stubAuditLogRepo) List(context.Context, int) ([]domain.AuditLog, error) { return nil, nil }
+func (r *stubAuditLogRepo) ListByQuery(context.Context, repo.AuditLogQuery) ([]domain.AuditLog, error) {
+	return nil, nil
+}

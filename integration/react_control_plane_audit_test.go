@@ -12,7 +12,7 @@ import (
 )
 
 func TestReactAuditPageDataPathRemainsStable(t *testing.T) {
-	_, _, serverURL := newWebControlPlaneIntegrationServer(t)
+	_, _, _, _, serverURL := newWebControlPlaneIntegrationServer(t)
 
 	rootResp, err := http.Get(serverURL + "/audit")
 	require.NoError(t, err)

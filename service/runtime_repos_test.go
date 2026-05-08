@@ -112,4 +112,10 @@ func TestBuildRuntimeReposExposesWorkflowTemplateRepos(t *testing.T) {
 	if repos.TemplateDefinitionRepo == nil {
 		t.Fatal("expected TemplateDefinitionRepo to be wired")
 	}
+	if repos.WorkflowRunRepo == nil {
+		t.Fatal("expected WorkflowRunRepo to be wired")
+	}
+	if repos.WorkflowCheckpointRepo == nil {
+		t.Fatal("expected WorkflowCheckpointRepo to be wired")
+	}
 }

@@ -13,16 +13,34 @@ const workflowActiveTokenSetMetadataKey = "active_token_set"
 type workflowCheckpointSnapshot struct {
 	RouteSummary *WorkflowRouteOutcomeSummary
 	Token        *WorkflowToken
+	PauseState   *WorkflowPauseState
+	Metadata     map[string]any
 }
 
 func latestResumableCheckpoint(checkpoints []domain.WorkflowCheckpoint) (*domain.WorkflowCheckpoint, error) {
 	for i := len(checkpoints) - 1; i >= 0; i-- {
-		checkpoint := checkpoints[i]
-		if checkpoint.Resumable && checkpoint.State == domain.WorkflowCheckpointStateActive {
-			return &checkpoint, nil
+		if checkpoints[i].Resumable && checkpoints[i].State == domain.WorkflowCheckpointStateActive {
+			return &checkpoints[i], nil
 		}
 	}
 	return nil, fmt.Errorf("no resumable checkpoint available")
+}
+
+func resumableCheckpointByID(checkpoints []domain.WorkflowCheckpoint, checkpointID string) (*domain.WorkflowCheckpoint, error) {
+	checkpointID = strings.TrimSpace(checkpointID)
+	if checkpointID == "" {
+		return latestResumableCheckpoint(checkpoints)
+	}
+	for i := range checkpoints {
+		if strings.TrimSpace(checkpoints[i].ID) != checkpointID {
+			continue
+		}
+		if checkpoints[i].State != domain.WorkflowCheckpointStateActive || !checkpoints[i].Resumable {
+			return nil, fmt.Errorf("checkpoint %s is not resumable", checkpointID)
+		}
+		return &checkpoints[i], nil
+	}
+	return nil, fmt.Errorf("checkpoint %s not found", checkpointID)
 }
 
 func appendCheckpoint(ctx *WorkflowExecutionContext, workflowRunID, nodeID string) {
@@ -47,6 +65,14 @@ func appendCheckpointWithSnapshot(ctx *WorkflowExecutionContext, workflowRunID, 
 	}
 	if snapshot.Token != nil {
 		checkpoint.Metadata = mergeCheckpointMetadata(checkpoint.Metadata, workflowTokenMetadata(*snapshot.Token))
+	}
+	if snapshot.PauseState != nil {
+		if pauseMetadata, err := workflowPauseCheckpointMetadata(*snapshot.PauseState); err == nil {
+			checkpoint.Metadata = mergeCheckpointMetadata(checkpoint.Metadata, pauseMetadata)
+		}
+	}
+	if len(snapshot.Metadata) > 0 {
+		checkpoint.Metadata = mergeCheckpointMetadata(checkpoint.Metadata, snapshot.Metadata)
 	}
 	if activeSet := workflowActiveTokenSetMetadata(ctx); activeSet != nil {
 		checkpoint.Metadata = mergeCheckpointMetadata(checkpoint.Metadata, activeSet)

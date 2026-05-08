@@ -209,10 +209,18 @@ type SystemControlStateRepo interface {
 	Upsert(ctx context.Context, state *domain.SystemControlState) error
 }
 
+type AuditLogQuery struct {
+	Resource      string
+	WorkflowRunID string
+	ActionPrefix  string
+	ResourceID    string
+}
+
 type AuditLogRepo interface {
 	Create(ctx context.Context, log *domain.AuditLog) error
 	GetByID(ctx context.Context, id string) (*domain.AuditLog, error)
 	List(ctx context.Context, limit int) ([]domain.AuditLog, error)
+	ListByQuery(ctx context.Context, query AuditLogQuery) ([]domain.AuditLog, error)
 }
 
 type BundleImportTx interface {

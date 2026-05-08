@@ -7,6 +7,37 @@ import (
 
 type WorkflowRouteOutcome string
 
+type WorkflowPauseSource string
+
+const (
+	WorkflowPauseSourceHumanNode WorkflowPauseSource = "human_node"
+	WorkflowPauseSourceManual    WorkflowPauseSource = "manual"
+	WorkflowPauseSourcePolicy    WorkflowPauseSource = "policy"
+)
+
+type WorkflowResumeMode string
+
+const (
+	WorkflowResumeModeContinueToken        WorkflowResumeMode = "continue_token"
+	WorkflowResumeModeContinueActiveTokens WorkflowResumeMode = "continue_active_tokens"
+	WorkflowResumeModeReplayFromCheckpoint WorkflowResumeMode = "replay_from_checkpoint"
+)
+
+type WorkflowTokenState string
+
+const (
+	WorkflowTokenStateActive WorkflowTokenState = "active"
+	WorkflowTokenStatePaused WorkflowTokenState = "paused"
+)
+
+type WorkflowPauseState struct {
+	Source             WorkflowPauseSource
+	Scope              WorkflowPauseScope
+	Reason             string
+	Payload            map[string]any
+	AllowedResumeModes []WorkflowResumeMode
+}
+
 type WorkflowRouteOutcomeSummary struct {
 	NodeID          string
 	SelectedEdgeID  string
@@ -37,6 +68,8 @@ type WorkflowExecutionContext struct {
 type WorkflowNodeResult struct {
 	RouteRequired           bool
 	AllowNaturalTermination bool
+	Paused                  bool
+	PauseState              *WorkflowPauseState
 	Output                  map[string]any
 }
 

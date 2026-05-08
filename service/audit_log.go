@@ -42,3 +42,7 @@ func (s *AuditLogService) Create(ctx context.Context, input AuditLogCreateInput)
 func (s *AuditLogService) List(ctx context.Context, limit int) ([]domain.AuditLog, error) {
 	return s.repo.List(ctx, limit)
 }
+
+func (s *AuditLogService) ListByQuery(ctx context.Context, query AuditLogQuery) ([]domain.AuditLog, error) {
+	return s.repo.ListByQuery(ctx, query.toRepoQuery())
+}

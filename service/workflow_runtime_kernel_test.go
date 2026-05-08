@@ -149,6 +149,38 @@ func TestWorkflowKernelResumeContinuesFromLatestCheckpoint(t *testing.T) {
 	assert.False(t, runtimeCtx.Checkpoints[1].Resumable)
 }
 
+func TestWorkflowKernelResumeDerivesCompatibilityModeFromPauseMetadata(t *testing.T) {
+	var order []string
+	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
+		"review": &humanWorkflowNode{actionSchema: map[string]any{"type": "object"}, formSchema: map[string]any{"type": "object"}},
+		"end":    &recordingWorkflowNode{label: "end", order: &order},
+	})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "resume-compatibility-mode",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "review",
+		Nodes: []domain.WorkflowNode{
+			{ID: "review", Type: "human", Name: "Review"},
+			{ID: "end", Type: "action", Name: "End"},
+		},
+		Edges: []domain.WorkflowEdge{{FromNodeID: "review", ToNodeID: "end", Priority: 1}},
+	}
+	runtimeCtx := &WorkflowExecutionContext{Workflow: wf, Context: &domain.WorkflowContext{}}
+
+	err := kernel.executeFrom(context.Background(), runtimeCtx, wf.EntryNodeID)
+	require.NoError(t, err)
+	require.Len(t, runtimeCtx.Checkpoints, 1)
+	runtimeCtx.Checkpoints[0].Metadata[workflowHumanResumeInputMetadataKey] = workflowCheckpointPayload(workflowHumanResumeInputMetadata(map[string]any{}, true)[workflowHumanResumeInputMetadataKey])
+
+	err = kernel.Resume(context.Background(), runtimeCtx)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"end"}, order)
+	assert.Equal(t, string(WorkflowResumeModeContinueToken), runtimeCtx.Checkpoints[0].Metadata[workflowResumeModeMetadataKey])
+}
+
 func TestWorkflowKernelAcceptsConditionalRouteWithAlwaysFallback(t *testing.T) {
 	var order []string
 	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
