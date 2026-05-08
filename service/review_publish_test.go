@@ -514,6 +514,7 @@ type failingWorkspaceRepoForReview struct {
 	base         repo.WorkspaceRepo
 	failOnStatus string
 	err          error
+	failed       *bool
 }
 
 func (r failingWorkspaceRepoForReview) Create(ctx context.Context, w *domain.ArticleWorkspaceRecord) error {
@@ -533,7 +534,11 @@ func (r failingWorkspaceRepoForReview) ListByIngestionID(ctx context.Context, in
 }
 
 func (r failingWorkspaceRepoForReview) TransitionStatus(ctx context.Context, id string, newStatus, notes string) error {
-	if newStatus == r.failOnStatus {
+	if r.failed != nil && !*r.failed && newStatus == r.failOnStatus {
+		*r.failed = true
+		return r.err
+	}
+	if r.failed == nil && newStatus == r.failOnStatus {
 		return r.err
 	}
 	return r.base.TransitionStatus(ctx, id, newStatus, notes)

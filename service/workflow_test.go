@@ -1,9 +1,9 @@
 package service
 
 import (
-	"context"
 	"content-hub/domain"
 	workspaceinfra "content-hub/infra/workspace"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -113,6 +113,51 @@ func TestWorkflowEngineExecutesAccordingToEdgesNotNodeSliceOrder(t *testing.T) {
 	assert.Equal(t, []string{"second"}, second.calls)
 	assert.Equal(t, []string{"third"}, third.calls)
 	assert.Equal(t, []string{"first", "second", "third"}, order)
+}
+
+func TestWorkflowEngineRequiresARouteWhenAllOutgoingEdgesAreConditional(t *testing.T) {
+	engine := NewWorkflowEngine()
+	engine.Register("start", &recordingWorkflowNode{label: "start"})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "route-required",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start",
+		Nodes: []domain.WorkflowNode{
+			{ID: "start", Type: "action", Name: "Start"},
+			{ID: "next", Type: "action", Name: "Next"},
+		},
+		Edges: []domain.WorkflowEdge{{FromNodeID: "start", ToNodeID: "next", Condition: "payload.route == approved", Priority: 1}},
+	}
+
+	err := engine.Execute(t.Context(), wf, &domain.WorkflowContext{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no matching route")
+}
+
+func TestLinearExecutionPathRejectsContextDependentRouteSelection(t *testing.T) {
+	wf := &domain.WorkflowDefinition{
+		Name:        "linear-compatible-routing",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start",
+		Nodes: []domain.WorkflowNode{
+			{ID: "start", Type: "action", Name: "Start"},
+			{ID: "approved", Type: "action", Name: "Approved"},
+			{ID: "fallback", Type: "action", Name: "Fallback"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "start", ToNodeID: "approved", Condition: "payload.route == approved", Priority: 1},
+			{FromNodeID: "start", ToNodeID: "fallback", Condition: "always", Priority: 99},
+		},
+	}
+
+	path, err := linearExecutionPath(wf)
+
+	require.Error(t, err)
+	assert.Nil(t, path)
+	assert.Contains(t, err.Error(), "context-dependent route selection")
 }
 
 func TestWorkflowEngineRejectsUnsupportedBranching(t *testing.T) {

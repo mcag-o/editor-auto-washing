@@ -6,21 +6,11 @@ import (
 )
 
 type RewriteRuntime struct {
-	PromptRegistry    *PromptRegistry
-	ProfileRegistry   *RewriteProfileRegistry
-	QualityGate       *QualityGateEngine
-	StageExecutor     *RewriteStageExecutor
-	DraftMaterializer *DraftMaterializer
-	Orchestrator      *RewriteOrchestrator
+	orchestrator *RewriteOrchestrator
 }
 
 type rewriteAssembly struct {
-	promptRegistry    *PromptRegistry
-	profileRegistry   *RewriteProfileRegistry
-	qualityGate       *QualityGateEngine
-	stageExecutor     *RewriteStageExecutor
-	draftMaterializer *DraftMaterializer
-	orchestrator      *RewriteOrchestrator
+	orchestrator *RewriteOrchestrator
 }
 
 func BuildRewriteRuntime(repos *RuntimeRepos) (*RewriteRuntime, error) {
@@ -31,12 +21,7 @@ func BuildRewriteRuntime(repos *RuntimeRepos) (*RewriteRuntime, error) {
 	assembly := buildRewriteAssembly(repos)
 
 	return &RewriteRuntime{
-		PromptRegistry:    assembly.promptRegistry,
-		ProfileRegistry:   assembly.profileRegistry,
-		QualityGate:       assembly.qualityGate,
-		StageExecutor:     assembly.stageExecutor,
-		DraftMaterializer: assembly.draftMaterializer,
-		Orchestrator:      assembly.orchestrator,
+		orchestrator: assembly.orchestrator,
 	}, nil
 }
 
@@ -46,16 +31,17 @@ func buildRewriteAssembly(repos *RuntimeRepos) rewriteAssembly {
 	qualityGate := NewQualityGateEngine()
 	stageExecutor := NewRewriteStageExecutorWithProfileResolver(promptRegistry, repos.LLMProfileRepo, rewriteLLMClient(repos), qualityGate)
 	draftMaterializer := NewDraftMaterializer(repos.DraftRepo, repos.WorkspaceRepo)
-	orchestrator := NewRewriteOrchestrator(profileRegistry, repos.RewritePipelineRunRepo, repos.RewriteStageRunRepo, repos.WorkspaceRepo, stageExecutor, draftMaterializer)
 
 	return rewriteAssembly{
-		promptRegistry:    promptRegistry,
-		profileRegistry:   profileRegistry,
-		qualityGate:       qualityGate,
-		stageExecutor:     stageExecutor,
-		draftMaterializer: draftMaterializer,
-		orchestrator:      orchestrator,
+		orchestrator: NewRewriteOrchestrator(profileRegistry, repos.RewritePipelineRunRepo, repos.RewriteStageRunRepo, repos.WorkspaceRepo, stageExecutor, draftMaterializer),
 	}
+}
+
+func (r *RewriteRuntime) Orchestrator() *RewriteOrchestrator {
+	if r == nil {
+		return nil
+	}
+	return r.orchestrator
 }
 
 func rewriteLLMClient(repos *RuntimeRepos) llminfra.Client {

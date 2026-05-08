@@ -150,6 +150,7 @@ func (r *ArticleIntakeSourceProcessingRewriteRunner) Run(ctx context.Context, do
 		Metadata:              sourceDocumentIntakeMetadata(doc),
 	}
 	if rewriteRunID := strings.TrimSpace(doc.RewriteRunID); rewriteRunID != "" {
+		// Resume now relies on the rewrite run's persisted checkpoint state.
 		return r.intake.ResumeResult(ctx, rewriteRunID, article)
 	}
 

@@ -41,6 +41,21 @@ func (m *DraftMaterializer) Materialize(ctx context.Context, workspaceID string,
 		return nil, domain.NewValidationErr("final output body is required", nil)
 	}
 
+	if existing, err := m.drafts.GetByID(ctx, workspaceID); err == nil && existing != nil {
+		if err := m.workspaces.TransitionStatus(ctx, workspaceID, domain.ArticleWorkspaceStatusDraft, draftMaterializedNote); err != nil {
+			appErr, ok := err.(*domain.AppError)
+			if !ok || appErr.Code != domain.ErrConflict || !workspaceAlreadyDraft(ctx, m.workspaces, workspaceID) {
+				return nil, fmt.Errorf("draft already persisted but workspace transition failed: %w", err)
+			}
+		}
+		return existing, nil
+	} else {
+		appErr, ok := err.(*domain.AppError)
+		if err != nil && (!ok || appErr.Code != domain.ErrNotFound) {
+			return nil, err
+		}
+	}
+
 	draft := domain.NewArticleDraft(template)
 	draft.ID = workspaceID
 	draft.Meta["title"] = title
@@ -75,4 +90,15 @@ func draftMaterializerMap(value any) map[string]any {
 		return nil
 	}
 	return metadata
+}
+
+func workspaceAlreadyDraft(ctx context.Context, workspaces repo.WorkspaceRepo, workspaceID string) bool {
+	if workspaces == nil {
+		return false
+	}
+	workspace, err := workspaces.GetByID(ctx, workspaceID)
+	if err != nil || workspace == nil {
+		return false
+	}
+	return strings.TrimSpace(workspace.Status) == domain.ArticleWorkspaceStatusDraft
 }

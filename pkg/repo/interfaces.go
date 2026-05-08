@@ -167,6 +167,28 @@ type WorkflowDefinitionRepo interface {
 	Delete(ctx context.Context, id string) error
 }
 
+type WorkflowRunRepo interface {
+	Create(ctx context.Context, run *domain.WorkflowRun) error
+	Update(ctx context.Context, run *domain.WorkflowRun) error
+	Delete(ctx context.Context, id string) error
+	GetByID(ctx context.Context, id string) (*domain.WorkflowRun, error)
+	List(ctx context.Context, limit int) ([]domain.WorkflowRun, error)
+}
+
+type WorkflowNodeExecutionRepo interface {
+	Create(ctx context.Context, execution *domain.WorkflowNodeExecution) error
+	Update(ctx context.Context, execution *domain.WorkflowNodeExecution) error
+	DeleteByWorkflowRunID(ctx context.Context, workflowRunID string) error
+	ListByWorkflowRunID(ctx context.Context, workflowRunID string) ([]domain.WorkflowNodeExecution, error)
+}
+
+type WorkflowCheckpointRepo interface {
+	Create(ctx context.Context, checkpoint *domain.WorkflowCheckpoint) error
+	Update(ctx context.Context, checkpoint *domain.WorkflowCheckpoint) error
+	DeleteByWorkflowRunID(ctx context.Context, workflowRunID string) error
+	ListByWorkflowRunID(ctx context.Context, workflowRunID string) ([]domain.WorkflowCheckpoint, error)
+}
+
 type TemplateDefinitionRepo interface {
 	Create(ctx context.Context, template *domain.TemplateDefinition) error
 	Update(ctx context.Context, template *domain.TemplateDefinition) error
