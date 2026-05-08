@@ -9,6 +9,7 @@ import (
 const (
 	WorkflowRunPending   = "pending"
 	WorkflowRunRunning   = "running"
+	WorkflowRunPaused    = "paused"
 	WorkflowRunSucceeded = "succeeded"
 	WorkflowRunFailed    = "failed"
 
@@ -97,6 +98,7 @@ type WorkflowCheckpointActiveToken struct {
 var workflowRunStatuses = map[string]struct{}{
 	WorkflowRunPending:   {},
 	WorkflowRunRunning:   {},
+	WorkflowRunPaused:    {},
 	WorkflowRunSucceeded: {},
 	WorkflowRunFailed:    {},
 }

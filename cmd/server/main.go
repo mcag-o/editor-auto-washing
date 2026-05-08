@@ -171,6 +171,8 @@ func runWithConfig(cfg config.Config, workspaceRoot string, selectedStandaloneFa
 		SourceDocumentRepo:  runtimeRepos.SourceDocumentRepo,
 		RewriteRunRepo:      runtimeRepos.RewritePipelineRunRepo,
 		RewriteStageRepo:    runtimeRepos.RewriteStageRunRepo,
+		WorkflowRunRepo:     runtimeRepos.WorkflowRunRepo,
+		WorkflowCheckpointRepo: runtimeRepos.WorkflowCheckpointRepo,
 		AuditLogRepo:        runtimeRepos.AuditLogRepo,
 		WorkspaceRoot:       workspaceRoot,
 	}

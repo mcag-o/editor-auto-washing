@@ -189,6 +189,9 @@ func (h *APIArticlesHandler) Stop(c *gin.Context) {
 	message := "pause requested; the current worker step is not synchronously interrupted"
 	h.recordArticleAuditBestEffort(c.Request.Context(), item, "stop", "success", message, map[string]any{
 		"workflow_position_preserved": strings.TrimSpace(item.RewriteRunID) != "",
+		"pause_requested":            true,
+		"workflow_run_id":            strings.TrimSpace(item.RewriteRunID),
+		"pause_source":               "manual",
 	})
 
 	c.JSON(http.StatusAccepted, gin.H{
@@ -244,6 +247,9 @@ func (h *APIArticlesHandler) Resume(c *gin.Context) {
 		"workflow_position_preserved": strings.TrimSpace(item.RewriteRunID) != "",
 		"worker_running":              workerRunning,
 		"system_state":                systemState,
+		"resume_requested":            true,
+		"workflow_run_id":             strings.TrimSpace(item.RewriteRunID),
+		"resume_mode":                 "continue_saved_position",
 	})
 
 	c.JSON(http.StatusAccepted, gin.H{

@@ -36,6 +36,8 @@ type RuntimeRepos struct {
 	RewritePipelineProfileRepo repo.RewritePipelineProfileRepo
 	RewritePipelineRunRepo     repo.RewritePipelineRunRepo
 	RewriteStageRunRepo        repo.RewriteStageRunRepo
+	WorkflowRunRepo            repo.WorkflowRunRepo
+	WorkflowCheckpointRepo     repo.WorkflowCheckpointRepo
 	RSSSubscriptionRepo        repo.RSSSubscriptionRepo
 	RSSPullRunRepo             repo.RSSPullRunRepo
 	RSSItemRepo                repo.RSSItemRepo
@@ -111,6 +113,8 @@ func buildRuntimeReposFromResolved(runtimeCfg config.Config, renderedDir string,
 		RewritePipelineProfileRepo: sqliteProvider.RewritePipelineProfileRepo(),
 		RewritePipelineRunRepo:     sqliteProvider.RewritePipelineRunRepo(),
 		RewriteStageRunRepo:        sqliteProvider.RewriteStageRunRepo(),
+		WorkflowRunRepo:            sqliteProvider.WorkflowRunRepo(),
+		WorkflowCheckpointRepo:     sqliteProvider.WorkflowCheckpointRepo(),
 		RSSSubscriptionRepo:        sqliteProvider.RSSSubscriptionRepo(),
 		RSSPullRunRepo:             sqliteProvider.RSSPullRunRepo(),
 		RSSItemRepo:                sqliteProvider.RSSItemRepo(),

@@ -38,6 +38,8 @@ type Provider struct {
 	rewritePipelineProfileRepo  repo.RewritePipelineProfileRepo
 	rewritePipelineRunRepo      repo.RewritePipelineRunRepo
 	rewriteStageRunRepo         repo.RewriteStageRunRepo
+	workflowRunRepo             repo.WorkflowRunRepo
+	workflowCheckpointRepo      repo.WorkflowCheckpointRepo
 	workflowDefinitionRepo      repo.WorkflowDefinitionRepo
 	templateDefinitionRepo      repo.TemplateDefinitionRepo
 	sourceDocumentRepo          repo.SourceDocumentRepo
@@ -97,6 +99,8 @@ func NewProvider(dbPath string) (*Provider, error) {
 	p.rewritePipelineProfileRepo = &rewritePipelineProfileRepo{db: db}
 	p.rewritePipelineRunRepo = &rewritePipelineRunRepo{db: db}
 	p.rewriteStageRunRepo = &rewriteStageRunRepo{db: db}
+	p.workflowRunRepo = &workflowRunRepo{db: db}
+	p.workflowCheckpointRepo = &workflowCheckpointRepo{db: db}
 	p.workflowDefinitionRepo = &workflowDefinitionRepo{db: db}
 	p.templateDefinitionRepo = &templateDefinitionRepo{db: db}
 	p.sourceDocumentRepo = &sourceDocumentRepo{db: db}
@@ -204,6 +208,14 @@ func (p *Provider) RewritePipelineRunRepo() repo.RewritePipelineRunRepo {
 
 func (p *Provider) RewriteStageRunRepo() repo.RewriteStageRunRepo {
 	return p.rewriteStageRunRepo
+}
+
+func (p *Provider) WorkflowRunRepo() repo.WorkflowRunRepo {
+	return p.workflowRunRepo
+}
+
+func (p *Provider) WorkflowCheckpointRepo() repo.WorkflowCheckpointRepo {
+	return p.workflowCheckpointRepo
 }
 
 func (p *Provider) WorkflowDefinitionRepo() repo.WorkflowDefinitionRepo {

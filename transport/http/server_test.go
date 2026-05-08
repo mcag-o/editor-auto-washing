@@ -98,6 +98,8 @@ func newTestServer(t *testing.T) (*Server, *testWebControlRepos) {
 		Formatter:               &testFormatter{},
 		WorkflowDefinitionRepo:  workflowDefinitionRepo,
 		TemplateDefinitionRepo:  templateDefinitionRepo,
+		WorkflowRunRepo:         memProvider.WorkflowRunRepo(),
+		WorkflowCheckpointRepo:  memProvider.WorkflowCheckpointRepo(),
 		SourceDocumentRepo:     sourceDocumentRepo,
 		BusinessConfigRepo:     businessConfigRepo,
 		SystemControlStateRepo: systemControlStateRepo,
@@ -124,11 +126,30 @@ func newTestServer(t *testing.T) (*Server, *testWebControlRepos) {
 		SourceDocumentRepo: sourceDocumentRepo,
 		RewriteRunRepo:     memProvider.RewritePipelineRunRepo(),
 		RewriteStageRepo:   memProvider.RewriteStageRunRepo(),
+		WorkflowRunRepo:    memProvider.WorkflowRunRepo(),
+		WorkflowCheckpointRepo: memProvider.WorkflowCheckpointRepo(),
 		AuditLogRepo:       auditLogRepo,
 		WorkspaceRoot:      workspaceRoot,
 	}
 
 	return NewServer(cfg, provider), webRepos
+}
+
+func TestServerExposesWorkflowRunAuditRouteWhenReposPresent(t *testing.T) {
+	disableTestFrontendFS(t)
+	server, _ := newTestServer(t)
+	httpTestServer := httptest.NewServer(server.Handler())
+	defer httpTestServer.Close()
+
+	resp, err := http.Get(httpTestServer.URL + "/api/workflow-runs/run-1/audit")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.NotEqual(t, http.StatusNotFound, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var payload []domain.AuditLog
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&payload))
+	require.Empty(t, payload)
 }
 
 type testJobExecutor struct {

@@ -24,6 +24,8 @@ var (
 	_ repo.WorkspaceRepo               = (*memWorkspaceRepo)(nil)
 	_ repo.RewritePipelineRunRepo      = (*memRewritePipelineRunRepo)(nil)
 	_ repo.RewriteStageRunRepo         = (*memRewriteStageRunRepo)(nil)
+	_ repo.WorkflowRunRepo             = (*memWorkflowRunRepo)(nil)
+	_ repo.WorkflowCheckpointRepo      = (*memWorkflowCheckpointRepo)(nil)
 	_ repo.CollectorSourceRepo         = (*memCollectorSourceRepo)(nil)
 	_ repo.CollectorRunRepo            = (*memCollectorRunRepo)(nil)
 	_ repo.CollectorEntryRepo          = (*memCollectorEntryRepo)(nil)
@@ -47,6 +49,8 @@ type Provider struct {
 	workspaces          map[string]*domain.ArticleWorkspaceRecord
 	rewritePipelineRuns map[string]*domain.RewritePipelineRun
 	rewriteStageRuns    map[string][]*domain.RewriteStageRun
+	workflowRuns        map[string]*domain.WorkflowRun
+	workflowCheckpoints map[string][]*domain.WorkflowCheckpoint
 	collectorSources    map[string]*domain.CollectorSource
 	collectorRuns       map[string]*domain.CollectorRun
 	collectorSourceRuns map[string][]*domain.CollectorSourceRun
@@ -70,6 +74,8 @@ func NewProvider() *Provider {
 		workspaces:          make(map[string]*domain.ArticleWorkspaceRecord),
 		rewritePipelineRuns: make(map[string]*domain.RewritePipelineRun),
 		rewriteStageRuns:    make(map[string][]*domain.RewriteStageRun),
+		workflowRuns:        make(map[string]*domain.WorkflowRun),
+		workflowCheckpoints: make(map[string][]*domain.WorkflowCheckpoint),
 		collectorSources:    make(map[string]*domain.CollectorSource),
 		collectorRuns:       make(map[string]*domain.CollectorRun),
 		collectorSourceRuns: make(map[string][]*domain.CollectorSourceRun),
@@ -95,6 +101,12 @@ func (p *Provider) RewritePipelineRunRepo() repo.RewritePipelineRunRepo {
 }
 func (p *Provider) RewriteStageRunRepo() repo.RewriteStageRunRepo {
 	return &memRewriteStageRunRepo{p: p}
+}
+func (p *Provider) WorkflowRunRepo() repo.WorkflowRunRepo {
+	return &memWorkflowRunRepo{p: p}
+}
+func (p *Provider) WorkflowCheckpointRepo() repo.WorkflowCheckpointRepo {
+	return &memWorkflowCheckpointRepo{p: p}
 }
 func (p *Provider) CollectorSourceRepo() repo.CollectorSourceRepo {
 	return &memCollectorSourceRepo{p: p}
@@ -745,6 +757,102 @@ func (r *memRewriteStageRunRepo) ListByPipelineRunID(_ context.Context, pipeline
 	return result, nil
 }
 
+type memWorkflowRunRepo struct{ p *Provider }
+
+func (r *memWorkflowRunRepo) Create(_ context.Context, run *domain.WorkflowRun) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.workflowRuns[run.ID] = cloneWorkflowRun(run)
+	return nil
+}
+
+func (r *memWorkflowRunRepo) Update(_ context.Context, run *domain.WorkflowRun) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	if _, ok := r.p.workflowRuns[run.ID]; !ok {
+		return domain.NewNotFoundErr("workflow_run", run.ID)
+	}
+	r.p.workflowRuns[run.ID] = cloneWorkflowRun(run)
+	return nil
+}
+
+func (r *memWorkflowRunRepo) Delete(_ context.Context, id string) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	if _, ok := r.p.workflowRuns[id]; !ok {
+		return domain.NewNotFoundErr("workflow_run", id)
+	}
+	delete(r.p.workflowRuns, id)
+	return nil
+}
+
+func (r *memWorkflowRunRepo) GetByID(_ context.Context, id string) (*domain.WorkflowRun, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+	run, ok := r.p.workflowRuns[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("workflow_run", id)
+	}
+	return cloneWorkflowRun(run), nil
+}
+
+func (r *memWorkflowRunRepo) List(_ context.Context, limit int) ([]domain.WorkflowRun, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+	runs := make([]domain.WorkflowRun, 0, len(r.p.workflowRuns))
+	for _, run := range r.p.workflowRuns {
+		runs = append(runs, *cloneWorkflowRun(run))
+	}
+	sort.Slice(runs, func(i, j int) bool {
+		return runs[i].StartedAt.After(runs[j].StartedAt)
+	})
+	if limit <= 0 || limit >= len(runs) {
+		return runs, nil
+	}
+	return runs[:limit], nil
+}
+
+type memWorkflowCheckpointRepo struct{ p *Provider }
+
+func (r *memWorkflowCheckpointRepo) Create(_ context.Context, checkpoint *domain.WorkflowCheckpoint) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	r.p.workflowCheckpoints[checkpoint.WorkflowRunID] = append(r.p.workflowCheckpoints[checkpoint.WorkflowRunID], cloneWorkflowCheckpoint(checkpoint))
+	return nil
+}
+
+func (r *memWorkflowCheckpointRepo) Update(_ context.Context, checkpoint *domain.WorkflowCheckpoint) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	for workflowRunID, checkpoints := range r.p.workflowCheckpoints {
+		for i := range checkpoints {
+			if checkpoints[i].ID == checkpoint.ID {
+				r.p.workflowCheckpoints[workflowRunID][i] = cloneWorkflowCheckpoint(checkpoint)
+				return nil
+			}
+		}
+	}
+	return domain.NewNotFoundErr("workflow_checkpoint", checkpoint.ID)
+}
+
+func (r *memWorkflowCheckpointRepo) DeleteByWorkflowRunID(_ context.Context, workflowRunID string) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	delete(r.p.workflowCheckpoints, workflowRunID)
+	return nil
+}
+
+func (r *memWorkflowCheckpointRepo) ListByWorkflowRunID(_ context.Context, workflowRunID string) ([]domain.WorkflowCheckpoint, error) {
+	r.p.mu.RLock()
+	defer r.p.mu.RUnlock()
+	checkpoints := r.p.workflowCheckpoints[workflowRunID]
+	result := make([]domain.WorkflowCheckpoint, len(checkpoints))
+	for i, checkpoint := range checkpoints {
+		result[i] = *cloneWorkflowCheckpoint(checkpoint)
+	}
+	return result, nil
+}
+
 func cloneRewritePipelineRun(run *domain.RewritePipelineRun) *domain.RewritePipelineRun {
 	if run == nil {
 		return nil
@@ -754,6 +862,32 @@ func cloneRewritePipelineRun(run *domain.RewritePipelineRun) *domain.RewritePipe
 	if run.CompletedAt != nil {
 		completedAt := *run.CompletedAt
 		clone.CompletedAt = &completedAt
+	}
+	return &clone
+}
+
+func cloneWorkflowRun(run *domain.WorkflowRun) *domain.WorkflowRun {
+	if run == nil {
+		return nil
+	}
+	clone := *run
+	clone.Metadata = cloneMap(run.Metadata)
+	if run.CompletedAt != nil {
+		completedAt := *run.CompletedAt
+		clone.CompletedAt = &completedAt
+	}
+	return &clone
+}
+
+func cloneWorkflowCheckpoint(checkpoint *domain.WorkflowCheckpoint) *domain.WorkflowCheckpoint {
+	if checkpoint == nil {
+		return nil
+	}
+	clone := *checkpoint
+	clone.Metadata = cloneMap(checkpoint.Metadata)
+	if checkpoint.ConsumedAt != nil {
+		consumedAt := *checkpoint.ConsumedAt
+		clone.ConsumedAt = &consumedAt
 	}
 	return &clone
 }

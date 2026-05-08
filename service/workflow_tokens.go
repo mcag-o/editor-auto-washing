@@ -14,6 +14,8 @@ type WorkflowTokenRouteLineage struct {
 type WorkflowToken struct {
 	ID            string
 	NodeID        string
+	State         WorkflowTokenState
+	PauseState    *WorkflowPauseState
 	ParentTokenID string
 	OriginTokenID string
 	OriginRoute   WorkflowTokenRouteLineage
@@ -24,6 +26,7 @@ func newWorkflowRootToken(nodeID string) *WorkflowToken {
 	root := &WorkflowToken{
 		ID:     id.New(),
 		NodeID: strings.TrimSpace(nodeID),
+		State:  WorkflowTokenStateActive,
 	}
 	root.OriginTokenID = root.ID
 	return root
@@ -44,6 +47,7 @@ func (t *WorkflowToken) Child(nodeID string, route WorkflowTokenRouteLineage) *W
 	return &WorkflowToken{
 		ID:            id.New(),
 		NodeID:        strings.TrimSpace(nodeID),
+		State:         WorkflowTokenStateActive,
 		ParentTokenID: t.ID,
 		OriginTokenID: t.OriginTokenID,
 		OriginRoute:   originRoute,

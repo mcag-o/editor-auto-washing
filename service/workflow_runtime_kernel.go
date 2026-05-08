@@ -31,14 +31,31 @@ func (k workflowRuntimeKernel) Resume(ctx context.Context, runtimeCtx *WorkflowE
 	if err != nil {
 		return err
 	}
-	runtimeCtx.ActiveTokens = workflowActiveTokensFromCheckpoint(checkpoint)
-	if len(runtimeCtx.ActiveTokens) > 0 {
-		runtimeCtx.CurrentToken = runtimeCtx.ActiveTokens[len(runtimeCtx.ActiveTokens)-1]
-	} else {
-		runtimeCtx.CurrentToken = workflowTokenFromCheckpoint(checkpoint)
-		if runtimeCtx.CurrentToken != nil {
-			runtimeCtx.ActiveTokens = []*WorkflowToken{runtimeCtx.CurrentToken}
-		}
+	mode := defaultWorkflowResumeMode(checkpoint)
+	recordWorkflowResumeCommand(checkpoint, mode, WorkflowResumeCommand{Mode: mode})
+	applyWorkflowResumeTarget(runtimeCtx, checkpoint, mode)
+	if input := workflowHumanResumeInputFromCheckpoint(checkpoint); len(input) > 0 {
+		applyWorkflowHumanResumeInput(runtimeCtx, input)
+		runtimeCtx.CurrentToken.State = WorkflowTokenStateActive
+	}
+	runtimeCtx.CurrentNodeID = checkpoint.NodeID
+	return k.executeFrom(ctx, runtimeCtx, checkpoint.NodeID)
+}
+
+func (k workflowRuntimeKernel) ResumeWithCommand(ctx context.Context, runtimeCtx *WorkflowExecutionContext, command WorkflowResumeCommand) error {
+	checkpoint, err := resumableCheckpointByID(runtimeCtx.Checkpoints, command.CheckpointID)
+	if err != nil {
+		return err
+	}
+	mode, err := resolveWorkflowResumeMode(checkpoint, command.Mode)
+	if err != nil {
+		return err
+	}
+	recordWorkflowResumeCommand(checkpoint, mode, command)
+	applyWorkflowResumeTarget(runtimeCtx, checkpoint, mode)
+	if input := workflowHumanResumeInputFromCheckpoint(checkpoint); len(input) > 0 {
+		applyWorkflowHumanResumeInput(runtimeCtx, input)
+		runtimeCtx.CurrentToken.State = WorkflowTokenStateActive
 	}
 	runtimeCtx.CurrentNodeID = checkpoint.NodeID
 	return k.executeFrom(ctx, runtimeCtx, checkpoint.NodeID)
@@ -89,6 +106,13 @@ func (k workflowRuntimeKernel) executeFrom(ctx context.Context, runtimeCtx *Work
 			result.RouteRequired = graphRouteRequired
 		}
 		storeWorkflowNodeResult(token, result)
+		if result.Paused {
+			pauseWorkflowToken(token, result.PauseState)
+			rebindWorkflowNodeResult(runtimeCtx, token)
+			appendCheckpointWithSnapshot(runtimeCtx, "", current, workflowCheckpointSnapshot{Token: token, PauseState: token.PauseState, Metadata: workflowHumanResumeInputMetadata(nil, false)})
+			clearWorkflowBranchBindings(runtimeCtx)
+			return nil
+		}
 		rebindWorkflowNodeResult(runtimeCtx, token)
 
 		evaluation := k.router.EvaluateRoutes(runtimeCtx, current, result, nextEdges)
@@ -177,10 +201,29 @@ func storeWorkflowNodeResult(token *WorkflowToken, result WorkflowNodeResult) {
 	if token == nil || token.Branch == nil {
 		return
 	}
-	if len(result.Output) == 0 {
+	if len(result.Output) > 0 {
+		token.Branch.Result = cloneWorkflowPayload(result.Output)
+	}
+}
+
+func pauseWorkflowToken(token *WorkflowToken, pauseState *WorkflowPauseState) {
+	if token == nil {
 		return
 	}
-	token.Branch.Result = cloneWorkflowPayload(result.Output)
+	pauseToken(token)
+	if pauseState == nil {
+		token.PauseState = nil
+		return
+	}
+	payload := cloneWorkflowPayload(pauseState.Payload)
+	allowedResumeModes := make([]WorkflowResumeMode, 0, len(pauseState.AllowedResumeModes))
+	allowedResumeModes = append(allowedResumeModes, pauseState.AllowedResumeModes...)
+	token.PauseState = &WorkflowPauseState{
+		Source:             pauseState.Source,
+		Reason:             pauseState.Reason,
+		Payload:            payload,
+		AllowedResumeModes: allowedResumeModes,
+	}
 }
 
 func rebindWorkflowNodeResult(runtimeCtx *WorkflowExecutionContext, token *WorkflowToken) {

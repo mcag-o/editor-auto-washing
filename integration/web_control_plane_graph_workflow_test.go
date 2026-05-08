@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"content-hub/domain"
 	"content-hub/infra/config"
 	llminfra "content-hub/infra/llm"
@@ -13,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,7 +22,7 @@ import (
 )
 
 func TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t *testing.T) {
-	root, repos, serverURL := newWebControlPlaneIntegrationServer(t)
+	root, repos, _, _, serverURL := newWebControlPlaneIntegrationServer(t)
 	require.DirExists(t, root)
 
 	templateResp := postJSON(t, serverURL+"/api/templates", map[string]any{
@@ -180,7 +182,7 @@ func TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t *testing.T)
 }
 
 func TestWebControlPlaneGraphWorkflowCanExposeMultipleActiveBranches(t *testing.T) {
-	_, repos, serverURL := newWebControlPlaneIntegrationServer(t)
+	_, repos, workflowRuns, _, serverURL := newWebControlPlaneIntegrationServer(t)
 
 	article := domain.NewSourceDocument("paste", "paste", "txt", "Graph Branch Visibility", "Body pasted for branch visibility.", "hash-branch-visibility")
 	article.SourceType = "web-paste"
@@ -268,6 +270,49 @@ func TestWebControlPlaneGraphWorkflowCanExposeMultipleActiveBranches(t *testing.
 	}
 	require.NoError(t, repos.RewritePipelineRunRepo.Create(t.Context(), run))
 
+	workflowRun := &domain.WorkflowRun{
+		ID:                     "workflow-run-graph-branches",
+		WorkflowID:             "workflow-template-branch-visibility",
+		WorkflowVersion:        "v1",
+		WorkspaceArticleID:     article.WorkspaceArticleID,
+		Status:                 domain.WorkflowRunPaused,
+		CurrentNodeID:          "review_left",
+		Resumable:              true,
+		ResumeFromCheckpointID: "checkpoint-graph-branches",
+		Metadata: map[string]any{
+			"pause_source": string(service.WorkflowPauseSourceHumanNode),
+			"pause_reason": "awaiting branch review",
+		},
+	}
+	require.NoError(t, workflowRuns.Create(t.Context(), workflowRun))
+
+	require.NoError(t, repos.AuditLogRepo.Create(t.Context(), &domain.AuditLog{
+		ID:         "audit-workflow-run-graph-branches",
+		Actor:      "integration-test",
+		Action:     "web_control.workflow_run.pause",
+		Resource:   "workflow_run",
+		ResourceID: workflowRun.ID,
+		Result:     "success",
+		Message:    "branch review paused",
+		Metadata: map[string]any{
+			"workflow_run_id": workflowRun.ID,
+			"pause_reason":    "manual branch audit",
+		},
+		CreatedAt: time.Now().UTC(),
+	}))
+
+	workflowAuditResp, err := http.Get(serverURL + "/api/workflow-runs/" + workflowRun.ID + "/audit?action_prefix=web_control.workflow_run&resource_id=" + workflowRun.ID)
+	require.NoError(t, err)
+	defer workflowAuditResp.Body.Close()
+	require.Equal(t, http.StatusOK, workflowAuditResp.StatusCode)
+
+	var workflowAudit []domain.AuditLog
+	require.NoError(t, json.NewDecoder(workflowAuditResp.Body).Decode(&workflowAudit))
+	require.Len(t, workflowAudit, 1)
+	require.Equal(t, "web_control.workflow_run.pause", workflowAudit[0].Action)
+	require.Equal(t, workflowRun.ID, workflowAudit[0].ResourceID)
+	require.Equal(t, "manual branch audit", workflowAudit[0].Metadata["pause_reason"])
+
 	stagesResp, err := http.Get(serverURL + "/api/articles/" + article.ID + "/stages")
 	require.NoError(t, err)
 	defer stagesResp.Body.Close()
@@ -313,7 +358,7 @@ func TestWebControlPlaneGraphWorkflowCanExposeMultipleActiveBranches(t *testing.
 }
 
 func TestWebControlPlaneArticleOperationsAuditAndWorkflowSemantics(t *testing.T) {
-	_, repos, serverURL := newWebControlPlaneIntegrationServer(t)
+	_, repos, _, _, serverURL := newWebControlPlaneIntegrationServer(t)
 
 	workflowV1Resp := postJSON(t, serverURL+"/api/workflows", map[string]any{
 		"id":            "workflow-ops",
@@ -520,7 +565,327 @@ func TestWebControlPlaneArticleOperationsAuditAndWorkflowSemantics(t *testing.T)
 	require.Equal(t, true, retryAudit.Metadata["workflow_state_reset"])
 }
 
-func newWebControlPlaneIntegrationServer(t *testing.T) (string, *service.RuntimeRepos, string) {
+func TestWebControlPlaneHumanNodePauseIsVisibleAndResumable(t *testing.T) {
+	_, _, workflowRuns, workflowCheckpoints, serverURL := newWebControlPlaneIntegrationServer(t)
+
+	run := &domain.WorkflowRun{
+		ID:                     "run-human-pause",
+		WorkflowID:             "workflow-human-node",
+		WorkflowVersion:        "v1",
+		WorkspaceArticleID:     "workspace-human-pause",
+		Status:                 domain.WorkflowRunPaused,
+		CurrentNodeID:          "review_draft",
+		Resumable:              true,
+		ResumeFromCheckpointID: "checkpoint-human-pause",
+		Metadata: map[string]any{
+			"pause_source":             string(service.WorkflowPauseSourceHumanNode),
+			"pause_reason":             "awaiting editor review",
+			"pause_allowed_resume_modes": []string{string(service.WorkflowResumeModeContinueToken), string(service.WorkflowResumeModeReplayFromCheckpoint)},
+		},
+	}
+	require.NoError(t, workflowRuns.Create(t.Context(), run))
+
+	require.NoError(t, workflowCheckpoints.Create(t.Context(), &domain.WorkflowCheckpoint{
+		ID:            "checkpoint-human-pause",
+		WorkflowRunID: run.ID,
+		NodeExecutionID: "node-exec-human-pause",
+		NodeID:        "review_draft",
+		State:         domain.WorkflowCheckpointStateActive,
+		Resumable:     true,
+		ResumeToken:   "token-human-pause",
+		CreatedAt:     time.Now().UTC(),
+		Metadata: map[string]any{
+			"pause_source": string(service.WorkflowPauseSourceHumanNode),
+			"pause_reason": "awaiting editor review",
+			"pause_allowed_resume_modes": []string{
+				string(service.WorkflowResumeModeContinueToken),
+				string(service.WorkflowResumeModeReplayFromCheckpoint),
+			},
+			"pause_payload": map[string]any{
+				"token_id": "token-human-pause",
+				"node_id":  "review_draft",
+			},
+		},
+	}))
+
+	getResp, err := http.Get(serverURL + "/api/workflow-runs/" + run.ID)
+	require.NoError(t, err)
+	defer getResp.Body.Close()
+	require.Equal(t, http.StatusOK, getResp.StatusCode)
+
+	var pausedRun map[string]any
+	require.NoError(t, json.NewDecoder(getResp.Body).Decode(&pausedRun))
+	require.Equal(t, "paused", pausedRun["status"])
+	require.Equal(t, string(service.WorkflowPauseSourceHumanNode), pausedRun["pause_source"])
+	require.Equal(t, "awaiting editor review", pausedRun["pause_reason"])
+	require.Contains(t, pausedRun["allowed_resume_modes"], string(service.WorkflowResumeModeContinueToken))
+	require.Contains(t, pausedRun["allowed_resume_modes"], string(service.WorkflowResumeModeReplayFromCheckpoint))
+	affectedToken, ok := pausedRun["affected_token"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "token-human-pause", affectedToken["token_id"])
+	require.Equal(t, "review_draft", affectedToken["node_id"])
+
+	resumeResp := postJSON(t, serverURL+"/api/workflow-runs/"+run.ID+"/resume", map[string]any{
+		"action": "approve",
+		"form_values": map[string]any{
+			"title": "Human Pause Visibility",
+		},
+	})
+	defer resumeResp.Body.Close()
+	require.Equal(t, http.StatusAccepted, resumeResp.StatusCode)
+
+	var resumePayload map[string]any
+	require.NoError(t, json.NewDecoder(resumeResp.Body).Decode(&resumePayload))
+	require.Equal(t, "resumed", resumePayload["status"])
+	require.Equal(t, string(service.WorkflowResumeModeContinueToken), resumePayload["resume_mode"])
+
+	reloadedRun, err := workflowRuns.GetByID(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.WorkflowRunRunning, reloadedRun.Status)
+	require.Equal(t, string(service.WorkflowResumeModeContinueToken), reloadedRun.Metadata["resume_mode"])
+	require.Empty(t, reloadedRun.ResumeFromCheckpointID)
+
+	checkpoints, err := workflowCheckpoints.ListByWorkflowRunID(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Len(t, checkpoints, 1)
+	require.Equal(t, domain.WorkflowCheckpointStateTerminal, checkpoints[0].State)
+	require.False(t, checkpoints[0].Resumable)
+	require.NotNil(t, checkpoints[0].ConsumedAt)
+	resumeInput, ok := checkpoints[0].Metadata["human_resume_input"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, resumeInput["submitted"])
+}
+
+func TestWebControlPlaneManualPauseAndResumePersistAuditTrail(t *testing.T) {
+	_, _, workflowRuns, workflowCheckpoints, serverURL := newWebControlPlaneIntegrationServer(t)
+
+	run := &domain.WorkflowRun{
+		ID:                 "run-manual-pause",
+		WorkflowID:         "workflow-manual-pause",
+		WorkflowVersion:    "v1",
+		WorkspaceArticleID: "workspace-manual-pause",
+		Status:             domain.WorkflowRunRunning,
+		CurrentNodeID:      "review_draft",
+		Metadata:           map[string]any{},
+	}
+	require.NoError(t, workflowRuns.Create(t.Context(), run))
+	require.NoError(t, workflowCheckpoints.Create(t.Context(), &domain.WorkflowCheckpoint{
+		ID:            "checkpoint-manual-pause",
+		WorkflowRunID: run.ID,
+		NodeExecutionID: "node-exec-manual-pause",
+		NodeID:        "review_draft",
+		State:         domain.WorkflowCheckpointStateActive,
+		Resumable:     true,
+		ResumeToken:   "token-manual-pause",
+		CreatedAt:     time.Now().UTC(),
+		Metadata: map[string]any{
+			"pause_allowed_resume_modes": []string{string(service.WorkflowResumeModeContinueActiveTokens), string(service.WorkflowResumeModeReplayFromCheckpoint)},
+			"pause_reason":             "manual review needed",
+			"pause_source":             string(service.WorkflowPauseSourceManual),
+		},
+	}))
+
+	pauseResp := postJSON(t, serverURL+"/api/workflow-runs/"+run.ID+"/pause", map[string]any{
+		"reason": "manual review needed",
+	})
+	defer pauseResp.Body.Close()
+	require.Equal(t, http.StatusAccepted, pauseResp.StatusCode)
+
+	resumeResp := postJSON(t, serverURL+"/api/workflow-runs/"+run.ID+"/resume", map[string]any{
+		"action": "approve",
+		"form_values": map[string]any{
+			"editor": "ops-1",
+		},
+	})
+	defer resumeResp.Body.Close()
+	require.Equal(t, http.StatusAccepted, resumeResp.StatusCode)
+
+	auditResp, err := http.Get(serverURL + "/api/audit")
+	require.NoError(t, err)
+	defer auditResp.Body.Close()
+	require.Equal(t, http.StatusOK, auditResp.StatusCode)
+
+	var auditList struct {
+		Data []domain.AuditLog `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(auditResp.Body).Decode(&auditList))
+
+	actions := map[string]domain.AuditLog{}
+	for _, entry := range auditList.Data {
+		actions[entry.Action] = entry
+	}
+	require.Contains(t, actions, "web_control.workflow_run.pause")
+	require.Contains(t, actions, "web_control.workflow_run.resume")
+	require.Equal(t, run.ID, actions["web_control.workflow_run.pause"].ResourceID)
+	require.Equal(t, run.ID, actions["web_control.workflow_run.resume"].ResourceID)
+	require.Equal(t, "manual review needed", actions["web_control.workflow_run.pause"].Metadata["pause_reason"])
+	require.Contains(t, actions["web_control.workflow_run.pause"].Metadata["allowed_resume_modes"], string(service.WorkflowResumeModeContinueActiveTokens))
+	require.Contains(t, actions["web_control.workflow_run.pause"].Metadata["allowed_resume_modes"], string(service.WorkflowResumeModeReplayFromCheckpoint))
+	require.Equal(t, string(service.WorkflowResumeModeContinueActiveTokens), actions["web_control.workflow_run.resume"].Metadata["resume_mode"])
+	require.Equal(t, "approve", actions["web_control.workflow_run.resume"].Metadata["action"])
+	require.Contains(t, actions["web_control.workflow_run.resume"].Metadata["form_values"], "editor")
+}
+
+func TestWebControlPlanePolicyPauseExposesReasonAndAllowedResumeModes(t *testing.T) {
+	_, _, workflowRuns, workflowCheckpoints, serverURL := newWebControlPlaneIntegrationServer(t)
+
+	run := &domain.WorkflowRun{
+		ID:                     "run-policy-pause",
+		WorkflowID:             "workflow-policy-pause",
+		WorkflowVersion:        "v1",
+		WorkspaceArticleID:     "workspace-policy-pause",
+		Status:                 domain.WorkflowRunPaused,
+		CurrentNodeID:          "review_draft",
+		Resumable:              true,
+		ResumeFromCheckpointID: "checkpoint-policy-pause",
+		Metadata: map[string]any{
+			"pause_source":             string(service.WorkflowPauseSourcePolicy),
+			"pause_reason":             "policy pause: moderation required",
+			"pause_allowed_resume_modes": []string{string(service.WorkflowResumeModeContinueActiveTokens), string(service.WorkflowResumeModeReplayFromCheckpoint)},
+		},
+	}
+	require.NoError(t, workflowRuns.Create(t.Context(), run))
+
+	require.NoError(t, workflowCheckpoints.Create(t.Context(), &domain.WorkflowCheckpoint{
+		ID:            "checkpoint-policy-pause",
+		WorkflowRunID: run.ID,
+		NodeExecutionID: "node-exec-policy-pause",
+		NodeID:        "review_draft",
+		State:         domain.WorkflowCheckpointStateActive,
+		Resumable:     true,
+		ResumeToken:   "token-policy-pause",
+		CreatedAt:     time.Now().UTC(),
+		Metadata: map[string]any{
+			"pause_source": string(service.WorkflowPauseSourcePolicy),
+			"pause_reason": "policy pause: moderation required",
+			"pause_allowed_resume_modes": []string{
+				string(service.WorkflowResumeModeContinueActiveTokens),
+				string(service.WorkflowResumeModeReplayFromCheckpoint),
+			},
+			"pause_payload": map[string]any{
+				"trigger_context": map[string]any{"rule_id": "moderation-check"},
+			},
+		},
+	}))
+
+	resp, err := http.Get(serverURL + "/api/workflow-runs/" + run.ID)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var payload map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&payload))
+	require.Equal(t, "paused", payload["status"])
+	require.Equal(t, string(service.WorkflowPauseSourcePolicy), payload["pause_source"])
+	require.Equal(t, "policy pause: moderation required", payload["pause_reason"])
+	require.Contains(t, payload["allowed_resume_modes"], string(service.WorkflowResumeModeContinueActiveTokens))
+	require.Contains(t, payload["allowed_resume_modes"], string(service.WorkflowResumeModeReplayFromCheckpoint))
+	pausePayload, ok := payload["pause_payload"].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, pausePayload, "trigger_context")
+}
+
+type integrationWorkflowRunRepo struct {
+	mu   sync.Mutex
+	runs map[string]*domain.WorkflowRun
+}
+
+func (r *integrationWorkflowRunRepo) Create(_ context.Context, run *domain.WorkflowRun) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.runs == nil {
+		r.runs = map[string]*domain.WorkflowRun{}
+	}
+	copy := *run
+	r.runs[run.ID] = &copy
+	return nil
+}
+
+func (r *integrationWorkflowRunRepo) Update(_ context.Context, run *domain.WorkflowRun) error {
+	return r.Create(context.Background(), run)
+}
+
+func (r *integrationWorkflowRunRepo) Delete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.runs, id)
+	return nil
+}
+
+func (r *integrationWorkflowRunRepo) GetByID(_ context.Context, id string) (*domain.WorkflowRun, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	run, ok := r.runs[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("workflow_run", id)
+	}
+	copy := *run
+	return &copy, nil
+}
+
+func (r *integrationWorkflowRunRepo) List(_ context.Context, limit int) ([]domain.WorkflowRun, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]domain.WorkflowRun, 0, len(r.runs))
+	for _, run := range r.runs {
+		out = append(out, *run)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+type integrationWorkflowCheckpointRepo struct {
+	mu         sync.Mutex
+	checkpoints map[string][]*domain.WorkflowCheckpoint
+}
+
+func (r *integrationWorkflowCheckpointRepo) Create(_ context.Context, checkpoint *domain.WorkflowCheckpoint) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.checkpoints == nil {
+		r.checkpoints = map[string][]*domain.WorkflowCheckpoint{}
+	}
+	copy := *checkpoint
+	r.checkpoints[checkpoint.WorkflowRunID] = append(r.checkpoints[checkpoint.WorkflowRunID], &copy)
+	return nil
+}
+
+func (r *integrationWorkflowCheckpointRepo) Update(_ context.Context, checkpoint *domain.WorkflowCheckpoint) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	items := r.checkpoints[checkpoint.WorkflowRunID]
+	for i := range items {
+		if items[i].ID == checkpoint.ID {
+			copy := *checkpoint
+			items[i] = &copy
+			r.checkpoints[checkpoint.WorkflowRunID] = items
+			return nil
+		}
+	}
+	return r.Create(context.Background(), checkpoint)
+}
+
+func (r *integrationWorkflowCheckpointRepo) DeleteByWorkflowRunID(_ context.Context, workflowRunID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.checkpoints, workflowRunID)
+	return nil
+}
+
+func (r *integrationWorkflowCheckpointRepo) ListByWorkflowRunID(_ context.Context, workflowRunID string) ([]domain.WorkflowCheckpoint, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	items := r.checkpoints[workflowRunID]
+	out := make([]domain.WorkflowCheckpoint, 0, len(items))
+	for _, checkpoint := range items {
+		out = append(out, *checkpoint)
+	}
+	return out, nil
+}
+
+func newWebControlPlaneIntegrationServer(t *testing.T) (string, *service.RuntimeRepos, *integrationWorkflowRunRepo, *integrationWorkflowCheckpointRepo, string) {
 	t.Helper()
 
 	root := t.TempDir()
@@ -538,6 +903,9 @@ func newWebControlPlaneIntegrationServer(t *testing.T) (string, *service.Runtime
 	t.Cleanup(func() {
 		require.NoError(t, cleanup())
 	})
+
+	workflowRuns := &integrationWorkflowRunRepo{}
+	workflowCheckpoints := &integrationWorkflowCheckpointRepo{}
 
 	repos.LLMClient = llminfra.StaticClient{Response: domain.LLMResponse{
 		Content:      `{"title":"Graph Mainline Title","body":"Rendered graph workflow body.","template":"daily-intelligence-alt","meta":{"digest":"Graph digest","author":"Integration Bot"},"sections":[{"cn":"Main Section","blocks":[{"type":"card","title":"Key Point","body":["Workflow-selected control plane detail."],"source":"Web Control"}]}],"conclusion":"Graph end note.","cta":"Read more."}`,
@@ -613,6 +981,8 @@ func newWebControlPlaneIntegrationServer(t *testing.T) (string, *service.Runtime
 		RewriteRuntime:     rewriteRuntime,
 		WebControlRuntime:  webControlRuntime,
 		WorkflowEngine:     service.NewWorkflowEngine(),
+		WorkflowRunRepo:    workflowRuns,
+		WorkflowCheckpointRepo: workflowCheckpoints,
 		ConfigLoader:       configLoader,
 		SourceDocumentRepo: repos.SourceDocumentRepo,
 		RewriteRunRepo:     repos.RewritePipelineRunRepo,
@@ -625,5 +995,5 @@ func newWebControlPlaneIntegrationServer(t *testing.T) (string, *service.Runtime
 	httpTestServer := httptest.NewServer(server.Handler())
 	t.Cleanup(httpTestServer.Close)
 
-	return root, repos, httpTestServer.URL
+	return root, repos, workflowRuns, workflowCheckpoints, httpTestServer.URL
 }
