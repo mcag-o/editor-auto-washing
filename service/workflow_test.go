@@ -39,9 +39,7 @@ func TestBuildDefaultWorkflowEngineDispatchesRetryFailedThroughFolderIntakeAutom
 
 	require.NoError(t, engine.Execute(t.Context(), domain.DefaultWorkflowDefinition(), wc))
 	assert.Equal(t, 1, intake.retryFailedCalls)
-	result, ok := wc.Payload["automation_result"].(*domain.AutomationRunResult)
-	require.True(t, ok)
-	assert.Equal(t, "retry-failed", result.Mode)
+	assert.Equal(t, "retry-failed", wc.Payload["automation_command"])
 }
 
 func TestAutomationDispatchNodeRequiresExplicitCommand(t *testing.T) {
@@ -160,11 +158,39 @@ func TestLinearExecutionPathRejectsContextDependentRouteSelection(t *testing.T) 
 	assert.Contains(t, err.Error(), "context-dependent route selection")
 }
 
-func TestWorkflowEngineRejectsUnsupportedBranching(t *testing.T) {
+func TestLinearExecutionPathRejectsFallbackDependentPathSelection(t *testing.T) {
+	wf := &domain.WorkflowDefinition{
+		Name:        "fallback-dependent-routing",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start",
+		Nodes: []domain.WorkflowNode{
+			{ID: "start", Type: "action", Name: "Start"},
+			{ID: "fallback", Type: "action", Name: "Fallback"},
+			{ID: "explicit", Type: "action", Name: "Explicit"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "start", ToNodeID: "fallback", Condition: "always", Priority: 1},
+			{FromNodeID: "start", ToNodeID: "explicit", Condition: "payload.route == approved", Priority: 10},
+		},
+	}
+
+	path, err := linearExecutionPath(wf)
+
+	require.Error(t, err)
+	assert.Nil(t, path)
+	assert.Contains(t, err.Error(), "context-dependent route selection")
+}
+
+func TestWorkflowEngineAllowsB2Branching(t *testing.T) {
 	engine := NewWorkflowEngine()
-	engine.Register("start", &recordingWorkflowNode{label: "start"})
-	engine.Register("left", &recordingWorkflowNode{label: "left"})
-	engine.Register("right", &recordingWorkflowNode{label: "right"})
+	var order []string
+	start := &recordingWorkflowNode{label: "start", order: &order}
+	left := &recordingWorkflowNode{label: "left", order: &order}
+	right := &recordingWorkflowNode{label: "right", order: &order}
+	engine.Register("start", start)
+	engine.Register("left", left)
+	engine.Register("right", right)
 
 	wf := &domain.WorkflowDefinition{
 		Name:        "branching",
@@ -178,13 +204,15 @@ func TestWorkflowEngineRejectsUnsupportedBranching(t *testing.T) {
 		},
 		Edges: []domain.WorkflowEdge{
 			{FromNodeID: "start", ToNodeID: "left", Priority: 1},
-			{FromNodeID: "start", ToNodeID: "right", Priority: 2},
+			{FromNodeID: "start", ToNodeID: "right", Priority: 1},
 		},
 	}
 
-	err := engine.Execute(t.Context(), wf, &domain.WorkflowContext{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported branching")
+	require.NoError(t, engine.Execute(t.Context(), wf, &domain.WorkflowContext{}))
+	assert.Equal(t, []string{"start"}, start.calls)
+	assert.Equal(t, []string{"left"}, left.calls)
+	assert.Equal(t, []string{"right"}, right.calls)
+	assert.Equal(t, []string{"start", "left", "right"}, order)
 }
 
 func TestWorkflowEngineRejectsUnsupportedCycle(t *testing.T) {

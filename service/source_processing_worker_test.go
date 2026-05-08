@@ -322,6 +322,44 @@ func TestArticleIntakeSourceProcessingRewriteRunnerReturnsExplicitRewriteOutputs
 	require.NotEqual(t, result.WorkspaceArticleID, result.DraftID)
 }
 
+func TestArticleIntakeSourceProcessingRewriteRunnerCarriesWorkflowTemplateMetadataIntoIntakeArticle(t *testing.T) {
+	doc := validClaimedSourceProcessingDocument()
+	doc.Metadata["workflow_template_id"] = "workflow-a"
+	doc.Metadata["workflow_template_name"] = "Workflow A"
+	doc.Metadata["workflow_template_version"] = "v1"
+	doc.Metadata[workflowStageOverridesMetadataKey] = map[string]any{
+		"generate_draft": map[string]any{
+			"node_id":    "node-generate-draft",
+			"prompt_ref": "generate_draft_alt@v2",
+			"vars": map[string]any{
+				"workflow_marker": "workflow-a",
+			},
+		},
+	}
+	intake := &stubSourceProcessingArticleIntake{result: &ArticleIntakeResult{
+		WorkspaceArticle: &domain.ArticleWorkspaceRecord{ID: "workspace-1"},
+		RewriteRun:       &domain.RewritePipelineRun{ID: "rewrite-1", FinalDraftID: "draft-1"},
+		DraftID:          "draft-1",
+	}}
+	runner := NewArticleIntakeSourceProcessingRewriteRunner(intake)
+
+	_, err := runner.Run(t.Context(), doc)
+
+	require.NoError(t, err)
+	require.True(t, intake.called)
+	require.Equal(t, "workflow-a", intake.lastArticle.Metadata["workflow_template_id"])
+	require.Equal(t, "Workflow A", intake.lastArticle.Metadata["workflow_template_name"])
+	require.Equal(t, "v1", intake.lastArticle.Metadata["workflow_template_version"])
+	overrides, ok := intake.lastArticle.Metadata[workflowStageOverridesMetadataKey].(map[string]any)
+	require.True(t, ok)
+	stageOverride, ok := overrides["generate_draft"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "generate_draft_alt@v2", stageOverride["prompt_ref"])
+	vars, ok := stageOverride["vars"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "workflow-a", vars["workflow_marker"])
+}
+
 func TestArticleIntakeSourceProcessingRewriteRunnerRejectsMissingExplicitDraftID(t *testing.T) {
 	doc := validClaimedSourceProcessingDocument()
 	intake := &stubSourceProcessingArticleIntake{result: &ArticleIntakeResult{

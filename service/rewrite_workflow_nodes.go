@@ -65,15 +65,16 @@ func (e *rewriteReviewNodeExecutor) Execute(ctx context.Context, runtimeCtx *Wor
 	if runtimeCtx == nil || runtimeCtx.Context == nil {
 		return result, nil
 	}
-	qualityDecision, _ := runtimeCtx.Context.Payload["quality_decision"].(string)
-	routeDecision, _ := runtimeCtx.Context.Payload["quality_route_decision"].(string)
+	payload := workflowRuntimePayload(runtimeCtx)
+	qualityDecision, _ := payload["quality_decision"].(string)
+	routeDecision, _ := payload["quality_route_decision"].(string)
 	if strings.TrimSpace(qualityDecision) == QualityDecisionPass {
 		return result, nil
 	}
 	if strings.TrimSpace(routeDecision) == QualityDecisionRepair && nodeHasExplicitRepairPolicy(node) {
 		return result, nil
 	}
-	message, _ := runtimeCtx.Context.Payload["quality_message"].(string)
+	message, _ := payload["quality_message"].(string)
 	if strings.TrimSpace(message) == "" {
 		message = "review quality did not pass"
 	}
@@ -93,8 +94,12 @@ func (e *rewriteRepairNodeExecutor) Execute(ctx context.Context, runtimeCtx *Wor
 	if err != nil {
 		return WorkflowNodeResult{}, err
 	}
-	if runtimeCtx != nil && runtimeCtx.Context != nil && runtimeCtx.Context.Payload["quality_route_decision"] != QualityDecisionPass {
-		message, _ := runtimeCtx.Context.Payload["quality_message"].(string)
+	if runtimeCtx != nil && runtimeCtx.Context != nil {
+		payload := workflowRuntimePayload(runtimeCtx)
+		if payload["quality_route_decision"] == QualityDecisionPass {
+			return result, nil
+		}
+		message, _ := payload["quality_message"].(string)
 		if strings.TrimSpace(message) == "" {
 			message = "repair quality did not pass"
 		}
@@ -107,9 +112,10 @@ func (e *rewriteMaterializeNodeExecutor) Execute(_ context.Context, runtimeCtx *
 	if runtimeCtx == nil || runtimeCtx.Context == nil {
 		return WorkflowNodeResult{}, domain.NewValidationErr("workflow execution context is required", nil)
 	}
-	ensureWorkflowPayload(runtimeCtx.Context)
+	ensureWorkflowPayload(runtimeCtx)
 	runtimeCtx.Context.Payload["materialize_node_id"] = node.ID
 	runtimeCtx.Context.Payload["materialization_requested"] = true
+	syncWorkflowPayloadBridge(runtimeCtx)
 	return WorkflowNodeResult{}, nil
 }
 
@@ -135,13 +141,14 @@ func executeRewriteWorkflowStageNode(ctx context.Context, runtimeCtx *WorkflowEx
 		config.Stage.ModelProfileRef = strings.TrimSpace(config.DefaultLLMProfile)
 	}
 
-	ensureWorkflowPayload(runtimeCtx.Context)
+	ensureWorkflowPayload(runtimeCtx)
 	result, err := stageExecutor.Execute(ctx, config.Stage, StageExecutionInput{Vars: cloneWorkflowPayload(runtimeCtx.Context.Payload)})
 	if err != nil {
 		return WorkflowNodeResult{}, err
 	}
 	mergeRewriteStageResult(runtimeCtx.Context.Payload, config.Stage, result)
 	mergeRewriteRouteDecision(runtimeCtx.Context.Payload, config, result)
+	syncWorkflowPayloadBridge(runtimeCtx)
 	return WorkflowNodeResult{RouteRequired: strings.TrimSpace(config.RouteOnQualityAction) != ""}, nil
 }
 
@@ -203,10 +210,30 @@ func parseRewriteWorkflowNodeConfig(configJSON string) (rewriteWorkflowNodeConfi
 	return cfg, nil
 }
 
-func ensureWorkflowPayload(ctx *domain.WorkflowContext) {
-	if ctx.Payload == nil {
-		ctx.Payload = map[string]any{}
+func ensureWorkflowPayload(runtimeCtx *WorkflowExecutionContext) {
+	if runtimeCtx == nil {
+		return
 	}
+	bindWorkflowPayloadBridge(runtimeCtx)
+}
+
+func syncWorkflowPayloadBridge(runtimeCtx *WorkflowExecutionContext) {
+	if runtimeCtx == nil || runtimeCtx.Context == nil {
+		return
+	}
+	sharedInput := workflowRuntimeSharedInput(runtimeCtx)
+	variables := map[string]any{}
+	for key, value := range runtimeCtx.Context.Payload {
+		if sharedValue, shared := sharedInput[key]; shared && fmt.Sprint(sharedValue) == fmt.Sprint(value) {
+			continue
+		}
+		variables[key] = value
+	}
+	runtimeCtx.Variables = variables
+	if runtimeCtx.CurrentToken != nil && runtimeCtx.CurrentToken.Branch != nil {
+		runtimeCtx.CurrentToken.Branch.Variables = cloneWorkflowPayload(variables)
+	}
+	bindWorkflowPayloadBridge(runtimeCtx)
 }
 
 func cloneWorkflowPayload(payload map[string]any) map[string]any {
@@ -215,9 +242,24 @@ func cloneWorkflowPayload(payload map[string]any) map[string]any {
 	}
 	cloned := make(map[string]any, len(payload))
 	for key, value := range payload {
-		cloned[key] = value
+		cloned[key] = cloneWorkflowValue(value)
 	}
 	return cloned
+}
+
+func cloneWorkflowValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		return cloneWorkflowPayload(v)
+	case []any:
+		cloned := make([]any, len(v))
+		for i := range v {
+			cloned[i] = cloneWorkflowValue(v[i])
+		}
+		return cloned
+	default:
+		return v
+	}
 }
 
 func mergeRewriteStageResult(payload map[string]any, stage domain.RewriteStageDefinition, result *StageExecutionResult) {

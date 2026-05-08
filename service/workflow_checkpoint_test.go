@@ -52,3 +52,150 @@ func TestConsumeActiveCheckpointsTerminalizesResumePoints(t *testing.T) {
 	require.NotNil(t, runtimeCtx.Checkpoints[1].ConsumedAt)
 	assert.Equal(t, checkpointTime, *runtimeCtx.Checkpoints[1].ConsumedAt)
 }
+
+func TestWorkflowCheckpointCapturesLatestRouteOutcomeSummary(t *testing.T) {
+	runtimeCtx := &WorkflowExecutionContext{}
+	summary := WorkflowRouteOutcomeSummary{
+		NodeID:          "router-1",
+		SelectedEdgeID:  "edge-approved",
+		SelectedNodeID:  "approved",
+		Outcome:         WorkflowRouteOutcome("matched"),
+		EvaluationTrace: []string{"edge-approved=true", "edge-rejected=false"},
+	}
+
+	recordLatestRouteOutcome(runtimeCtx, summary)
+	appendCheckpoint(runtimeCtx, "run-1", "approved")
+
+	require.Len(t, runtimeCtx.Checkpoints, 1)
+	assert.Equal(t, summary.NodeID, runtimeCtx.Checkpoints[0].Metadata["route_node_id"])
+	assert.Equal(t, summary.SelectedEdgeID, runtimeCtx.Checkpoints[0].Metadata["route_selected_edge_id"])
+	assert.Equal(t, summary.SelectedNodeID, runtimeCtx.Checkpoints[0].Metadata["route_selected_node_id"])
+	assert.Equal(t, string(summary.Outcome), runtimeCtx.Checkpoints[0].Metadata["route_outcome"])
+	assert.Equal(t, []string{"edge-approved=true", "edge-rejected=false"}, runtimeCtx.Checkpoints[0].Metadata["route_evaluation_trace"])
+}
+
+func TestWorkflowCheckpointRetainsPriorRouteSummaryAcrossLaterTransitions(t *testing.T) {
+	runtimeCtx := &WorkflowExecutionContext{}
+	firstSummary := WorkflowRouteOutcomeSummary{
+		NodeID:          "router-1",
+		SelectedEdgeID:  "router-1->approved",
+		SelectedNodeID:  "approved",
+		Outcome:         WorkflowRouteOutcomeSingleMatch,
+		EvaluationTrace: []string{"router-1->approved=match"},
+	}
+	secondSummary := WorkflowRouteOutcomeSummary{
+		NodeID:          "router-2",
+		SelectedEdgeID:  "router-2->rendered",
+		SelectedNodeID:  "rendered",
+		Outcome:         WorkflowRouteOutcomeSingleMatch,
+		EvaluationTrace: []string{"router-2->rendered=match"},
+	}
+
+	recordLatestRouteOutcome(runtimeCtx, firstSummary)
+	appendCheckpoint(runtimeCtx, "run-1", "approved")
+	recordLatestRouteOutcome(runtimeCtx, secondSummary)
+	appendCheckpoint(runtimeCtx, "run-1", "rendered")
+
+	require.Len(t, runtimeCtx.Checkpoints, 2)
+	assert.Equal(t, firstSummary.NodeID, runtimeCtx.Checkpoints[0].Metadata["route_node_id"])
+	assert.Equal(t, firstSummary.SelectedEdgeID, runtimeCtx.Checkpoints[0].Metadata["route_selected_edge_id"])
+	assert.Equal(t, firstSummary.SelectedNodeID, runtimeCtx.Checkpoints[0].Metadata["route_selected_node_id"])
+	assert.Equal(t, string(firstSummary.Outcome), runtimeCtx.Checkpoints[0].Metadata["route_outcome"])
+	assert.Equal(t, []string{"router-1->approved=match"}, runtimeCtx.Checkpoints[0].Metadata["route_evaluation_trace"])
+	assert.Equal(t, secondSummary.NodeID, runtimeCtx.Checkpoints[1].Metadata["route_node_id"])
+	assert.Equal(t, secondSummary.SelectedEdgeID, runtimeCtx.Checkpoints[1].Metadata["route_selected_edge_id"])
+	assert.Equal(t, secondSummary.SelectedNodeID, runtimeCtx.Checkpoints[1].Metadata["route_selected_node_id"])
+	assert.Equal(t, string(secondSummary.Outcome), runtimeCtx.Checkpoints[1].Metadata["route_outcome"])
+	assert.Equal(t, []string{"router-2->rendered=match"}, runtimeCtx.Checkpoints[1].Metadata["route_evaluation_trace"])
+}
+
+func TestAppendCheckpointWithSnapshotCapturesTokenMetadata(t *testing.T) {
+	runtimeCtx := &WorkflowExecutionContext{}
+	summary := WorkflowRouteOutcomeSummary{
+		NodeID:          "start",
+		SelectedEdgeID:  "1:start->left@1[payload.route == approved]",
+		SelectedNodeID:  "left",
+		Outcome:         WorkflowRouteOutcomeSingleMatch,
+		EvaluationTrace: []string{"1:start->left@1[payload.route == approved]=match"},
+	}
+	token := &WorkflowToken{
+		ID:            "token-left",
+		NodeID:        "left",
+		ParentTokenID: "token-root",
+		OriginTokenID: "token-root",
+		OriginRoute: WorkflowTokenRouteLineage{
+			SourceNodeID:   "start",
+			SelectedEdgeID: "start->left@1[payload.route == approved]",
+			SelectedNodeID: "left",
+		},
+	}
+
+	appendCheckpointWithSnapshot(runtimeCtx, "run-1", "left", workflowCheckpointSnapshot{RouteSummary: &summary, Token: token})
+
+	require.Len(t, runtimeCtx.Checkpoints, 1)
+	checkpoint := runtimeCtx.Checkpoints[0]
+	assert.Equal(t, "token-left", checkpoint.Metadata["token_id"])
+	assert.Equal(t, "token-root", checkpoint.Metadata["token_parent_id"])
+	assert.Equal(t, "token-root", checkpoint.Metadata["token_origin_id"])
+	assert.Equal(t, "start", checkpoint.Metadata["token_origin_route_node_id"])
+	assert.Equal(t, "start->left@1[payload.route == approved]", checkpoint.Metadata["token_origin_route_edge_id"])
+	assert.Equal(t, "left", checkpoint.Metadata["token_origin_route_selected_node_id"])
+	assert.Equal(t, "left", checkpoint.Metadata["route_selected_node_id"])
+}
+
+func TestWorkflowCheckpointCapturesActiveTokenSetAfterFanOut(t *testing.T) {
+	runtimeCtx := &WorkflowExecutionContext{}
+	left := &WorkflowToken{
+		ID:            "token-left",
+		NodeID:        "left",
+		ParentTokenID: "token-root",
+		OriginTokenID: "token-root",
+		OriginRoute: WorkflowTokenRouteLineage{
+			SourceNodeID:   "start",
+			SelectedEdgeID: "start->left@1[payload.route == approved]",
+			SelectedNodeID: "left",
+		},
+	}
+	right := &WorkflowToken{
+		ID:            "token-right",
+		NodeID:        "right",
+		ParentTokenID: "token-root",
+		OriginTokenID: "token-root",
+		OriginRoute: WorkflowTokenRouteLineage{
+			SourceNodeID:   "start",
+			SelectedEdgeID: "start->right@1[payload.route == approved]",
+			SelectedNodeID: "right",
+		},
+	}
+	runtimeCtx.ActiveTokens = []*WorkflowToken{left, right}
+
+	appendCheckpointWithSnapshot(runtimeCtx, "run-1", "left", workflowCheckpointSnapshot{Token: left})
+	appendCheckpointWithSnapshot(runtimeCtx, "run-1", "right", workflowCheckpointSnapshot{Token: right})
+
+	require.Len(t, runtimeCtx.Checkpoints, 2)
+	for _, checkpoint := range runtimeCtx.Checkpoints {
+		activeSet, ok := checkpoint.Metadata["active_token_set"].([]map[string]any)
+		require.True(t, ok)
+		require.Len(t, activeSet, 2)
+		assert.Equal(t, []map[string]any{
+			{
+				"token_id":                            "token-left",
+				"token_parent_id":                     "token-root",
+				"token_origin_id":                     "token-root",
+				"token_origin_route_node_id":          "start",
+				"token_origin_route_edge_id":          "start->left@1[payload.route == approved]",
+				"token_origin_route_selected_node_id": "left",
+				"node_id":                             "left",
+			},
+			{
+				"token_id":                            "token-right",
+				"token_parent_id":                     "token-root",
+				"token_origin_id":                     "token-root",
+				"token_origin_route_node_id":          "start",
+				"token_origin_route_edge_id":          "start->right@1[payload.route == approved]",
+				"token_origin_route_selected_node_id": "right",
+				"node_id":                             "right",
+			},
+		}, activeSet)
+	}
+}

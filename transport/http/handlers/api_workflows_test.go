@@ -292,6 +292,42 @@ func TestAPIWorkflowsGetAndUpdate(t *testing.T) {
 	require.Len(t, updated.Edges, 1)
 }
 
+func TestAPIWorkflowsCreatePreservesFallbackEdgeConditionAndPriority(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	repo := &workflowDefinitionRepoStub{}
+	svc := service.NewWorkflowTemplateService(repo)
+	handler := NewAPIWorkflowsHandler(svc)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/workflows", handler.Create)
+	router.GET("/api/workflows/:id", handler.Get)
+
+	body := `{"id":"wf-fallback","name":"Fallback workflow","description":"Graph with implicit fallback edge","version":"v1","enabled":true,"entry_node_id":"start-1","nodes":[{"id":"start-1","type":"start","name":"Start","config_json":"{}"},{"id":"next-1","type":"action","name":"Next","config_json":"{}"}],"edges":[{"from_node_id":"start-1","to_node_id":"next-1","condition":"","priority":0}],"updated_by":"tester"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/workflows", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	var created domain.WorkflowDefinition
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
+	require.Len(t, created.Edges, 1)
+	require.Equal(t, "", created.Edges[0].Condition)
+	require.Equal(t, 0, created.Edges[0].Priority)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/workflows/wf-fallback", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var stored domain.WorkflowDefinition
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &stored))
+	require.Len(t, stored.Edges, 1)
+	require.Equal(t, "", stored.Edges[0].Condition)
+	require.Equal(t, 0, stored.Edges[0].Priority)
+}
+
 func TestAPIWorkflowsCreateDeleteAndGetReturnsNotFound(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	repo := &workflowDefinitionRepoStub{}

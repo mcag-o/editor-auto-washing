@@ -132,6 +132,12 @@ func TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t *testing.T)
 	require.Equal(t, domain.RewriteRunSucceeded, stagesPayload.Run.Status)
 	require.Equal(t, "workflow-template-mainline", stagesPayload.Run.Metadata["workflow_template_id"])
 	require.Equal(t, "generate_draft_alt@v2", stagesPayload.Run.Metadata["workflow_prompt_ref"])
+	require.NotContains(t, stagesPayload.Run.Metadata, "active_token_set")
+	require.NotContains(t, stagesPayload.Run.Metadata, "rewrite_workflow_checkpoint")
+	routeSummary, ok := stagesPayload.Run.Metadata["workflow_route_latest"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "materialize_draft", routeSummary["node_id"])
+	require.Equal(t, "no_match", routeSummary["outcome"])
 	require.Len(t, stagesPayload.Stages, 1)
 	require.Equal(t, domain.RewriteStageSucceeded, stagesPayload.Stages[0].Status)
 	require.Equal(t, "generate_draft_alt@v2", stagesPayload.Stages[0].PromptRef)
@@ -171,6 +177,139 @@ func TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t *testing.T)
 	require.Contains(t, actions, "web_control.article.workflow_template_assigned")
 	require.Equal(t, createdDoc.ID, actions["web_control.article.workflow_template_assigned"].ResourceID)
 	require.Equal(t, "workflow-template-mainline", actions["web_control.article.workflow_template_assigned"].Metadata["workflow_template_id"])
+}
+
+func TestWebControlPlaneGraphWorkflowCanExposeMultipleActiveBranches(t *testing.T) {
+	_, repos, serverURL := newWebControlPlaneIntegrationServer(t)
+
+	article := domain.NewSourceDocument("paste", "paste", "txt", "Graph Branch Visibility", "Body pasted for branch visibility.", "hash-branch-visibility")
+	article.SourceType = "web-paste"
+	article.Status = domain.SourceDocumentStatusPending
+	require.NoError(t, repos.SourceDocumentRepo.Create(t.Context(), article))
+
+	startedAt := time.Now().UTC()
+	article.Status = domain.SourceDocumentStatusProcessing
+	article.WorkspaceArticleID = "workspace-branch-1"
+	article.RewriteRunID = "run-graph-branches"
+	article.ClaimedBy = "worker-branches"
+	article.ClaimedAt = &startedAt
+	article.ProcessingStartedAt = &startedAt
+	require.NoError(t, repos.SourceDocumentRepo.Update(t.Context(), article))
+
+	run := domain.NewRewritePipelineRun("profile-web-mainline", "v1", article.WorkspaceArticleID, article.ID, "wechat-longform", "web-paste")
+	run.ID = article.RewriteRunID
+	run.Status = domain.RewriteRunRunning
+	run.CurrentStage = "review_draft"
+	run.Metadata["workflow_template_id"] = "workflow-template-branch-visibility"
+	run.Metadata["workflow_prompt_ref"] = "generate_draft_alt@v2"
+	run.Metadata["active_token_set"] = []map[string]any{
+		{
+			"token_id":                            "token-right",
+			"token_parent_id":                     "token-root",
+			"token_origin_id":                     "token-root",
+			"token_origin_route_node_id":          "generate_draft",
+			"token_origin_route_edge_id":          "2:generate_draft->review_right@1[payload.route == approved]",
+			"token_origin_route_selected_node_id": "review_right",
+			"node_id":                             "review_right",
+			"token_branch_vars":                   map[string]any{"branch": "right"},
+		},
+		{
+			"token_id":                            "token-left",
+			"token_parent_id":                     "token-root",
+			"token_origin_id":                     "token-root",
+			"token_origin_route_node_id":          "generate_draft",
+			"token_origin_route_edge_id":          "1:generate_draft->review_left@1[payload.route == approved]",
+			"token_origin_route_selected_node_id": "review_left",
+			"node_id":                             "review_left",
+			"token_branch_vars":                   map[string]any{"branch": "left"},
+		},
+	}
+	run.Metadata["workflow_route_latest"] = map[string]any{
+		"node_id":          "generate_draft",
+		"selected_edge_id": "1:generate_draft->review_left@1[payload.route == approved]",
+		"selected_node_id": "review_left",
+		"outcome":          "matched",
+		"evaluation_trace": []string{"payload.route == approved => true", "payload.route == approved => true"},
+	}
+	run.Metadata["rewrite_workflow_checkpoint"] = map[string]any{
+		"node_id": "review_left",
+		"payload": map[string]any{
+			"title": "Graph Branch Visibility",
+			"route": "approved",
+		},
+		"token_id":               "token-left",
+		"token_parent_id":        "token-root",
+		"token_origin_id":        "token-root",
+		"token_origin_route_node_id":          "generate_draft",
+		"token_origin_route_edge_id":          "1:generate_draft->review_left@1[payload.route == approved]",
+		"token_origin_route_selected_node_id": "review_left",
+		"active_token_set": []map[string]any{
+			{
+				"token_id":                            "token-right",
+				"token_parent_id":                     "token-root",
+				"token_origin_id":                     "token-root",
+				"token_origin_route_node_id":          "generate_draft",
+				"token_origin_route_edge_id":          "2:generate_draft->review_right@1[payload.route == approved]",
+				"token_origin_route_selected_node_id": "review_right",
+				"node_id":                             "review_right",
+				"token_branch_vars":                   map[string]any{"branch": "right"},
+			},
+			{
+				"token_id":                            "token-left",
+				"token_parent_id":                     "token-root",
+				"token_origin_id":                     "token-root",
+				"token_origin_route_node_id":          "generate_draft",
+				"token_origin_route_edge_id":          "1:generate_draft->review_left@1[payload.route == approved]",
+				"token_origin_route_selected_node_id": "review_left",
+				"node_id":                             "review_left",
+				"token_branch_vars":                   map[string]any{"branch": "left"},
+			},
+		},
+	}
+	require.NoError(t, repos.RewritePipelineRunRepo.Create(t.Context(), run))
+
+	stagesResp, err := http.Get(serverURL + "/api/articles/" + article.ID + "/stages")
+	require.NoError(t, err)
+	defer stagesResp.Body.Close()
+	require.Equal(t, http.StatusOK, stagesResp.StatusCode)
+
+	var stagesPayload struct {
+		Article domain.SourceDocument      `json:"article"`
+		Run     *domain.RewritePipelineRun `json:"run"`
+		Stages  []domain.RewriteStageRun   `json:"stages"`
+	}
+	require.NoError(t, json.NewDecoder(stagesResp.Body).Decode(&stagesPayload))
+	require.NotNil(t, stagesPayload.Run)
+	require.Equal(t, domain.RewriteRunRunning, stagesPayload.Run.Status)
+	require.Contains(t, stagesPayload.Run.Metadata, "rewrite_workflow_checkpoint")
+	activeSet, ok := stagesPayload.Run.Metadata["active_token_set"].([]any)
+	if !ok {
+		mapped, mappedOK := stagesPayload.Run.Metadata["active_token_set"].([]map[string]any)
+		require.True(t, mappedOK)
+		require.Len(t, mapped, 2)
+		require.Equal(t, "review_right", mapped[0]["node_id"])
+		require.Equal(t, "token-right", mapped[0]["token_id"])
+		require.Equal(t, "review_left", mapped[1]["node_id"])
+		require.Equal(t, "token-left", mapped[1]["token_id"])
+		routeSummary, ok := stagesPayload.Run.Metadata["workflow_route_latest"].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "generate_draft", routeSummary["node_id"])
+		require.Equal(t, "matched", routeSummary["outcome"])
+		return
+	}
+	require.Len(t, activeSet, 2)
+	firstBranch, ok := activeSet[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "review_right", firstBranch["node_id"])
+	require.Equal(t, "token-right", firstBranch["token_id"])
+	secondBranch, ok := activeSet[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "review_left", secondBranch["node_id"])
+	require.Equal(t, "token-left", secondBranch["token_id"])
+	routeSummary, ok := stagesPayload.Run.Metadata["workflow_route_latest"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "generate_draft", routeSummary["node_id"])
+	require.Equal(t, "matched", routeSummary["outcome"])
 }
 
 func TestWebControlPlaneArticleOperationsAuditAndWorkflowSemantics(t *testing.T) {
