@@ -242,6 +242,16 @@ func workflowActiveTokensFromCheckpoint(checkpoint *domain.WorkflowCheckpoint) [
 	}
 	rawSet := workflowActiveTokenSetEntries(checkpoint.Metadata[workflowActiveTokenSetMetadataKey])
 	if len(rawSet) == 0 {
+		if pauseState := workflowPauseStateFromCheckpoint(checkpoint); pauseState != nil && len(pauseState.Payload) > 0 {
+			if token := workflowTokenFromMetadata(strings.TrimSpace(checkpoint.NodeID), pauseState.Payload); token != nil {
+				return []*WorkflowToken{token}
+			}
+			if workflowPauseCanSynthesizeToken(pauseState) {
+				if token := workflowSyntheticPauseToken(checkpoint, pauseState); token != nil {
+					return []*WorkflowToken{token}
+				}
+			}
+		}
 		if token := workflowTokenFromCheckpoint(checkpoint); token != nil {
 			return []*WorkflowToken{token}
 		}
@@ -261,6 +271,67 @@ func workflowActiveTokensFromCheckpoint(checkpoint *domain.WorkflowCheckpoint) [
 		}
 	}
 	return tokens
+}
+
+func workflowSyntheticPauseToken(checkpoint *domain.WorkflowCheckpoint, pauseState *WorkflowPauseState) *WorkflowToken {
+	if checkpoint == nil || pauseState == nil {
+		return nil
+	}
+	tokenID := strings.TrimSpace(checkpoint.ResumeToken)
+	if tokenID == "" {
+		tokenID = strings.TrimSpace(checkpoint.ID)
+	}
+	if tokenID == "" {
+		return nil
+	}
+	nodeID := strings.TrimSpace(checkpoint.NodeID)
+	if nodeID == "" {
+		nodeID = strings.TrimSpace(domain.DraftString(pauseState.Payload["node_id"]))
+	}
+	if nodeID == "" {
+		return nil
+	}
+	return &WorkflowToken{ID: tokenID, NodeID: nodeID, OriginTokenID: tokenID}
+}
+
+func workflowPauseCanSynthesizeToken(pauseState *WorkflowPauseState) bool {
+	if pauseState == nil {
+		return false
+	}
+	if pauseState.Scope == WorkflowPauseScopeToken {
+		return true
+	}
+	return strings.TrimSpace(domain.DraftString(pauseState.Payload["token_id"])) != ""
+}
+
+func workflowPauseStateFromCheckpoint(checkpoint *domain.WorkflowCheckpoint) *WorkflowPauseState {
+	if checkpoint == nil {
+		return nil
+	}
+	return workflowPauseStateFromMetadata(checkpoint.Metadata)
+}
+
+func workflowPauseStateFromMetadata(metadata map[string]any) *WorkflowPauseState {
+	if len(metadata) == 0 {
+		return nil
+	}
+	source := WorkflowPauseSource(strings.TrimSpace(domain.DraftString(metadata[workflowPauseSourceMetadataKey])))
+	scope := WorkflowPauseScope(strings.TrimSpace(domain.DraftString(metadata[workflowPauseScopeMetadataKey])))
+	reason := strings.TrimSpace(domain.DraftString(metadata[workflowPauseReasonMetadataKey]))
+	allowedResumeModes := workflowPauseAllowedResumeModes(&domain.WorkflowCheckpoint{Metadata: metadata})
+	if source == "" && scope == "" && reason == "" && len(allowedResumeModes) == 0 {
+		return nil
+	}
+	pauseState := &WorkflowPauseState{
+		Source:             source,
+		Scope:              scope,
+		Reason:             reason,
+		AllowedResumeModes: allowedResumeModes,
+	}
+	if payload := workflowCheckpointPayload(metadata[workflowPausePayloadMetadataKey]); len(payload) > 0 {
+		pauseState.Payload = payload
+	}
+	return pauseState
 }
 
 func workflowActiveTokenSetEntries(raw any) []map[string]any {

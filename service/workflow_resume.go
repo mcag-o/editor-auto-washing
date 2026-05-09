@@ -16,6 +16,13 @@ type WorkflowResumeCommand struct {
 	OperatorNote string
 }
 
+func ResolveWorkflowResumeMode(checkpoint *domain.WorkflowCheckpoint, requested WorkflowResumeMode) (WorkflowResumeMode, error) {
+	if strings.TrimSpace(string(requested)) == "" {
+		return defaultWorkflowResumeMode(checkpoint), nil
+	}
+	return resolveWorkflowResumeMode(checkpoint, requested)
+}
+
 func resolveWorkflowResumeMode(checkpoint *domain.WorkflowCheckpoint, requested WorkflowResumeMode) (WorkflowResumeMode, error) {
 	requested = WorkflowResumeMode(strings.TrimSpace(string(requested)))
 	allowed := workflowPauseAllowedResumeModes(checkpoint)
@@ -106,11 +113,30 @@ func recordWorkflowResumeCommand(checkpoint *domain.WorkflowCheckpoint, mode Wor
 	if note := strings.TrimSpace(command.OperatorNote); note != "" {
 		checkpoint.Metadata[workflowResumeOperatorNoteMetadataKey] = note
 	}
+	checkpoint.Metadata[workflowLatestAuditHintMetadataKey] = workflowResumeAuditHint(mode, command)
 	if command.HumanInput != nil {
 		for key, value := range workflowHumanResumeInputMetadata(command.HumanInput, true) {
 			checkpoint.Metadata[key] = value
 		}
 	}
+}
+
+func workflowResumeAuditHint(mode WorkflowResumeMode, command WorkflowResumeCommand) string {
+	note := strings.TrimSpace(command.OperatorNote)
+	if note != "" {
+		return note
+	}
+	if mode == "" {
+		return ""
+	}
+	return "resume:" + strings.TrimSpace(string(mode))
+}
+
+func workflowLatestAuditHint(checkpoint *domain.WorkflowCheckpoint) string {
+	if checkpoint == nil || len(checkpoint.Metadata) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(domain.DraftString(checkpoint.Metadata[workflowLatestAuditHintMetadataKey]))
 }
 
 func applyWorkflowResumeTarget(runtimeCtx *WorkflowExecutionContext, checkpoint *domain.WorkflowCheckpoint, mode WorkflowResumeMode) {

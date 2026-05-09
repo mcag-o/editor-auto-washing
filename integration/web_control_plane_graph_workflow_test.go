@@ -608,22 +608,30 @@ func TestWebControlPlaneHumanNodePauseIsVisibleAndResumable(t *testing.T) {
 		},
 	}))
 
-	getResp, err := http.Get(serverURL + "/api/workflow-runs/" + run.ID)
+	getResp, err := http.Get(serverURL + "/api/workflow-runs/" + run.ID + "/pause-view")
 	require.NoError(t, err)
 	defer getResp.Body.Close()
 	require.Equal(t, http.StatusOK, getResp.StatusCode)
 
-	var pausedRun map[string]any
-	require.NoError(t, json.NewDecoder(getResp.Body).Decode(&pausedRun))
-	require.Equal(t, "paused", pausedRun["status"])
-	require.Equal(t, string(service.WorkflowPauseSourceHumanNode), pausedRun["pause_source"])
-	require.Equal(t, "awaiting editor review", pausedRun["pause_reason"])
-	require.Contains(t, pausedRun["allowed_resume_modes"], string(service.WorkflowResumeModeContinueToken))
-	require.Contains(t, pausedRun["allowed_resume_modes"], string(service.WorkflowResumeModeReplayFromCheckpoint))
-	affectedToken, ok := pausedRun["affected_token"].(map[string]any)
+	var pausedView struct {
+		Summary map[string]any   `json:"summary"`
+		TaskItems []map[string]any `json:"taskItems"`
+		FullAuditRefs []domain.AuditLog `json:"fullAuditRefs"`
+	}
+	require.NoError(t, json.NewDecoder(getResp.Body).Decode(&pausedView))
+	require.Equal(t, "paused", pausedView.Summary["status"])
+	require.Equal(t, string(service.WorkflowPauseSourceHumanNode), pausedView.Summary["pauseSource"])
+	require.Equal(t, "awaiting editor review", pausedView.Summary["pauseReason"])
+	require.Contains(t, pausedView.Summary["allowedResumeModes"], string(service.WorkflowResumeModeContinueToken))
+	require.Contains(t, pausedView.Summary["allowedResumeModes"], string(service.WorkflowResumeModeReplayFromCheckpoint))
+	require.Len(t, pausedView.TaskItems, 1)
+	require.Equal(t, "token-human-pause", pausedView.TaskItems[0]["tokenId"])
+	require.Equal(t, "review_draft", pausedView.TaskItems[0]["nodeId"])
+	require.Equal(t, "Human review required", pausedView.TaskItems[0]["title"])
+	pausePayload, ok := pausedView.TaskItems[0]["pausePayloadPreview"].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "token-human-pause", affectedToken["token_id"])
-	require.Equal(t, "review_draft", affectedToken["node_id"])
+	require.Equal(t, "token-human-pause", pausePayload["token_id"])
+	require.Equal(t, "review_draft", pausePayload["node_id"])
 
 	resumeResp := postJSON(t, serverURL+"/api/workflow-runs/"+run.ID+"/resume", map[string]any{
 		"action": "approve",
@@ -642,7 +650,7 @@ func TestWebControlPlaneHumanNodePauseIsVisibleAndResumable(t *testing.T) {
 	reloadedRun, err := workflowRuns.GetByID(t.Context(), run.ID)
 	require.NoError(t, err)
 	require.Equal(t, domain.WorkflowRunRunning, reloadedRun.Status)
-	require.Equal(t, string(service.WorkflowResumeModeContinueToken), reloadedRun.Metadata["resume_mode"])
+	require.Equal(t, service.WorkflowResumeModeContinueToken, reloadedRun.Metadata["resume_mode"])
 	require.Empty(t, reloadedRun.ResumeFromCheckpointID)
 
 	checkpoints, err := workflowCheckpoints.ListByWorkflowRunID(t.Context(), run.ID)
@@ -690,6 +698,27 @@ func TestWebControlPlaneManualPauseAndResumePersistAuditTrail(t *testing.T) {
 	})
 	defer pauseResp.Body.Close()
 	require.Equal(t, http.StatusAccepted, pauseResp.StatusCode)
+
+	pauseViewResp, err := http.Get(serverURL + "/api/workflow-runs/" + run.ID + "/pause-view")
+	require.NoError(t, err)
+	defer pauseViewResp.Body.Close()
+	require.Equal(t, http.StatusOK, pauseViewResp.StatusCode)
+
+	var pauseView struct {
+		Summary map[string]any `json:"summary"`
+		TaskItems []map[string]any `json:"taskItems"`
+		FullAuditRefs []domain.AuditLog `json:"fullAuditRefs"`
+	}
+	require.NoError(t, json.NewDecoder(pauseViewResp.Body).Decode(&pauseView))
+	require.Equal(t, string(service.WorkflowPauseSourceManual), pauseView.Summary["pauseSource"])
+	require.Equal(t, "manual review needed", pauseView.Summary["pauseReason"])
+	require.Contains(t, pauseView.Summary["allowedResumeModes"], string(service.WorkflowResumeModeContinueActiveTokens))
+	require.Contains(t, pauseView.Summary["allowedResumeModes"], string(service.WorkflowResumeModeReplayFromCheckpoint))
+	require.Len(t, pauseView.TaskItems, 1)
+	require.Equal(t, "Manual pause", pauseView.TaskItems[0]["title"])
+	require.Equal(t, "manual review needed", pauseView.TaskItems[0]["summary"])
+	require.Len(t, pauseView.FullAuditRefs, 1)
+	require.Equal(t, "web_control.workflow_run.pause", pauseView.FullAuditRefs[0].Action)
 
 	resumeResp := postJSON(t, serverURL+"/api/workflow-runs/"+run.ID+"/resume", map[string]any{
 		"action": "approve",
@@ -768,19 +797,24 @@ func TestWebControlPlanePolicyPauseExposesReasonAndAllowedResumeModes(t *testing
 		},
 	}))
 
-	resp, err := http.Get(serverURL + "/api/workflow-runs/" + run.ID)
+	resp, err := http.Get(serverURL + "/api/workflow-runs/" + run.ID + "/pause-view")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var payload map[string]any
+	var payload struct {
+		Summary map[string]any `json:"summary"`
+		TaskItems []map[string]any `json:"taskItems"`
+	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&payload))
-	require.Equal(t, "paused", payload["status"])
-	require.Equal(t, string(service.WorkflowPauseSourcePolicy), payload["pause_source"])
-	require.Equal(t, "policy pause: moderation required", payload["pause_reason"])
-	require.Contains(t, payload["allowed_resume_modes"], string(service.WorkflowResumeModeContinueActiveTokens))
-	require.Contains(t, payload["allowed_resume_modes"], string(service.WorkflowResumeModeReplayFromCheckpoint))
-	pausePayload, ok := payload["pause_payload"].(map[string]any)
+	require.Equal(t, "paused", payload.Summary["status"])
+	require.Equal(t, string(service.WorkflowPauseSourcePolicy), payload.Summary["pauseSource"])
+	require.Equal(t, "policy pause: moderation required", payload.Summary["pauseReason"])
+	require.Contains(t, payload.Summary["allowedResumeModes"], string(service.WorkflowResumeModeContinueActiveTokens))
+	require.Contains(t, payload.Summary["allowedResumeModes"], string(service.WorkflowResumeModeReplayFromCheckpoint))
+	require.Len(t, payload.TaskItems, 1)
+	require.Equal(t, "Policy pause", payload.TaskItems[0]["title"])
+	pausePayload, ok := payload.TaskItems[0]["pausePayloadPreview"].(map[string]any)
 	require.True(t, ok)
 	require.Contains(t, pausePayload, "trigger_context")
 }
