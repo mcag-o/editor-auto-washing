@@ -1,11 +1,13 @@
 package integration
 
 import (
+	"content-hub/service"
 	"content-hub/domain"
 	"encoding/json"
 	"io"
 	"net/http"
 	"regexp"
+	"time"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -187,4 +189,63 @@ func TestReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t *testing.T
 	require.Equal(t, createdDoc.ID, actions["web_intake.create_from_paste"].ResourceID)
 	require.Equal(t, createdDoc.ID, actions["web_control.article.workflow_template_assigned"].ResourceID)
 	require.Equal(t, "react-mainline-workflow-template", actions["web_control.article.workflow_template_assigned"].Metadata["workflow_template_id"])
+}
+
+func TestReactControlPlanePauseViewIsAvailableForPausedRuns(t *testing.T) {
+	_, _, workflowRuns, workflowCheckpoints, serverURL := newWebControlPlaneIntegrationServer(t)
+
+	run := &domain.WorkflowRun{
+		ID:                     "react-pause-view-run",
+		WorkflowID:             "react-pause-view-workflow",
+		WorkflowVersion:        "v1",
+		WorkspaceArticleID:     "react-pause-view-workspace",
+		Status:                 domain.WorkflowRunPaused,
+		CurrentNodeID:          "review_draft",
+		Resumable:              true,
+		ResumeFromCheckpointID: "react-pause-view-checkpoint",
+		Metadata: map[string]any{
+			"pause_source":             string(service.WorkflowPauseSourcePolicy),
+			"pause_reason":             "policy pause: browser-first visibility",
+			"pause_allowed_resume_modes": []string{string(service.WorkflowResumeModeContinueActiveTokens), string(service.WorkflowResumeModeReplayFromCheckpoint)},
+		},
+	}
+	require.NoError(t, workflowRuns.Create(t.Context(), run))
+	require.NoError(t, workflowCheckpoints.Create(t.Context(), &domain.WorkflowCheckpoint{
+		ID:            "react-pause-view-checkpoint",
+		WorkflowRunID: run.ID,
+		NodeExecutionID: "react-pause-view-node-exec",
+		NodeID:        "review_draft",
+		State:         domain.WorkflowCheckpointStateActive,
+		Resumable:     true,
+		ResumeToken:   "react-pause-view-token",
+		CreatedAt:     time.Now().UTC(),
+		Metadata: map[string]any{
+			"pause_source": string(service.WorkflowPauseSourcePolicy),
+			"pause_reason": "policy pause: browser-first visibility",
+			"pause_allowed_resume_modes": []string{
+				string(service.WorkflowResumeModeContinueActiveTokens),
+				string(service.WorkflowResumeModeReplayFromCheckpoint),
+			},
+			"pause_payload": map[string]any{"token_id": "react-pause-view-token", "node_id": "review_draft"},
+		},
+	}))
+
+	resp, err := http.Get(serverURL + "/api/workflow-runs/" + run.ID + "/pause-view")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var payload struct {
+		Summary struct {
+			PauseSource string `json:"pauseSource"`
+			PauseReason string `json:"pauseReason"`
+		} `json:"summary"`
+		TaskItems []map[string]any `json:"taskItems"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&payload))
+	require.Equal(t, string(service.WorkflowPauseSourcePolicy), payload.Summary.PauseSource)
+	require.Equal(t, "policy pause: browser-first visibility", payload.Summary.PauseReason)
+	require.Len(t, payload.TaskItems, 1)
+	require.Equal(t, "Policy review required", payload.TaskItems[0]["title"])
+	require.Equal(t, "review_draft", payload.TaskItems[0]["nodeId"])
 }

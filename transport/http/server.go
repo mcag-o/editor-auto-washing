@@ -390,6 +390,7 @@ func (s *Server) registerRoutes() {
 		api.GET("/audit/:id", apiAuditHandler.Get)
 		if s.provider.WorkflowRunRepo != nil && s.provider.WorkflowCheckpointRepo != nil {
 			api.GET("/workflow-runs/:id", apiWorkflowRunsHandler.Get)
+			api.GET("/workflow-runs/:id/pause-view", apiWorkflowRunsHandler.PauseView)
 			api.GET("/workflow-runs/:id/audit", apiWorkflowRunsHandler.Audit)
 			api.POST("/workflow-runs/:id/pause", apiWorkflowRunsHandler.Pause)
 			api.POST("/workflow-runs/:id/resume", apiWorkflowRunsHandler.Resume)

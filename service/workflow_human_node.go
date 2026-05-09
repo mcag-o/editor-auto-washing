@@ -11,6 +11,7 @@ import (
 const workflowPauseStateResultKey = "workflow_pause"
 const workflowHumanResumeInputMetadataKey = "human_resume_input"
 const workflowHumanResumeSubmittedKey = "submitted"
+const workflowLatestAuditHintMetadataKey = "workflow_latest_audit_hint"
 
 type workflowHumanNodeConfig struct {
 	ActionSchema map[string]any `json:"action_schema"`
@@ -102,6 +103,58 @@ func workflowHumanPausePayload(nodeID string, token *WorkflowToken, config workf
 		"allowed_resume_modes": allowedResumeModes,
 	}
 	return payload
+}
+
+func workflowHumanPausePayloadPreview(payload map[string]any) map[string]any {
+	if len(payload) == 0 {
+		return map[string]any{}
+	}
+	preview := cloneWorkflowPayload(payload)
+	delete(preview, "action_schema")
+	delete(preview, "form_schema")
+	return preview
+}
+
+func workflowPauseTaskTitle(source WorkflowPauseSource) string {
+	switch source {
+	case WorkflowPauseSourceHumanNode:
+		return "Human review required"
+	case WorkflowPauseSourcePolicy:
+		return "Policy review required"
+	case WorkflowPauseSourceManual:
+		return "Manual review required"
+	default:
+		return "Paused workflow task"
+	}
+}
+
+func workflowPauseAvailableActions(source WorkflowPauseSource, modes []WorkflowResumeMode) []string {
+	actions := make([]string, 0, len(modes))
+	seen := map[string]struct{}{}
+	for _, mode := range modes {
+		var action string
+		switch mode {
+		case WorkflowResumeModeContinueToken:
+			if source == WorkflowPauseSourceHumanNode {
+				action = "submit"
+			} else {
+				action = "resume"
+			}
+		case WorkflowResumeModeContinueActiveTokens:
+			action = "resume"
+		case WorkflowResumeModeReplayFromCheckpoint:
+			action = "replay"
+		}
+		if action == "" {
+			continue
+		}
+		if _, ok := seen[action]; ok {
+			continue
+		}
+		seen[action] = struct{}{}
+		actions = append(actions, action)
+	}
+	return actions
 }
 
 func workflowHumanResumeInputMetadata(input map[string]any, submitted bool) map[string]any {
