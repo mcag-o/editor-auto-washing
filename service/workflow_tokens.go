@@ -20,6 +20,8 @@ type WorkflowToken struct {
 	OriginTokenID string
 	OriginRoute   WorkflowTokenRouteLineage
 	Branch        *WorkflowBranchContext
+	Frame         *WorkflowExecutionFrame
+	Subflow       *workflowSubflowFrame
 }
 
 func newWorkflowRootToken(nodeID string) *WorkflowToken {

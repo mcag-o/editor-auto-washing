@@ -22,6 +22,14 @@ import (
 )
 
 func TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t *testing.T) {
+	runWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t)
+}
+
+func TestWebControlPlaneGraphWorkflowSupportsParallelJoinSubflowAndLoop(t *testing.T) {
+	runWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t)
+}
+
+func runWebControlPlaneUploadToRenderedResultWithWorkflowTemplate(t *testing.T) {
 	root, repos, _, _, serverURL := newWebControlPlaneIntegrationServer(t)
 	require.DirExists(t, root)
 

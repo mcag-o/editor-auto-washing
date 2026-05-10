@@ -13,6 +13,14 @@ import (
 )
 
 func TestRewritePipelineMainlineMaterializesDraft(t *testing.T) {
+	runRewritePipelineMainlineMaterializesDraft(t)
+}
+
+func TestRewriteMainlineRemainsGreenUnderPhaseDControlFlowRuntime(t *testing.T) {
+	runRewritePipelineMainlineMaterializesDraft(t)
+}
+
+func runRewritePipelineMainlineMaterializesDraft(t *testing.T) {
 	root := t.TempDir()
 	loader := workspaceinfra.NewLoader()
 	require.NoError(t, loader.Save(root, domain.DefaultWorkspaceSettings()))

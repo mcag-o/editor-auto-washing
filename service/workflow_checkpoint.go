@@ -178,6 +178,10 @@ func workflowTokenMetadata(token WorkflowToken) map[string]any {
 		metadata["token_branch_result"] = cloneWorkflowPayload(token.Branch.Result)
 		metadata["token_branch_artifacts"] = cloneWorkflowPayload(token.Branch.Artifacts)
 	}
+	if token.Frame != nil {
+		metadata["token_frame_input"] = cloneWorkflowPayload(token.Frame.Input)
+		metadata["token_frame_metadata"] = cloneWorkflowPayload(token.Frame.Metadata)
+	}
 	return metadata
 }
 
@@ -218,6 +222,19 @@ func workflowTokenFromMetadata(defaultNodeID string, metadata map[string]any) *W
 	if nodeID == "" {
 		nodeID = strings.TrimSpace(defaultNodeID)
 	}
+	var frame *WorkflowExecutionFrame
+	if rawInput, hasInput := metadata["token_frame_input"]; hasInput {
+		if rawMetadata, hasMetadata := metadata["token_frame_metadata"]; hasMetadata {
+			frame = &WorkflowExecutionFrame{
+				Input:    workflowCheckpointPayload(rawInput),
+				Metadata: workflowCheckpointPayload(rawMetadata),
+			}
+		} else {
+			frame = &WorkflowExecutionFrame{Input: workflowCheckpointPayload(rawInput)}
+		}
+	} else if rawMetadata, hasMetadata := metadata["token_frame_metadata"]; hasMetadata {
+		frame = &WorkflowExecutionFrame{Metadata: workflowCheckpointPayload(rawMetadata)}
+	}
 	return &WorkflowToken{
 		ID:            tokenID,
 		NodeID:        nodeID,
@@ -233,6 +250,7 @@ func workflowTokenFromMetadata(defaultNodeID string, metadata map[string]any) *W
 			Result:    workflowCheckpointPayload(metadata["token_branch_result"]),
 			Artifacts: workflowCheckpointPayload(metadata["token_branch_artifacts"]),
 		},
+		Frame: frame,
 	}
 }
 

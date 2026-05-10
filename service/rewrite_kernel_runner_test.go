@@ -184,7 +184,7 @@ func TestBuildRewriteWorkflowExecutionStateRestoresCurrentAndQueuedBranchesFromP
 	err = kernel.Resume(t.Context(), runtimeCtx)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"left", "right"}, order)
+	assert.ElementsMatch(t, []string{"left", "right"}, order)
 }
 
 func TestLoadRewriteWorkflowCheckpointPreservesNestedOriginRoute(t *testing.T) {

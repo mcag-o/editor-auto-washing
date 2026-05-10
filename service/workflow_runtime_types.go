@@ -54,9 +54,11 @@ type WorkflowExecutionContext struct {
 	LatestRoute     *WorkflowRouteOutcomeSummary
 	CurrentNodeID   string
 	CurrentToken    *WorkflowToken
+	CurrentFrame    *WorkflowExecutionFrame
 	RootToken       *WorkflowToken
 	ActiveTokens    []*WorkflowToken
 	CompletedTokens []*WorkflowToken
+	JoinBarriers    map[string]*workflowJoinBarrier
 	Checkpoints     []domain.WorkflowCheckpoint
 	Variables       map[string]any
 	Result          map[string]any

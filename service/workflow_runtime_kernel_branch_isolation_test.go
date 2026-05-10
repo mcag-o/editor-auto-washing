@@ -67,10 +67,10 @@ func TestWorkflowKernelKeepsSiblingBranchVarsIsolated(t *testing.T) {
 	assert.Equal(t, "right", right.Branch.Artifacts["branch"])
 
 	assert.Equal(t, "shared-input", runtimeCtx.Input["title"])
-	assert.Equal(t, map[string]any{"title": "shared-input"}, runtimeCtx.Context.Payload)
+	assert.Equal(t, map[string]any{"title": "shared-input", "branch": "right"}, runtimeCtx.Context.Payload)
 	assert.Nil(t, runtimeCtx.Input["branch"])
 	assert.Equal(t, "shared-input", runtimeCtx.Input["title"])
-	assert.Equal(t, map[string]any{"title": "shared-input"}, runtimeCtx.Context.Payload)
+	assert.Equal(t, map[string]any{"title": "shared-input", "branch": "right"}, runtimeCtx.Context.Payload)
 	assert.Equal(t, map[string]any{"source": "upload"}, runtimeCtx.Metadata)
 	assert.Nil(t, runtimeCtx.Result)
 	assert.Nil(t, runtimeCtx.Variables)

@@ -3,6 +3,7 @@ package service
 import (
 	"content-hub/domain"
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -300,10 +301,11 @@ func TestWorkflowKernelCreatesChildTokensForWinningRouteGroup(t *testing.T) {
 	err := kernel.executeFrom(context.Background(), runtimeCtx, wf.EntryNodeID)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"start", "left", "finish", "right", "finish"}, order)
+	assert.Equal(t, "start", order[0])
+	assert.ElementsMatch(t, []string{"left", "right", "finish"}, order[1:])
 	require.Len(t, runtimeCtx.ActiveTokens, 0)
 	assert.NotNil(t, runtimeCtx.RootToken)
-	require.Len(t, runtimeCtx.CompletedTokens, 5)
+	require.Len(t, runtimeCtx.CompletedTokens, 4)
 	assert.Equal(t, runtimeCtx.RootToken.ID, runtimeCtx.CompletedTokens[0].ID)
 	assert.Equal(t, "start", runtimeCtx.CompletedTokens[0].NodeID)
 
@@ -315,12 +317,11 @@ func TestWorkflowKernelCreatesChildTokensForWinningRouteGroup(t *testing.T) {
 
 	require.Len(t, byNode["left"], 1)
 	require.Len(t, byNode["right"], 1)
-	require.Len(t, byNode["finish"], 2)
+	require.Len(t, byNode["finish"], 1)
 
 	left := byNode["left"][0]
 	right := byNode["right"][0]
-	finishA := byNode["finish"][0]
-	finishB := byNode["finish"][1]
+	finish := byNode["finish"][0]
 
 	assert.Equal(t, runtimeCtx.RootToken.ID, left.ParentTokenID)
 	assert.Equal(t, runtimeCtx.RootToken.ID, right.ParentTokenID)
@@ -328,15 +329,7 @@ func TestWorkflowKernelCreatesChildTokensForWinningRouteGroup(t *testing.T) {
 	assert.Equal(t, runtimeCtx.RootToken.ID, right.OriginTokenID)
 	assert.Equal(t, "left", left.OriginRoute.SelectedNodeID)
 	assert.Equal(t, "right", right.OriginRoute.SelectedNodeID)
-
-	finishByParent := map[string]*WorkflowToken{
-		finishA.ParentTokenID: finishA,
-		finishB.ParentTokenID: finishB,
-	}
-	require.Contains(t, finishByParent, left.ID)
-	require.Contains(t, finishByParent, right.ID)
-	assert.Equal(t, left.OriginRoute, finishByParent[left.ID].OriginRoute)
-	assert.Equal(t, right.OriginRoute, finishByParent[right.ID].OriginRoute)
+	require.NotNil(t, finish.Branch)
 }
 
 func TestWorkflowKernelPreservesBranchSpecificRouteSummaryOnFanout(t *testing.T) {
@@ -557,7 +550,8 @@ func TestWorkflowKernelResumeRestoresEmittedActiveTokenSetCheckpoint(t *testing.
 	err := kernel.executeFrom(context.Background(), runtimeCtx, wf.EntryNodeID)
 
 	require.Error(t, err)
-	assert.Equal(t, []string{"start", "left", "right"}, firstRunOrder)
+	assert.Equal(t, "start", firstRunOrder[0])
+	assert.ElementsMatch(t, []string{"left", "right"}, firstRunOrder[1:])
 	checkpoint, checkpointErr := latestResumableCheckpoint(runtimeCtx.Checkpoints)
 	require.NoError(t, checkpointErr)
 	require.NotNil(t, checkpoint)
@@ -582,9 +576,335 @@ func TestWorkflowKernelResumeRestoresEmittedActiveTokenSetCheckpoint(t *testing.
 	err = resumeKernel.Resume(context.Background(), resumeCtx)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"left", "right"}, resumedOrder)
+	assert.ElementsMatch(t, []string{"left", "right"}, resumedOrder)
 	require.Len(t, resumeCtx.CompletedTokens, 2)
 	assert.ElementsMatch(t, []string{"left", "right"}, []string{resumeCtx.CompletedTokens[0].NodeID, resumeCtx.CompletedTokens[1].NodeID})
+}
+
+func TestWorkflowKernelCanAdvanceMultipleActiveTokensConcurrently(t *testing.T) {
+	tracker := &concurrentTokenTracker{release: make(chan struct{})}
+	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
+		"start": &resultWorkflowNode{output: map[string]any{"route": "approved"}},
+		"left":  &concurrentGateWorkflowNode{label: "left", tracker: tracker},
+		"right": &concurrentGateWorkflowNode{label: "right", tracker: tracker},
+	})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "concurrent-active-tokens",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start",
+		Nodes: []domain.WorkflowNode{
+			{ID: "start", Type: "action", Name: "Start"},
+			{ID: "left", Type: "action", Name: "Left"},
+			{ID: "right", Type: "action", Name: "Right"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "start", ToNodeID: "left", Condition: "result.route == approved", Priority: 1},
+			{FromNodeID: "start", ToNodeID: "right", Condition: "result.route == approved", Priority: 1},
+		},
+	}
+	runtimeCtx := &WorkflowExecutionContext{
+		Workflow: wf,
+		Context:  &domain.WorkflowContext{Payload: map[string]any{"title": "shared"}},
+	}
+
+	err := kernel.executeFrom(context.Background(), runtimeCtx, wf.EntryNodeID)
+
+	require.NoError(t, err)
+	assert.True(t, tracker.concurrent)
+	assert.Equal(t, map[string]any{"title": "shared"}, runtimeCtx.Input)
+	require.Len(t, runtimeCtx.CompletedTokens, 3)
+	for _, token := range runtimeCtx.CompletedTokens {
+		if token.NodeID != "left" && token.NodeID != "right" {
+			continue
+		}
+		require.NotNil(t, token.Branch)
+		assert.Equal(t, token.NodeID, token.Branch.Result["branch"])
+	}
+}
+
+func TestWorkflowKernelJoinBarrierWaitsForAllIncomingBranches(t *testing.T) {
+	var order []string
+	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
+		"start": &resultWorkflowNode{label: "start", order: &order, output: map[string]any{"route": "approved"}},
+		"left":  &joinBranchWorkflowNode{label: "left", order: &order},
+		"right": &joinBranchWorkflowNode{label: "right", order: &order},
+		"join":  &recordingWorkflowNode{label: "join", order: &order},
+	})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "join-barrier-runtime",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start",
+		Nodes: []domain.WorkflowNode{
+			{ID: "start", Type: "action", Name: "Start"},
+			{ID: "left", Type: "action", Name: "Left"},
+			{ID: "right", Type: "action", Name: "Right"},
+			{ID: "join", Type: "action", Name: "Join"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "start", ToNodeID: "left", Condition: "result.route == approved", Priority: 1},
+			{FromNodeID: "start", ToNodeID: "right", Condition: "result.route == approved", Priority: 1},
+			{FromNodeID: "left", ToNodeID: "join", Priority: 1},
+			{FromNodeID: "right", ToNodeID: "join", Priority: 1},
+		},
+	}
+	runtimeCtx := &WorkflowExecutionContext{
+		Workflow: wf,
+		Context:  &domain.WorkflowContext{Payload: map[string]any{"title": "shared"}},
+	}
+
+	err := kernel.executeFrom(context.Background(), runtimeCtx, wf.EntryNodeID)
+
+	require.NoError(t, err)
+	assert.Equal(t, "start", order[0])
+	assert.ElementsMatch(t, []string{"left", "right", "join"}, order[1:])
+	joinCount := 0
+	for _, item := range order {
+		if item == "join" {
+			joinCount++
+		}
+	}
+	assert.Equal(t, 1, joinCount)
+	require.Len(t, runtimeCtx.CompletedTokens, 4)
+	byNode := make(map[string][]*WorkflowToken)
+	for i := range runtimeCtx.CompletedTokens {
+		token := runtimeCtx.CompletedTokens[i]
+		byNode[token.NodeID] = append(byNode[token.NodeID], token)
+	}
+	require.Len(t, byNode["join"], 1)
+	require.NotNil(t, byNode["join"][0].Branch)
+	assert.Equal(t, "left", byNode["join"][0].Branch.Variables["shared"])
+	assert.Equal(t, "right", byNode["join"][0].Branch.Result["from"])
+	assert.Equal(t, "right", byNode["join"][0].Branch.Artifacts["artifact"])
+}
+
+func TestWorkflowKernelSubflowRunsInlineAndReturnsToParentToken(t *testing.T) {
+	var order []string
+	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
+		"start":         &recordingWorkflowNode{label: "start", order: &order},
+		"subflow":       &inlineSubflowWorkflowNode{},
+		"after-subflow": &recordingWorkflowNode{label: "after-subflow", order: &order},
+	})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "inline-subflow-runtime",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start",
+		Nodes: []domain.WorkflowNode{
+			{ID: "start", Type: "action", Name: "Start"},
+			{ID: "subflow", Type: "action", Name: "Subflow"},
+			{ID: "after-subflow", Type: "action", Name: "AfterSubflow"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "start", ToNodeID: "subflow", Priority: 1},
+			{FromNodeID: "subflow", ToNodeID: "after-subflow", Priority: 1},
+		},
+	}
+	runtimeCtx := &WorkflowExecutionContext{
+		Workflow: wf,
+		Context:  &domain.WorkflowContext{Payload: map[string]any{"title": "Parent Title"}},
+	}
+
+	err := kernel.executeFrom(context.Background(), runtimeCtx, wf.EntryNodeID)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"start", "after-subflow"}, order)
+	require.Len(t, runtimeCtx.CompletedTokens, 3)
+	byNode := make(map[string]*WorkflowToken)
+	for i := range runtimeCtx.CompletedTokens {
+		byNode[runtimeCtx.CompletedTokens[i].NodeID] = runtimeCtx.CompletedTokens[i]
+	}
+	require.NotNil(t, byNode["subflow"])
+	require.NotNil(t, byNode["after-subflow"])
+	assert.Equal(t, byNode["subflow"].ID, byNode["after-subflow"].ParentTokenID)
+	assert.Equal(t, "Child Title", byNode["after-subflow"].Branch.Variables["title"])
+	assert.Nil(t, byNode["after-subflow"].Branch.Variables["ignored"])
+}
+
+
+
+func TestWorkflowKernelBindsTokenLocalFrameBeforeNodeExecution(t *testing.T) {
+	probe := &frameProbeWorkflowNode{}
+	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
+		"start": probe,
+	})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "frame-binding",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start",
+		Nodes: []domain.WorkflowNode{{
+			ID:   "start",
+			Type: "action",
+			Name: "Start",
+		}},
+	}
+	runtimeCtx := &WorkflowExecutionContext{
+		Workflow: wf,
+		Context:  &domain.WorkflowContext{Payload: map[string]any{"title": "shared"}},
+		Metadata: map[string]any{"source": "upload"},
+	}
+
+	err := kernel.executeFrom(context.Background(), runtimeCtx, wf.EntryNodeID)
+
+	require.NoError(t, err)
+	require.NotNil(t, probe.frame)
+	assert.Equal(t, "mutated", probe.frame.Input["title"])
+	assert.Equal(t, "mutated", probe.frame.Metadata["source"])
+	assert.Equal(t, "shared", runtimeCtx.Input["title"])
+	assert.Equal(t, map[string]any{"title": "shared", "branch": "frame"}, runtimeCtx.Context.Payload)
+	assert.Equal(t, map[string]any{"source": "upload"}, runtimeCtx.Metadata)
+	require.NotNil(t, runtimeCtx.RootToken)
+	require.NotNil(t, runtimeCtx.RootToken.Branch)
+	assert.Equal(t, "frame", runtimeCtx.RootToken.Branch.Variables["branch"])
+	assert.Equal(t, "frame", runtimeCtx.RootToken.Branch.Result["branch"])
+	assert.Equal(t, "frame", runtimeCtx.RootToken.Branch.Artifacts["branch"])
+	assert.Nil(t, runtimeCtx.Variables)
+	assert.Nil(t, runtimeCtx.Result)
+	assert.Nil(t, runtimeCtx.Artifacts)
+}
+
+func TestWorkflowKernelChildTokensDoNotInheritMutatedFrameBaseline(t *testing.T) {
+	collector := &childFrameBaselineWorkflowNode{}
+	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
+		"start": &mutatingFrameParentWorkflowNode{},
+		"left":  collector,
+		"right": collector,
+	})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "child-frame-baseline",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start",
+		Nodes: []domain.WorkflowNode{
+			{ID: "start", Type: "action", Name: "Start"},
+			{ID: "left", Type: "action", Name: "Left"},
+			{ID: "right", Type: "action", Name: "Right"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "start", ToNodeID: "left", Condition: "result.route == approved", Priority: 1},
+			{FromNodeID: "start", ToNodeID: "right", Condition: "result.route == approved", Priority: 1},
+		},
+	}
+	runtimeCtx := &WorkflowExecutionContext{
+		Workflow: wf,
+		Context:  &domain.WorkflowContext{Payload: map[string]any{"title": "shared"}},
+		Metadata: map[string]any{"source": "upload"},
+	}
+
+	err := kernel.executeFrom(context.Background(), runtimeCtx, wf.EntryNodeID)
+
+	require.NoError(t, err)
+	require.Len(t, collector.inputs, 2)
+	require.Len(t, collector.metadata, 2)
+	assert.Equal(t, []string{"shared", "shared"}, collector.inputs)
+	assert.Equal(t, []string{"upload", "upload"}, collector.metadata)
+	for _, checkpoint := range runtimeCtx.Checkpoints {
+		if checkpoint.NodeID != "left" && checkpoint.NodeID != "right" {
+			continue
+		}
+		rawInput, hasInput := checkpoint.Metadata["token_frame_input"]
+		rawMetadata, hasMetadata := checkpoint.Metadata["token_frame_metadata"]
+		if !hasInput && !hasMetadata {
+			continue
+		}
+		input, ok := rawInput.(map[string]any)
+		require.True(t, ok)
+		metadata, ok := rawMetadata.(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "shared", input["title"])
+		assert.Equal(t, "upload", metadata["source"])
+	}
+}
+
+func TestWorkflowKernelPreservesFinalTokenPayloadView(t *testing.T) {
+	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
+		"start": &resultWorkflowNode{output: map[string]any{"decision": "approved"}},
+	})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "final-payload-view",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start",
+		Nodes: []domain.WorkflowNode{{
+			ID:   "start",
+			Type: "action",
+			Name: "Start",
+		}},
+	}
+	runtimeCtx := &WorkflowExecutionContext{
+		Workflow: wf,
+		Context:  &domain.WorkflowContext{Payload: map[string]any{"title": "shared"}},
+	}
+
+	err := kernel.executeFrom(context.Background(), runtimeCtx, wf.EntryNodeID)
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"title": "shared", "decision": "approved"}, runtimeCtx.Context.Payload)
+	assert.Equal(t, map[string]any{"title": "shared"}, runtimeCtx.Input)
+	assert.Nil(t, runtimeCtx.Result)
+}
+
+func TestWorkflowKernelResumeUsesSharedBaselineWhenCheckpointLacksFrameSnapshot(t *testing.T) {
+	var seenInputs []string
+	var seenMetadata []string
+	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
+		"resume": &resumeFrameBaselineWorkflowNode{inputs: &seenInputs, metadata: &seenMetadata},
+	})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "resume-frame-baseline",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "resume",
+		Nodes: []domain.WorkflowNode{{
+			ID:   "resume",
+			Type: "action",
+			Name: "Resume",
+		}},
+	}
+	runtimeCtx := &WorkflowExecutionContext{
+		Workflow: wf,
+		Context:  &domain.WorkflowContext{Payload: map[string]any{"title": "shared"}},
+		Metadata: map[string]any{"source": "upload"},
+		Checkpoints: []domain.WorkflowCheckpoint{{
+			WorkflowRunID: "run-1",
+			NodeID:        "resume",
+			State:         domain.WorkflowCheckpointStateActive,
+			Resumable:     true,
+			Metadata: map[string]any{
+				"token_id":                            "token-resume",
+				"token_parent_id":                     "token-root",
+				"token_origin_id":                     "token-root",
+				"token_origin_route_node_id":          "start",
+				"token_origin_route_edge_id":          "start->resume@1[always]",
+				"token_origin_route_selected_node_id": "resume",
+				"active_token_set": []map[string]any{{
+					"token_id":                            "token-resume",
+					"token_parent_id":                     "token-root",
+					"token_origin_id":                     "token-root",
+					"token_origin_route_node_id":          "start",
+					"token_origin_route_edge_id":          "start->resume@1[always]",
+					"token_origin_route_selected_node_id": "resume",
+					"node_id":                             "resume",
+				}},
+			},
+		}},
+	}
+
+	err := kernel.Resume(context.Background(), runtimeCtx)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"shared"}, seenInputs)
+	require.Equal(t, []string{"upload"}, seenMetadata)
+	assert.Equal(t, map[string]any{"title": "shared", "decision": "resume"}, runtimeCtx.Context.Payload)
 }
 
 type resultWorkflowNode struct {
@@ -616,6 +936,191 @@ type failOnceWorkflowNode struct {
 	label  string
 	order  *[]string
 	failed bool
+}
+
+type frameProbeWorkflowNode struct {
+	frame *WorkflowExecutionFrame
+}
+
+type resumeFrameBaselineWorkflowNode struct {
+	inputs   *[]string
+	metadata *[]string
+}
+
+type mutatingFrameParentWorkflowNode struct{}
+
+type childFrameBaselineWorkflowNode struct {
+	inputs   []string
+	metadata []string
+}
+
+type joinBranchWorkflowNode struct {
+	label string
+	order *[]string
+}
+
+type inlineSubflowWorkflowNode struct{}
+
+type loopControllerWorkflowNode struct {
+	maxIterations int
+}
+
+type concurrentTokenTracker struct {
+	mu         sync.Mutex
+	started    int
+	concurrent bool
+	release    chan struct{}
+	once       sync.Once
+}
+
+type concurrentGateWorkflowNode struct {
+	label   string
+	tracker *concurrentTokenTracker
+}
+
+func (n *frameProbeWorkflowNode) Name() string {
+	return "start"
+}
+
+func (n *frameProbeWorkflowNode) Execute(_ context.Context, _ *domain.WorkflowContext) error {
+	return nil
+}
+
+func (n *frameProbeWorkflowNode) ExecuteWorkflow(_ context.Context, runtimeCtx *WorkflowExecutionContext, _ domain.WorkflowNode) (WorkflowNodeResult, error) {
+	n.frame = runtimeCtx.CurrentFrame
+	runtimeCtx.Input["title"] = "mutated"
+	runtimeCtx.Metadata["source"] = "mutated"
+	runtimeCtx.Variables["branch"] = "frame"
+	runtimeCtx.Artifacts["branch"] = "frame"
+	return WorkflowNodeResult{Output: map[string]any{"branch": "frame"}}, nil
+}
+
+func (n *resumeFrameBaselineWorkflowNode) Name() string {
+	return "resume"
+}
+
+func (n *resumeFrameBaselineWorkflowNode) Execute(_ context.Context, _ *domain.WorkflowContext) error {
+	return nil
+}
+
+func (n *resumeFrameBaselineWorkflowNode) ExecuteWorkflow(_ context.Context, runtimeCtx *WorkflowExecutionContext, _ domain.WorkflowNode) (WorkflowNodeResult, error) {
+	if n.inputs != nil {
+		*n.inputs = append(*n.inputs, domain.DraftString(runtimeCtx.Input["title"]))
+	}
+	if n.metadata != nil {
+		*n.metadata = append(*n.metadata, domain.DraftString(runtimeCtx.Metadata["source"]))
+	}
+	runtimeCtx.Result["decision"] = "resume"
+	return WorkflowNodeResult{Output: map[string]any{"decision": "resume"}}, nil
+}
+
+func (n *mutatingFrameParentWorkflowNode) Name() string {
+	return "start"
+}
+
+func (n *mutatingFrameParentWorkflowNode) Execute(_ context.Context, _ *domain.WorkflowContext) error {
+	return nil
+}
+
+func (n *mutatingFrameParentWorkflowNode) ExecuteWorkflow(_ context.Context, runtimeCtx *WorkflowExecutionContext, _ domain.WorkflowNode) (WorkflowNodeResult, error) {
+	runtimeCtx.Input["title"] = "mutated-parent"
+	runtimeCtx.Metadata["source"] = "mutated-parent"
+	return WorkflowNodeResult{Output: map[string]any{"route": "approved"}}, nil
+}
+
+func (n *childFrameBaselineWorkflowNode) Name() string {
+	return "child"
+}
+
+func (n *childFrameBaselineWorkflowNode) Execute(_ context.Context, _ *domain.WorkflowContext) error {
+	return nil
+}
+
+func (n *childFrameBaselineWorkflowNode) ExecuteWorkflow(_ context.Context, runtimeCtx *WorkflowExecutionContext, _ domain.WorkflowNode) (WorkflowNodeResult, error) {
+	n.inputs = append(n.inputs, domain.DraftString(runtimeCtx.Input["title"]))
+	n.metadata = append(n.metadata, domain.DraftString(runtimeCtx.Metadata["source"]))
+	return WorkflowNodeResult{}, nil
+}
+
+func (n *joinBranchWorkflowNode) Name() string {
+	return n.label
+}
+
+func (n *joinBranchWorkflowNode) Execute(_ context.Context, _ *domain.WorkflowContext) error {
+	return nil
+}
+
+func (n *joinBranchWorkflowNode) ExecuteWorkflow(_ context.Context, runtimeCtx *WorkflowExecutionContext, _ domain.WorkflowNode) (WorkflowNodeResult, error) {
+	if n.order != nil {
+		*n.order = append(*n.order, n.label)
+	}
+	runtimeCtx.Variables["owner"] = n.label
+	runtimeCtx.Variables["shared"] = n.label
+	runtimeCtx.Artifacts["artifact"] = n.label
+	return WorkflowNodeResult{Output: map[string]any{"from": n.label}}, nil
+}
+
+func (n *inlineSubflowWorkflowNode) Name() string {
+	return "subflow"
+}
+
+func (n *inlineSubflowWorkflowNode) Execute(_ context.Context, _ *domain.WorkflowContext) error {
+	return nil
+}
+
+func (n *inlineSubflowWorkflowNode) ExecuteWorkflow(_ context.Context, runtimeCtx *WorkflowExecutionContext, _ domain.WorkflowNode) (WorkflowNodeResult, error) {
+	frame := &workflowSubflowFrame{
+		ParentTokenID:   runtimeCtx.CurrentToken.ID,
+		ParentNodeID:    "subflow",
+		ChildWorkflowID: "child-flow",
+		EntryNodeID:     "child-start",
+		ReturnNodeID:    "after-subflow",
+		ReturnMapping:   map[string]string{"headline": "title"},
+		ParentBranch:    cloneWorkflowBranchContext(runtimeCtx.CurrentToken.Branch),
+		State:           workflowSubflowStateRunning,
+	}
+	runtimeCtx.CurrentToken.Subflow = frame
+	runtimeCtx.Variables["headline"] = "Child Title"
+	runtimeCtx.Variables["ignored"] = "drop"
+	return WorkflowNodeResult{}, nil
+}
+
+func (n *loopControllerWorkflowNode) Name() string {
+	return "loop"
+}
+
+func (n *loopControllerWorkflowNode) Execute(_ context.Context, _ *domain.WorkflowContext) error {
+	return nil
+}
+
+func (n *loopControllerWorkflowNode) ExecuteWorkflow(_ context.Context, runtimeCtx *WorkflowExecutionContext, _ domain.WorkflowNode) (WorkflowNodeResult, error) {
+	frame := ensureWorkflowLoopFrame(runtimeCtx, "loop", "run-1", n.maxIterations)
+	return workflowLoopApplyDecision(runtimeCtx, frame, workflowLoopDecisionRepeat), nil
+}
+
+func (n *concurrentGateWorkflowNode) Name() string {
+	return n.label
+}
+
+func (n *concurrentGateWorkflowNode) Execute(_ context.Context, _ *domain.WorkflowContext) error {
+	return nil
+}
+
+func (n *concurrentGateWorkflowNode) ExecuteWorkflow(_ context.Context, runtimeCtx *WorkflowExecutionContext, _ domain.WorkflowNode) (WorkflowNodeResult, error) {
+	if n.tracker == nil {
+		return WorkflowNodeResult{}, nil
+	}
+	n.tracker.mu.Lock()
+	n.tracker.started++
+	if n.tracker.started >= 2 {
+		n.tracker.concurrent = true
+		n.tracker.once.Do(func() {
+			close(n.tracker.release)
+		})
+	}
+	n.tracker.mu.Unlock()
+	<-n.tracker.release
+	return WorkflowNodeResult{Output: map[string]any{"branch": n.label}}, nil
 }
 
 func (n *failOnceWorkflowNode) Name() string {

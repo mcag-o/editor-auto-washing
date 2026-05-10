@@ -14,6 +14,14 @@ import (
 )
 
 func TestReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t *testing.T) {
+	runReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t)
+}
+
+func TestReactControlPlanePasteToRenderedResultWithWorkflowTemplatePhaseD(t *testing.T) {
+	runReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t)
+}
+
+func runReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t *testing.T) {
 	_, repos, _, _, serverURL := newWebControlPlaneIntegrationServer(t)
 
 	rootResp, err := http.Get(serverURL + "/")

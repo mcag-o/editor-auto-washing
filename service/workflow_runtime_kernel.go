@@ -5,16 +5,18 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
 type workflowRuntimeKernel struct {
 	nodes  map[string]WorkflowNode
 	router workflowRouter
+	pool   *workflowWorkerPool
 }
 
 func newWorkflowRuntimeKernel(nodes map[string]WorkflowNode) workflowRuntimeKernel {
-	return workflowRuntimeKernel{nodes: nodes, router: newWorkflowRouter()}
+	return workflowRuntimeKernel{nodes: nodes, router: newWorkflowRouter(), pool: newWorkflowWorkerPool(workflowRuntimeWorkerPoolSize)}
 }
 
 func (k workflowRuntimeKernel) Execute(ctx context.Context, wf *domain.WorkflowDefinition, wc *domain.WorkflowContext) error {
@@ -66,64 +68,252 @@ func (k workflowRuntimeKernel) executeFrom(ctx context.Context, runtimeCtx *Work
 		return fmt.Errorf("workflow definition is required")
 	}
 	if err := validateWorkflowRuntimeGraph(runtimeCtx.Workflow); err != nil {
-		return err
+		if !workflowLoopValidationAllowed(runtimeCtx.Workflow, err) {
+			return err
+		}
+	}
+	if runtimeCtx.JoinBarriers == nil {
+		runtimeCtx.JoinBarriers = map[string]*workflowJoinBarrier{}
 	}
 	consumeActiveCheckpoints(runtimeCtx, time.Now().UTC())
 
 	nodeIndex := indexWorkflowNodes(runtimeCtx.Workflow)
 	initializeWorkflowTokens(runtimeCtx, startNodeID)
 	for len(runtimeCtx.ActiveTokens) > 0 {
+		batch := snapshotActiveWorkflowTokens(runtimeCtx)
+		if len(batch) == 0 {
+			break
+		}
+		outcomes, err := k.executeActiveTokenBatch(ctx, runtimeCtx, nodeIndex, batch)
+		if err != nil {
+			return err
+		}
+		for _, outcome := range outcomes {
+			if outcome == nil || outcome.token == nil || strings.TrimSpace(outcome.current) == "" {
+				continue
+			}
+			if err := k.applyTokenExecutionOutcome(runtimeCtx, nodeIndex, outcome); err != nil {
+				return err
+			}
+			if outcome.result.Paused {
+				clearWorkflowTokenExecutionFrame(runtimeCtx)
+				return nil
+			}
+		}
+	}
+	consumeActiveCheckpoints(runtimeCtx, time.Now().UTC())
+	clearWorkflowTokenExecutionFrame(runtimeCtx)
+	return nil
+}
+
+type workflowTokenExecutionOutcome struct {
+	token       *WorkflowToken
+	current     string
+	result      WorkflowNodeResult
+	nextEdges   []domain.WorkflowEdge
+	context     *domain.WorkflowContext
+	latestRoute *WorkflowRouteOutcomeSummary
+	err         error
+}
+
+type workflowTokenPauseSignal struct{}
+
+func (workflowTokenPauseSignal) Error() string {
+	return "workflow token paused"
+}
+
+func snapshotActiveWorkflowTokens(runtimeCtx *WorkflowExecutionContext) []*WorkflowToken {
+	if runtimeCtx == nil || len(runtimeCtx.ActiveTokens) == 0 {
+		return nil
+	}
+	tokens := make([]*WorkflowToken, 0, len(runtimeCtx.ActiveTokens))
+	for len(runtimeCtx.ActiveTokens) > 0 {
 		token := popNextActiveWorkflowToken(runtimeCtx)
-		if token == nil || strings.TrimSpace(token.NodeID) == "" {
+		if token == nil {
 			continue
 		}
-		current := token.NodeID
-		bindWorkflowTokenBranch(runtimeCtx, token)
-		runtimeCtx.CurrentToken = token
-		runtimeCtx.CurrentNodeID = current
-		node, ok := k.nodes[current]
-		if !ok {
-			return fmt.Errorf("workflow node not found: %s", current)
+		tokens = append(tokens, token)
+	}
+	return tokens
+}
+
+func (k workflowRuntimeKernel) executeActiveTokenBatch(ctx context.Context, runtimeCtx *WorkflowExecutionContext, nodeIndex map[string]domain.WorkflowNode, tokens []*WorkflowToken) ([]*workflowTokenExecutionOutcome, error) {
+	outcomes := make([]*workflowTokenExecutionOutcome, len(tokens))
+	var mu sync.Mutex
+	err := k.pool.Run(ctx, tokens, func(runCtx context.Context, token *WorkflowToken) error {
+		outcome := k.executeSingleToken(runCtx, runtimeCtx, nodeIndex, token)
+		mu.Lock()
+		for i := range tokens {
+			if tokens[i] == token {
+				outcomes[i] = outcome
+				break
+			}
 		}
-		result := WorkflowNodeResult{}
-		nextEdges := outgoingEdges(runtimeCtx.Workflow.Edges, current)
-		graphRouteRequired := routeRequired(nextEdges)
-		if runtimeNode, ok := node.(workflowRuntimeNode); ok {
-			nodeDef, found := nodeIndex[current]
-			if !found {
-				return fmt.Errorf("workflow node not found in definition: %s", current)
-			}
-			execResult, err := runtimeNode.ExecuteWorkflow(ctx, runtimeCtx, nodeDef)
-			if err != nil {
-				return err
-			}
-			result = execResult
-			result.RouteRequired = graphRouteRequired && !result.AllowNaturalTermination
-		} else {
-			if err := node.Execute(ctx, runtimeCtx.Context); err != nil {
-				return err
-			}
-			result.RouteRequired = graphRouteRequired
+		mu.Unlock()
+		if outcome != nil && outcome.err != nil {
+			return outcome.err
 		}
-		storeWorkflowNodeResult(token, result)
-		if result.Paused {
-			pauseWorkflowToken(token, result.PauseState)
-			rebindWorkflowNodeResult(runtimeCtx, token)
-			appendCheckpointWithSnapshot(runtimeCtx, "", current, workflowCheckpointSnapshot{Token: token, PauseState: token.PauseState, Metadata: workflowHumanResumeInputMetadata(nil, false)})
-			clearWorkflowBranchBindings(runtimeCtx)
+		if outcome != nil && outcome.result.Paused {
+			return workflowTokenPauseSignal{}
+		}
+		return nil
+	})
+	if err != nil {
+		if _, ok := err.(workflowTokenPauseSignal); ok {
+			return outcomes, nil
+		}
+		return nil, err
+	}
+	return outcomes, nil
+}
+
+func (k workflowRuntimeKernel) executeSingleToken(ctx context.Context, runtimeCtx *WorkflowExecutionContext, nodeIndex map[string]domain.WorkflowNode, token *WorkflowToken) *workflowTokenExecutionOutcome {
+	if token == nil || strings.TrimSpace(token.NodeID) == "" {
+		return &workflowTokenExecutionOutcome{}
+	}
+	current := token.NodeID
+	localCtx := newWorkflowTokenRuntimeContext(runtimeCtx, token)
+	bindWorkflowTokenExecutionFrame(localCtx, token)
+	localCtx.CurrentNodeID = current
+	node, ok := k.nodes[current]
+	if !ok {
+		return &workflowTokenExecutionOutcome{err: fmt.Errorf("workflow node not found: %s", current)}
+	}
+	result := WorkflowNodeResult{}
+	nextEdges := outgoingEdges(localCtx.Workflow.Edges, current)
+	graphRouteRequired := routeRequired(nextEdges)
+	if runtimeNode, ok := node.(workflowRuntimeNode); ok {
+		nodeDef, found := nodeIndex[current]
+		if !found {
+			return &workflowTokenExecutionOutcome{err: fmt.Errorf("workflow node not found in definition: %s", current)}
+		}
+		execResult, err := runtimeNode.ExecuteWorkflow(ctx, localCtx, nodeDef)
+		if err != nil {
+			return &workflowTokenExecutionOutcome{err: err}
+		}
+		result = execResult
+		result.RouteRequired = graphRouteRequired && !result.AllowNaturalTermination
+	} else {
+		if err := node.Execute(ctx, localCtx.Context); err != nil {
+			return &workflowTokenExecutionOutcome{err: err}
+		}
+		syncWorkflowTokenPayloadBridge(localCtx)
+		result.RouteRequired = graphRouteRequired
+	}
+	storeWorkflowNodeResult(token, result)
+	if result.Paused {
+		pauseWorkflowToken(token, result.PauseState)
+	}
+	rebindWorkflowNodeResult(localCtx, token)
+	return &workflowTokenExecutionOutcome{
+		token:       token,
+		current:     current,
+		result:      result,
+		nextEdges:   nextEdges,
+		context:     localCtx.Context,
+		latestRoute: localCtx.LatestRoute,
+	}
+}
+
+func newWorkflowTokenRuntimeContext(runtimeCtx *WorkflowExecutionContext, token *WorkflowToken) *WorkflowExecutionContext {
+	if runtimeCtx == nil {
+		return &WorkflowExecutionContext{CurrentToken: token}
+	}
+	local := &WorkflowExecutionContext{
+		Workflow:       runtimeCtx.Workflow,
+		Context:        cloneWorkflowExecutionDomainContext(runtimeCtx.Context),
+		Input:          cloneWorkflowPayload(workflowRuntimeSharedInput(runtimeCtx)),
+		sharedInput:    cloneWorkflowPayload(workflowRuntimeSharedInput(runtimeCtx)),
+		Metadata:       cloneWorkflowPayload(workflowRuntimeSharedMetadata(runtimeCtx)),
+		sharedMetadata: cloneWorkflowPayload(workflowRuntimeSharedMetadata(runtimeCtx)),
+		CurrentToken:   token,
+		RootToken:      runtimeCtx.RootToken,
+	}
+	bindWorkflowPayloadBridge(local)
+	return local
+}
+
+func cloneWorkflowExecutionDomainContext(ctx *domain.WorkflowContext) *domain.WorkflowContext {
+	if ctx == nil {
+		return &domain.WorkflowContext{}
+	}
+	return &domain.WorkflowContext{
+		Payload:      cloneWorkflowPayload(workflowRuntimeInput(ctx)),
+		Document:     ctx.Document,
+		ArtifactPath: ctx.ArtifactPath,
+		TraceID:      ctx.TraceID,
+		Command:      ctx.Command,
+	}
+}
+
+func syncWorkflowTokenPayloadBridge(runtimeCtx *WorkflowExecutionContext) {
+	if runtimeCtx == nil || runtimeCtx.Context == nil {
+		return
+	}
+	sharedInput := workflowRuntimeSharedInput(runtimeCtx)
+	variables := map[string]any{}
+	for key, value := range runtimeCtx.Context.Payload {
+		if sharedValue, shared := sharedInput[key]; shared && fmt.Sprint(sharedValue) == fmt.Sprint(value) {
+			continue
+		}
+		variables[key] = cloneWorkflowValue(value)
+	}
+	runtimeCtx.Variables = variables
+	if runtimeCtx.CurrentToken != nil && runtimeCtx.CurrentToken.Branch != nil {
+		runtimeCtx.CurrentToken.Branch.Variables = cloneWorkflowPayload(variables)
+	}
+	bindWorkflowPayloadBridge(runtimeCtx)
+}
+
+func (k workflowRuntimeKernel) applyTokenExecutionOutcome(runtimeCtx *WorkflowExecutionContext, nodeIndex map[string]domain.WorkflowNode, outcome *workflowTokenExecutionOutcome) error {
+	token := outcome.token
+	current := outcome.current
+	result := outcome.result
+	runtimeCtx.Context = outcome.context
+	runtimeCtx.LatestRoute = outcome.latestRoute
+	bindWorkflowTokenExecutionFrame(runtimeCtx, token)
+	runtimeCtx.CurrentNodeID = current
+	if result.Paused {
+		appendCheckpointWithSnapshot(runtimeCtx, "", current, workflowCheckpointSnapshot{Token: token, PauseState: token.PauseState, Metadata: workflowHumanResumeInputMetadata(nil, false)})
+		return nil
+	}
+	if !workflowNodeIsLoop(nodeIndex[current]) {
+		if barrier, ok := runtimeCtx.JoinBarriers[current]; ok && barrier != nil {
+		barrier.tokens[token.ID] = token
+		barrier.Arrive(token.ID)
+		if !barrier.Ready() {
 			return nil
 		}
-		rebindWorkflowNodeResult(runtimeCtx, token)
+		joined := workflowJoinToken(current, barrier)
+		if joined == nil {
+			return nil
+		}
+		delete(runtimeCtx.JoinBarriers, current)
+		runtimeCtx.CurrentToken = joined
+		runtimeCtx.CurrentNodeID = current
+		runtimeCtx.Input = cloneWorkflowPayload(workflowRuntimeSharedInput(runtimeCtx))
+		runtimeCtx.Metadata = cloneWorkflowPayload(workflowRuntimeSharedMetadata(runtimeCtx))
+		runtimeCtx.CurrentFrame = joined.Frame
+		if joined.Branch != nil {
+			runtimeCtx.Variables = joined.Branch.Variables
+			runtimeCtx.Result = joined.Branch.Result
+			runtimeCtx.Artifacts = joined.Branch.Artifacts
+		}
+		runtimeCtx.CompletedTokens = append(runtimeCtx.CompletedTokens, joined)
+		storeWorkflowNodeResult(joined, result)
+		bindWorkflowTokenExecutionFrame(runtimeCtx, joined)
+		}
+	}
 
-		evaluation := k.router.EvaluateRoutes(runtimeCtx, current, result, nextEdges)
-		recordLatestRouteOutcome(runtimeCtx, workflowRouteOutcomeSummary(evaluation))
-		switch evaluation.Outcome {
+	evaluation := k.router.EvaluateRoutes(runtimeCtx, current, result, outcome.nextEdges)
+	recordLatestRouteOutcome(runtimeCtx, workflowRouteOutcomeSummary(evaluation))
+	switch evaluation.Outcome {
 		case WorkflowRouteOutcomeSingleMatch, WorkflowRouteOutcomeMultiMatch, WorkflowRouteOutcomeFallbackMatch:
-			type checkpointChild struct {
-				token   *WorkflowToken
-				summary WorkflowRouteOutcomeSummary
-			}
-			children := make([]checkpointChild, 0, len(evaluation.SelectedEdges))
+		type checkpointChild struct {
+			token   *WorkflowToken
+			summary WorkflowRouteOutcomeSummary
+		}
+		children := make([]checkpointChild, 0, len(evaluation.SelectedEdges))
 			for i := len(evaluation.SelectedEdges) - 1; i >= 0; i-- {
 				nextEdge := evaluation.SelectedEdges[i]
 				if _, ok := nodeIndex[nextEdge.ToNodeID]; !ok {
@@ -135,24 +325,49 @@ func (k workflowRuntimeKernel) executeFrom(ctx context.Context, runtimeCtx *Work
 					SelectedEdgeID: workflowEdgeSummaryID(nextEdge),
 					SelectedNodeID: nextEdge.ToNodeID,
 				})
+				if token.Subflow != nil && strings.TrimSpace(token.Subflow.ReturnNodeID) == strings.TrimSpace(nextEdge.ToNodeID) {
+					parentBranch := cloneWorkflowBranchContext(token.Subflow.ParentBranch)
+					if parentBranch == nil {
+						parentBranch = newWorkflowBranchContext(nil, nil)
+					}
+					parent := &WorkflowToken{Branch: parentBranch}
+					applyWorkflowSubflowReturnMapping(parent, token, token.Subflow.ReturnMapping)
+					child.Branch = parent.Branch
+					child.Subflow = nil
+				}
+				if incoming := incomingEdges(runtimeCtx.Workflow.Edges, nextEdge.ToNodeID); len(incoming) > 1 && !workflowNodeIsLoop(nodeIndex[nextEdge.ToNodeID]) {
+					if runtimeCtx.JoinBarriers[nextEdge.ToNodeID] == nil {
+						runtimeCtx.JoinBarriers[nextEdge.ToNodeID] = newWorkflowJoinBarrierWithExpectedCount(nextEdge.ToNodeID, len(incoming))
+					}
+					barrier := runtimeCtx.JoinBarriers[nextEdge.ToNodeID]
+					barrier.tokens[child.ID] = child
+					barrier.Arrive(child.ID)
+					if !barrier.Ready() {
+						continue
+					}
+					joined := workflowJoinToken(nextEdge.ToNodeID, barrier)
+					delete(runtimeCtx.JoinBarriers, nextEdge.ToNodeID)
+					if joined != nil {
+						pushActiveWorkflowToken(runtimeCtx, joined)
+						appendCheckpointWithSnapshot(runtimeCtx, "", joined.NodeID, workflowCheckpointSnapshot{Token: joined})
+					}
+					continue
+				}
 				children = append(children, checkpointChild{token: child, summary: routeSummary})
 				pushActiveWorkflowToken(runtimeCtx, child)
 			}
-			for _, child := range children {
-				routeSummary := child.summary
-				appendCheckpointWithSnapshot(runtimeCtx, "", child.token.NodeID, workflowCheckpointSnapshot{RouteSummary: &routeSummary, Token: child.token})
-			}
-		case WorkflowRouteOutcomeNoMatch:
-			if result.RouteRequired {
-				return fmt.Errorf("no matching route for node %s", current)
-			}
-		case WorkflowRouteOutcomeAmbiguousMatch, WorkflowRouteOutcomeEvaluationErr:
-			return evaluation.Error
+		for _, child := range children {
+			routeSummary := child.summary
+			appendCheckpointWithSnapshot(runtimeCtx, "", child.token.NodeID, workflowCheckpointSnapshot{RouteSummary: &routeSummary, Token: child.token})
 		}
-		runtimeCtx.CompletedTokens = append(runtimeCtx.CompletedTokens, token)
+	case WorkflowRouteOutcomeNoMatch:
+		if result.RouteRequired {
+			return fmt.Errorf("no matching route for node %s", current)
+		}
+	case WorkflowRouteOutcomeAmbiguousMatch, WorkflowRouteOutcomeEvaluationErr:
+		return evaluation.Error
 	}
-	consumeActiveCheckpoints(runtimeCtx, time.Now().UTC())
-	clearWorkflowBranchBindings(runtimeCtx)
+	runtimeCtx.CompletedTokens = append(runtimeCtx.CompletedTokens, token)
 	return nil
 }
 
@@ -182,19 +397,6 @@ func ensureWorkflowTokenBranch(runtimeCtx *WorkflowExecutionContext, token *Work
 		return
 	}
 	token.Branch = newWorkflowBranchContext(workflowRuntimeSharedInput(runtimeCtx), runtimeCtx.Metadata)
-}
-
-func bindWorkflowTokenBranch(runtimeCtx *WorkflowExecutionContext, token *WorkflowToken) {
-	if runtimeCtx == nil || token == nil {
-		return
-	}
-	ensureWorkflowTokenBranch(runtimeCtx, token)
-	runtimeCtx.Input = cloneWorkflowPayload(workflowRuntimeSharedInput(runtimeCtx))
-	runtimeCtx.Variables = token.Branch.Variables
-	runtimeCtx.Result = token.Branch.Result
-	runtimeCtx.Metadata = cloneWorkflowPayload(workflowRuntimeSharedMetadata(runtimeCtx))
-	runtimeCtx.Artifacts = token.Branch.Artifacts
-	bindWorkflowPayloadBridge(runtimeCtx)
 }
 
 func storeWorkflowNodeResult(token *WorkflowToken, result WorkflowNodeResult) {
@@ -232,20 +434,6 @@ func rebindWorkflowNodeResult(runtimeCtx *WorkflowExecutionContext, token *Workf
 	}
 	runtimeCtx.Result = token.Branch.Result
 	bindWorkflowPayloadBridge(runtimeCtx)
-}
-
-func clearWorkflowBranchBindings(runtimeCtx *WorkflowExecutionContext) {
-	if runtimeCtx == nil {
-		return
-	}
-	runtimeCtx.Input = workflowRuntimeSharedInput(runtimeCtx)
-	runtimeCtx.Variables = nil
-	runtimeCtx.Result = nil
-	runtimeCtx.Metadata = workflowRuntimeSharedMetadata(runtimeCtx)
-	runtimeCtx.Artifacts = nil
-	if runtimeCtx.Context != nil {
-		runtimeCtx.Context.Payload = cloneWorkflowPayload(runtimeCtx.Input)
-	}
 }
 
 func workflowRuntimeInput(ctx *domain.WorkflowContext) map[string]any {
@@ -409,4 +597,24 @@ func indexWorkflowNodes(wf *domain.WorkflowDefinition) map[string]domain.Workflo
 		result[node.ID] = node
 	}
 	return result
+}
+
+func workflowLoopValidationAllowed(wf *domain.WorkflowDefinition, err error) bool {
+	if wf == nil || err == nil {
+		return false
+	}
+	message := err.Error()
+	if !strings.Contains(message, "unsupported cycle in workflow graph") {
+		return false
+	}
+	for _, node := range wf.Nodes {
+		if workflowNodeIsLoop(node) {
+			return true
+		}
+	}
+	return false
+}
+
+func workflowNodeIsLoop(node domain.WorkflowNode) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(node.Name)), "loop") || strings.Contains(strings.ToLower(strings.TrimSpace(node.Type)), "loop")
 }
