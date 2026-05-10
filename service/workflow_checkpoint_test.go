@@ -199,3 +199,55 @@ func TestWorkflowCheckpointCapturesActiveTokenSetAfterFanOut(t *testing.T) {
 		}, activeSet)
 	}
 }
+
+func TestAppendCheckpointWithSnapshotCapturesJoinBarrierState(t *testing.T) {
+	left := &WorkflowToken{
+		ID:            "token-left",
+		NodeID:        "join",
+		ParentTokenID: "token-root",
+		OriginTokenID: "token-root",
+		Branch: &WorkflowBranchContext{
+			Variables: map[string]any{"shared": "left"},
+			Result:    map[string]any{"from": "left"},
+			Artifacts: map[string]any{"artifact": "left"},
+		},
+		Frame: &WorkflowExecutionFrame{
+			Input:    map[string]any{"title": "shared"},
+			Metadata: map[string]any{"source": "upload"},
+		},
+	}
+	barrier := newWorkflowJoinBarrierWithExpectedCount("join", 2)
+	barrier.ParentTokenID = "token-root"
+	barrier.OriginTokenID = "token-root"
+	barrier.OriginRoute = WorkflowTokenRouteLineage{
+		SourceNodeID:   "start",
+		SelectedEdgeID: "start->left@1[result.route == approved]",
+		SelectedNodeID: "left",
+	}
+	barrier.Frame = &WorkflowExecutionFrame{
+		Input:    map[string]any{"title": "shared"},
+		Metadata: map[string]any{"source": "upload"},
+	}
+	barrier.tokens[left.ID] = left
+	barrier.Arrive(left.ID)
+
+	runtimeCtx := &WorkflowExecutionContext{
+		JoinBarriers: map[string]*workflowJoinBarrier{"join": barrier},
+		ActiveTokens: []*WorkflowToken{left},
+	}
+
+	appendCheckpointWithSnapshot(runtimeCtx, "run-1", "join", workflowCheckpointSnapshot{Token: left})
+
+	require.Len(t, runtimeCtx.Checkpoints, 1)
+	check := runtimeCtx.Checkpoints[0]
+	barriers := workflowJoinBarriersFromCheckpoint(&check)
+	require.Len(t, barriers, 1)
+	restored := barriers["join"]
+	require.NotNil(t, restored)
+	assert.Equal(t, 2, restored.ExpectedCount)
+	assert.Equal(t, []string{"token-left"}, restored.ArrivedTokenIDs)
+	assert.Equal(t, workflowJoinBarrierStateWaiting, restored.State)
+	require.Contains(t, restored.tokens, "token-left")
+	assert.Equal(t, map[string]any{"shared": "left"}, restored.tokens["token-left"].Branch.Variables)
+	assert.Equal(t, map[string]any{"title": "shared"}, restored.tokens["token-left"].Frame.Input)
+}

@@ -104,6 +104,82 @@ func TestValidateWorkflowRuntimeGraphAllowsNonStructuralBranchingShapes(t *testi
 	require.NoError(t, err)
 }
 
+func TestValidateWorkflowRuntimeGraphAllowsExplicitLoopBackEdgeStructure(t *testing.T) {
+	wf := &domain.WorkflowDefinition{
+		Name:        "explicit-loop-cycle",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "loop",
+		Nodes: []domain.WorkflowNode{
+			{ID: "loop", Type: "loop", Name: "Loop", ConfigJSON: `{"body_to_node_id":"body","exit_to_node_id":"exit"}`},
+			{ID: "body", Type: "action", Name: "Body"},
+			{ID: "exit", Type: "action", Name: "Exit"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "loop", ToNodeID: "body", Priority: 1},
+			{FromNodeID: "loop", ToNodeID: "exit", Priority: 2},
+			{FromNodeID: "body", ToNodeID: "loop", Priority: 1},
+		},
+	}
+
+	err := validateWorkflowRuntimeGraph(wf)
+
+	require.NoError(t, err)
+}
+
+func TestValidateWorkflowRuntimeGraphRejectsUnrelatedCycleEvenWhenLoopNodeExists(t *testing.T) {
+	wf := &domain.WorkflowDefinition{
+		Name:        "loop-plus-bad-cycle",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start",
+		Nodes: []domain.WorkflowNode{
+			{ID: "start", Type: "action", Name: "Start"},
+			{ID: "loop", Type: "loop", Name: "Loop", ConfigJSON: `{"body_to_node_id":"body","exit_to_node_id":"exit"}`},
+			{ID: "body", Type: "action", Name: "Body"},
+			{ID: "exit", Type: "action", Name: "Exit"},
+			{ID: "bad-a", Type: "action", Name: "BadA"},
+			{ID: "bad-b", Type: "action", Name: "BadB"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "start", ToNodeID: "loop", Priority: 1},
+			{FromNodeID: "loop", ToNodeID: "body", Priority: 1},
+			{FromNodeID: "loop", ToNodeID: "exit", Priority: 2},
+			{FromNodeID: "body", ToNodeID: "loop", Priority: 1},
+			{FromNodeID: "exit", ToNodeID: "bad-a", Priority: 1},
+			{FromNodeID: "bad-a", ToNodeID: "bad-b", Priority: 1},
+			{FromNodeID: "bad-b", ToNodeID: "bad-a", Priority: 1},
+		},
+	}
+
+	err := validateWorkflowRuntimeGraph(wf)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported cycle in workflow graph")
+}
+
+func TestValidateWorkflowRuntimeGraphRejectsLoopCycleWithoutExplicitConfig(t *testing.T) {
+	wf := &domain.WorkflowDefinition{
+		Name:        "implicit-loop-cycle",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "loop",
+		Nodes: []domain.WorkflowNode{
+			{ID: "loop", Type: "loop", Name: "Loop"},
+			{ID: "body", Type: "action", Name: "Body"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "loop", ToNodeID: "body", Priority: 1},
+			{FromNodeID: "body", ToNodeID: "loop", Priority: 1},
+		},
+	}
+
+	err := validateWorkflowRuntimeGraph(wf)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported cycle in workflow graph")
+}
+
 func TestWorkflowKernelResumeContinuesFromLatestCheckpoint(t *testing.T) {
 	var order []string
 	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
@@ -681,12 +757,119 @@ func TestWorkflowKernelJoinBarrierWaitsForAllIncomingBranches(t *testing.T) {
 	assert.Equal(t, "right", byNode["join"][0].Branch.Artifacts["artifact"])
 }
 
+func TestWorkflowKernelResumeRestoresJoinBarrierBeforeActiveTokens(t *testing.T) {
+	var order []string
+	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
+		"right": &joinBranchWorkflowNode{label: "right", order: &order},
+		"join":  &recordingWorkflowNode{label: "join", order: &order},
+	})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "resume-join-barrier",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "start",
+		Nodes: []domain.WorkflowNode{
+			{ID: "start", Type: "action", Name: "Start"},
+			{ID: "left", Type: "action", Name: "Left"},
+			{ID: "right", Type: "action", Name: "Right"},
+			{ID: "join", Type: "action", Name: "Join"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "start", ToNodeID: "left", Condition: "result.route == approved", Priority: 1},
+			{FromNodeID: "start", ToNodeID: "right", Condition: "result.route == approved", Priority: 1},
+			{FromNodeID: "left", ToNodeID: "join", Priority: 1},
+			{FromNodeID: "right", ToNodeID: "join", Priority: 1},
+		},
+	}
+	left := &WorkflowToken{
+		ID:            "token-left",
+		NodeID:        "join",
+		State:         WorkflowTokenStateActive,
+		ParentTokenID: "token-root",
+		OriginTokenID: "token-root",
+		OriginRoute: WorkflowTokenRouteLineage{
+			SourceNodeID:   "start",
+			SelectedEdgeID: "start->left@1[result.route == approved]",
+			SelectedNodeID: "left",
+		},
+		Branch: &WorkflowBranchContext{
+			Variables: map[string]any{"owner": "left", "shared": "left"},
+			Result:    map[string]any{"from": "left"},
+			Artifacts: map[string]any{"artifact": "left"},
+		},
+		Frame: &WorkflowExecutionFrame{
+			Input:    map[string]any{"title": "shared"},
+			Metadata: map[string]any{"source": "upload"},
+		},
+	}
+	right := &WorkflowToken{
+		ID:            "token-right",
+		NodeID:        "right",
+		State:         WorkflowTokenStateActive,
+		ParentTokenID: "token-root",
+		OriginTokenID: "token-root",
+		OriginRoute: WorkflowTokenRouteLineage{
+			SourceNodeID:   "start",
+			SelectedEdgeID: "start->right@1[result.route == approved]",
+			SelectedNodeID: "right",
+		},
+		Branch: &WorkflowBranchContext{
+			Variables: map[string]any{"title": "shared"},
+			Result:    map[string]any{},
+			Artifacts: map[string]any{},
+		},
+		Frame: &WorkflowExecutionFrame{
+			Input:    map[string]any{"title": "shared"},
+			Metadata: map[string]any{"source": "upload"},
+		},
+	}
+	barrier := newWorkflowJoinBarrierWithExpectedCount("join", 2)
+	barrier.ParentTokenID = "token-root"
+	barrier.OriginTokenID = "token-root"
+	barrier.OriginRoute = left.OriginRoute
+	barrier.Frame = cloneWorkflowExecutionFrame(left.Frame)
+	barrier.tokens[left.ID] = left
+	barrier.Arrive(left.ID)
+
+	runtimeCtx := &WorkflowExecutionContext{
+		Workflow:      wf,
+		Context:       &domain.WorkflowContext{Payload: map[string]any{"title": "shared"}},
+		JoinBarriers:  map[string]*workflowJoinBarrier{"join": barrier},
+		ActiveTokens:  []*WorkflowToken{right},
+		CurrentToken:  right,
+		CurrentNodeID: "right",
+	}
+	appendCheckpointWithSnapshot(runtimeCtx, "run-1", "right", workflowCheckpointSnapshot{Token: right})
+	require.Len(t, runtimeCtx.Checkpoints, 1)
+
+	resumed := &WorkflowExecutionContext{
+		Workflow:    wf,
+		Context:     &domain.WorkflowContext{Payload: map[string]any{"title": "shared"}},
+		Checkpoints: runtimeCtx.Checkpoints,
+	}
+
+	err := kernel.Resume(context.Background(), resumed)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"right", "join"}, order)
+	require.Len(t, resumed.CompletedTokens, 2)
+	assert.Equal(t, "right", resumed.CompletedTokens[0].NodeID)
+	assert.Equal(t, "join", resumed.CompletedTokens[1].NodeID)
+	require.NotNil(t, resumed.CompletedTokens[1].Branch)
+	assert.Equal(t, "left", resumed.CompletedTokens[1].Branch.Variables["shared"])
+	assert.Equal(t, "right", resumed.CompletedTokens[1].Branch.Result["from"])
+	assert.Equal(t, "right", resumed.CompletedTokens[1].Branch.Artifacts["artifact"])
+	assert.Empty(t, resumed.JoinBarriers)
+}
+
 func TestWorkflowKernelSubflowRunsInlineAndReturnsToParentToken(t *testing.T) {
 	var order []string
 	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
 		"start":         &recordingWorkflowNode{label: "start", order: &order},
 		"subflow":       &inlineSubflowWorkflowNode{},
 		"after-subflow": &recordingWorkflowNode{label: "after-subflow", order: &order},
+		"child-start":   &childInlineEntryWorkflowNode{order: &order},
 	})
 
 	wf := &domain.WorkflowDefinition{
@@ -707,13 +890,25 @@ func TestWorkflowKernelSubflowRunsInlineAndReturnsToParentToken(t *testing.T) {
 	runtimeCtx := &WorkflowExecutionContext{
 		Workflow: wf,
 		Context:  &domain.WorkflowContext{Payload: map[string]any{"title": "Parent Title"}},
+		Metadata: map[string]any{
+			"workflow_definitions": map[string]*domain.WorkflowDefinition{
+				"child-flow": {
+					ID:          "child-flow",
+					Name:        "child-flow",
+					Version:     "v1",
+					Enabled:     true,
+					EntryNodeID: "child-start",
+					Nodes: []domain.WorkflowNode{{ID: "child-start", Type: "action", Name: "ChildStart"}},
+				},
+			},
+		},
 	}
 
 	err := kernel.executeFrom(context.Background(), runtimeCtx, wf.EntryNodeID)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"start", "after-subflow"}, order)
-	require.Len(t, runtimeCtx.CompletedTokens, 3)
+	assert.Equal(t, []string{"start", "child-start", "after-subflow"}, order)
+	require.Len(t, runtimeCtx.CompletedTokens, 4)
 	byNode := make(map[string]*WorkflowToken)
 	for i := range runtimeCtx.CompletedTokens {
 		byNode[runtimeCtx.CompletedTokens[i].NodeID] = runtimeCtx.CompletedTokens[i]
@@ -907,6 +1102,131 @@ func TestWorkflowKernelResumeUsesSharedBaselineWhenCheckpointLacksFrameSnapshot(
 	assert.Equal(t, map[string]any{"title": "shared", "decision": "resume"}, runtimeCtx.Context.Payload)
 }
 
+func TestWorkflowKernelRunsLoopBodyAndExitEdgesAsWhileStyleControlFlow(t *testing.T) {
+	var order []string
+	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
+		"loop":     &loopControllerWorkflowNode{maxIterations: 8, exitAfter: 4},
+		"body":     &recordingWorkflowNode{label: "body", order: &order},
+		"exit":     &recordingWorkflowNode{label: "exit", order: &order},
+		"continue": &recordingWorkflowNode{label: "continue", order: &order},
+	})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "loop-while-style",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "loop",
+		Nodes: []domain.WorkflowNode{
+			{ID: "loop", Type: "loop", Name: "Loop"},
+			{ID: "body", Type: "action", Name: "Body"},
+			{ID: "continue", Type: "action", Name: "Continue"},
+			{ID: "exit", Type: "action", Name: "Exit"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "loop", ToNodeID: "exit", Condition: "always", Priority: 1},
+			{FromNodeID: "loop", ToNodeID: "body", Condition: "always", Priority: 1},
+			{FromNodeID: "body", ToNodeID: "continue", Condition: "always", Priority: 1},
+			{FromNodeID: "continue", ToNodeID: "loop", Condition: "always", Priority: 1},
+		},
+	}
+	wf.Nodes[0].ConfigJSON = `{"body_to_node_id":"body","exit_to_node_id":"exit"}`
+	err := kernel.Execute(context.Background(), wf, &domain.WorkflowContext{})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"body", "continue", "body", "continue", "body", "continue", "body", "continue", "exit"}, order)
+}
+
+func TestWorkflowKernelExecuteUsesRealLoopRuntimePath(t *testing.T) {
+	var order []string
+	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
+		"loop":     &loopControllerWorkflowNode{maxIterations: 8, exitAfter: 2},
+		"body":     &recordingWorkflowNode{label: "body", order: &order},
+		"exit":     &recordingWorkflowNode{label: "exit", order: &order},
+		"continue": &recordingWorkflowNode{label: "continue", order: &order},
+	})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "loop-real-kernel-path",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "loop",
+		Nodes: []domain.WorkflowNode{
+			{ID: "loop", Type: "loop", Name: "Loop", ConfigJSON: `{"body_to_node_id":"body","exit_to_node_id":"exit"}`},
+			{ID: "body", Type: "action", Name: "Body"},
+			{ID: "continue", Type: "action", Name: "Continue"},
+			{ID: "exit", Type: "action", Name: "Exit"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "loop", ToNodeID: "exit", Condition: "always", Priority: 1},
+			{FromNodeID: "loop", ToNodeID: "body", Condition: "always", Priority: 1},
+			{FromNodeID: "body", ToNodeID: "continue", Condition: "always", Priority: 1},
+			{FromNodeID: "continue", ToNodeID: "loop", Condition: "always", Priority: 1},
+		},
+	}
+
+	err := kernel.Execute(context.Background(), wf, &domain.WorkflowContext{})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"body", "continue", "body", "continue", "exit"}, order)
+}
+
+func TestWorkflowKernelResumeRestoresLoopFrameAfterIterationLimitPause(t *testing.T) {
+	var order []string
+	kernel := newWorkflowRuntimeKernel(map[string]WorkflowNode{
+		"loop": &loopControllerWorkflowNode{maxIterations: 2, exitAfter: 3},
+		"body": &recordingWorkflowNode{label: "body", order: &order},
+		"exit": &recordingWorkflowNode{label: "exit", order: &order},
+	})
+
+	wf := &domain.WorkflowDefinition{
+		Name:        "loop-pause-resume",
+		Version:     "v1",
+		Enabled:     true,
+		EntryNodeID: "loop",
+		Nodes: []domain.WorkflowNode{
+			{ID: "loop", Type: "loop", Name: "Loop"},
+			{ID: "body", Type: "action", Name: "Body"},
+			{ID: "exit", Type: "action", Name: "Exit"},
+		},
+		Edges: []domain.WorkflowEdge{
+			{FromNodeID: "loop", ToNodeID: "exit", Condition: "always", Priority: 1},
+			{FromNodeID: "loop", ToNodeID: "body", Condition: "always", Priority: 1},
+			{FromNodeID: "body", ToNodeID: "loop", Condition: "always", Priority: 1},
+		},
+	}
+	wf.Nodes[0].ConfigJSON = `{"body_to_node_id":"body","exit_to_node_id":"exit"}`
+	runtimeCtx := &WorkflowExecutionContext{Workflow: wf, Context: &domain.WorkflowContext{}}
+
+	err := kernel.executeFrom(context.Background(), runtimeCtx, wf.EntryNodeID)
+	require.NoError(t, err)
+	require.NotEmpty(t, runtimeCtx.Checkpoints)
+	checkpoint := runtimeCtx.Checkpoints[len(runtimeCtx.Checkpoints)-1]
+	require.Equal(t, domain.WorkflowCheckpointStateActive, checkpoint.State)
+	require.True(t, checkpoint.Resumable)
+	require.Equal(t, "loop", checkpoint.NodeID)
+	checkpointFrame := workflowLoopFrameFromCheckpoint(&checkpoint)
+	require.NotNil(t, checkpointFrame)
+	require.Equal(t, 2, checkpointFrame.Iteration)
+	require.True(t, checkpointFrame.PausedByLimit)
+
+	resumed := &WorkflowExecutionContext{
+		Workflow:    wf,
+		Context:     &domain.WorkflowContext{},
+		Checkpoints: []domain.WorkflowCheckpoint{checkpoint},
+	}
+
+	err = kernel.Resume(context.Background(), resumed)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"body", "body", "body"}, order)
+	assert.Equal(t, domain.WorkflowCheckpointStateTerminal, resumed.Checkpoints[0].State)
+	require.NotEmpty(t, resumed.Checkpoints)
+	assert.Equal(t, domain.WorkflowCheckpointStateActive, resumed.Checkpoints[len(resumed.Checkpoints)-1].State)
+	resumedFrame := workflowLoopFrameFromCheckpoint(&resumed.Checkpoints[len(resumed.Checkpoints)-1])
+	require.NotNil(t, resumedFrame)
+	assert.Equal(t, 3, resumedFrame.Iteration)
+}
+
 type resultWorkflowNode struct {
 	label                   string
 	order                   *[]string
@@ -963,6 +1283,7 @@ type inlineSubflowWorkflowNode struct{}
 
 type loopControllerWorkflowNode struct {
 	maxIterations int
+	exitAfter     int
 }
 
 type concurrentTokenTracker struct {
@@ -1078,6 +1399,7 @@ func (n *inlineSubflowWorkflowNode) ExecuteWorkflow(_ context.Context, runtimeCt
 		ReturnMapping:   map[string]string{"headline": "title"},
 		ParentBranch:    cloneWorkflowBranchContext(runtimeCtx.CurrentToken.Branch),
 		State:           workflowSubflowStateRunning,
+		FailureStrategy: workflowSubflowFailureStrategyContinueParent,
 	}
 	runtimeCtx.CurrentToken.Subflow = frame
 	runtimeCtx.Variables["headline"] = "Child Title"
@@ -1095,6 +1417,12 @@ func (n *loopControllerWorkflowNode) Execute(_ context.Context, _ *domain.Workfl
 
 func (n *loopControllerWorkflowNode) ExecuteWorkflow(_ context.Context, runtimeCtx *WorkflowExecutionContext, _ domain.WorkflowNode) (WorkflowNodeResult, error) {
 	frame := ensureWorkflowLoopFrame(runtimeCtx, "loop", "run-1", n.maxIterations)
+	if frame != nil && frame.PausedByLimit && frame.Paused {
+		return workflowLoopResumeCurrentIteration(runtimeCtx, frame), nil
+	}
+	if n.exitAfter > 0 && frame != nil && frame.Iteration >= n.exitAfter {
+		return workflowLoopApplyDecision(runtimeCtx, frame, workflowLoopDecisionExit), nil
+	}
 	return workflowLoopApplyDecision(runtimeCtx, frame, workflowLoopDecisionRepeat), nil
 }
 

@@ -58,3 +58,64 @@ func TestWorkflowLoopApplyDecisionPausesAtIterationLimit(t *testing.T) {
 	require.NotNil(t, result3.PauseState)
 	assert.Equal(t, 3, frame.Iteration)
 }
+
+func TestWorkflowLoopCheckpointMetadataRoundTripsLoopFrame(t *testing.T) {
+	runtimeCtx := &WorkflowExecutionContext{
+		Metadata: map[string]any{},
+	}
+	frame := ensureWorkflowLoopFrame(runtimeCtx, "loop", "run-1", 3)
+	frame.Iteration = 2
+	frame.LatestDecision = workflowLoopDecisionRepeat
+	frame.PausedByLimit = true
+	frame.Paused = true
+	frame.ResumeMode = WorkflowResumeModeContinueToken
+
+	appendCheckpointWithSnapshot(runtimeCtx, "run-1", "loop", workflowCheckpointSnapshot{})
+	require.Len(t, runtimeCtx.Checkpoints, 1)
+
+	restored := workflowLoopFrameFromCheckpoint(&runtimeCtx.Checkpoints[0])
+	require.NotNil(t, restored)
+	assert.Equal(t, frame.NodeID, restored.NodeID)
+	assert.Equal(t, frame.RunID, restored.RunID)
+	assert.Equal(t, frame.Iteration, restored.Iteration)
+	assert.Equal(t, frame.MaxIterations, restored.MaxIterations)
+	assert.Equal(t, frame.LatestDecision, restored.LatestDecision)
+	assert.Equal(t, frame.PausedByLimit, restored.PausedByLimit)
+	assert.Equal(t, frame.Paused, restored.Paused)
+	assert.Equal(t, frame.ResumeMode, restored.ResumeMode)
+}
+
+func TestWorkflowLoopSelectedEdgesRejectsDuplicateExplicitTargets(t *testing.T) {
+	node := domain.WorkflowNode{
+		ID:         "loop",
+		Type:       "loop",
+		Name:       "Loop",
+		ConfigJSON: `{"body_to_node_id":"body","exit_to_node_id":"exit"}`,
+	}
+	edges := []domain.WorkflowEdge{
+		{FromNodeID: "loop", ToNodeID: "body", Priority: 1},
+		{FromNodeID: "loop", ToNodeID: "body", Priority: 2},
+		{FromNodeID: "loop", ToNodeID: "exit", Priority: 3},
+	}
+
+	selected, err := workflowLoopSelectedEdges(node, edges, workflowLoopDecisionRepeat)
+
+	require.Error(t, err)
+	assert.Nil(t, selected)
+	assert.Contains(t, err.Error(), "ambiguous explicit body edge")
+}
+
+func TestWorkflowLoopFrameFromCheckpointRequiresMatchingNodeID(t *testing.T) {
+	checkpoint := domain.WorkflowCheckpoint{
+		NodeID: "loop-b",
+		Metadata: map[string]any{
+			workflowLoopFrameSetMetadataKey: []any{
+				map[string]any{"node_id": "loop-a", "run_id": "run-1", "iteration": 1},
+			},
+		},
+	}
+
+	restored := workflowLoopFrameFromCheckpoint(&checkpoint)
+
+	assert.Nil(t, restored)
+}

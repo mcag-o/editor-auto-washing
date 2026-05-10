@@ -68,9 +68,7 @@ func (k workflowRuntimeKernel) executeFrom(ctx context.Context, runtimeCtx *Work
 		return fmt.Errorf("workflow definition is required")
 	}
 	if err := validateWorkflowRuntimeGraph(runtimeCtx.Workflow); err != nil {
-		if !workflowLoopValidationAllowed(runtimeCtx.Workflow, err) {
-			return err
-		}
+		return err
 	}
 	if runtimeCtx.JoinBarriers == nil {
 		runtimeCtx.JoinBarriers = map[string]*workflowJoinBarrier{}
@@ -109,9 +107,12 @@ func (k workflowRuntimeKernel) executeFrom(ctx context.Context, runtimeCtx *Work
 type workflowTokenExecutionOutcome struct {
 	token       *WorkflowToken
 	current     string
+	workflow    *domain.WorkflowDefinition
+	execCtx     context.Context
 	result      WorkflowNodeResult
 	nextEdges   []domain.WorkflowEdge
 	context     *domain.WorkflowContext
+	metadata    map[string]any
 	latestRoute *WorkflowRouteOutcomeSummary
 	err         error
 }
@@ -175,6 +176,10 @@ func (k workflowRuntimeKernel) executeSingleToken(ctx context.Context, runtimeCt
 	localCtx := newWorkflowTokenRuntimeContext(runtimeCtx, token)
 	bindWorkflowTokenExecutionFrame(localCtx, token)
 	localCtx.CurrentNodeID = current
+	nodeDef, found := nodeIndex[current]
+	if !found {
+		return &workflowTokenExecutionOutcome{err: fmt.Errorf("workflow node not found in definition: %s", current)}
+	}
 	node, ok := k.nodes[current]
 	if !ok {
 		return &workflowTokenExecutionOutcome{err: fmt.Errorf("workflow node not found: %s", current)}
@@ -183,10 +188,6 @@ func (k workflowRuntimeKernel) executeSingleToken(ctx context.Context, runtimeCt
 	nextEdges := outgoingEdges(localCtx.Workflow.Edges, current)
 	graphRouteRequired := routeRequired(nextEdges)
 	if runtimeNode, ok := node.(workflowRuntimeNode); ok {
-		nodeDef, found := nodeIndex[current]
-		if !found {
-			return &workflowTokenExecutionOutcome{err: fmt.Errorf("workflow node not found in definition: %s", current)}
-		}
 		execResult, err := runtimeNode.ExecuteWorkflow(ctx, localCtx, nodeDef)
 		if err != nil {
 			return &workflowTokenExecutionOutcome{err: err}
@@ -204,13 +205,31 @@ func (k workflowRuntimeKernel) executeSingleToken(ctx context.Context, runtimeCt
 	if result.Paused {
 		pauseWorkflowToken(token, result.PauseState)
 	}
+	if loopFrame := workflowLoopFrameForNode(localCtx, current); loopFrame != nil {
+		decision := workflowLoopDecisionFromResult(result)
+		selectedEdges, err := workflowLoopSelectedEdges(nodeDef, nextEdges, decision)
+		if err != nil {
+			return &workflowTokenExecutionOutcome{err: err}
+		}
+		if len(selectedEdges) > 0 {
+			nextEdges = selectedEdges
+			graphRouteRequired = routeRequired(nextEdges)
+			if decision == workflowLoopDecisionExit {
+				loopFrame.PausedByLimit = false
+				loopFrame.Paused = false
+			}
+		}
+	}
 	rebindWorkflowNodeResult(localCtx, token)
 	return &workflowTokenExecutionOutcome{
 		token:       token,
 		current:     current,
+		workflow:    localCtx.Workflow,
+		execCtx:     ctx,
 		result:      result,
 		nextEdges:   nextEdges,
 		context:     localCtx.Context,
+		metadata:    cloneWorkflowPayload(workflowRuntimeSharedMetadata(localCtx)),
 		latestRoute: localCtx.LatestRoute,
 	}
 }
@@ -220,14 +239,14 @@ func newWorkflowTokenRuntimeContext(runtimeCtx *WorkflowExecutionContext, token 
 		return &WorkflowExecutionContext{CurrentToken: token}
 	}
 	local := &WorkflowExecutionContext{
-		Workflow:       runtimeCtx.Workflow,
-		Context:        cloneWorkflowExecutionDomainContext(runtimeCtx.Context),
-		Input:          cloneWorkflowPayload(workflowRuntimeSharedInput(runtimeCtx)),
-		sharedInput:    cloneWorkflowPayload(workflowRuntimeSharedInput(runtimeCtx)),
-		Metadata:       cloneWorkflowPayload(workflowRuntimeSharedMetadata(runtimeCtx)),
+		Workflow:      runtimeCtx.Workflow,
+		Context:       cloneWorkflowExecutionDomainContext(runtimeCtx.Context),
+		Input:         cloneWorkflowPayload(workflowRuntimeSharedInput(runtimeCtx)),
+		sharedInput:   cloneWorkflowPayload(workflowRuntimeSharedInput(runtimeCtx)),
+		Metadata:      cloneWorkflowPayload(workflowRuntimeSharedMetadata(runtimeCtx)),
 		sharedMetadata: cloneWorkflowPayload(workflowRuntimeSharedMetadata(runtimeCtx)),
-		CurrentToken:   token,
-		RootToken:      runtimeCtx.RootToken,
+		CurrentToken:  token,
+		RootToken:     runtimeCtx.RootToken,
 	}
 	bindWorkflowPayloadBridge(local)
 	return local
@@ -269,10 +288,28 @@ func (k workflowRuntimeKernel) applyTokenExecutionOutcome(runtimeCtx *WorkflowEx
 	token := outcome.token
 	current := outcome.current
 	result := outcome.result
+	activeWorkflow := outcome.workflow
+	if activeWorkflow == nil {
+		activeWorkflow = runtimeCtx.Workflow
+	}
 	runtimeCtx.Context = outcome.context
+	runtimeCtx.Metadata = outcome.metadata
+	runtimeCtx.sharedMetadata = outcome.metadata
 	runtimeCtx.LatestRoute = outcome.latestRoute
 	bindWorkflowTokenExecutionFrame(runtimeCtx, token)
 	runtimeCtx.CurrentNodeID = current
+	if token != nil && token.Subflow != nil && strings.TrimSpace(token.Subflow.ParentNodeID) == strings.TrimSpace(current) && token.Subflow.State == workflowSubflowStateRunning {
+		if err := k.executeInlineSubflow(outcome.execCtx, runtimeCtx, token, activeWorkflow); err != nil {
+			return err
+		}
+		if token.State == WorkflowTokenStatePaused {
+			outcome.result.Paused = true
+			outcome.result.PauseState = token.PauseState
+			return nil
+		}
+		runtimeCtx.CompletedTokens = append(runtimeCtx.CompletedTokens, token)
+		return nil
+	}
 	if result.Paused {
 		appendCheckpointWithSnapshot(runtimeCtx, "", current, workflowCheckpointSnapshot{Token: token, PauseState: token.PauseState, Metadata: workflowHumanResumeInputMetadata(nil, false)})
 		return nil
@@ -371,6 +408,120 @@ func (k workflowRuntimeKernel) applyTokenExecutionOutcome(runtimeCtx *WorkflowEx
 	return nil
 }
 
+func (k workflowRuntimeKernel) executeInlineSubflow(ctx context.Context, runtimeCtx *WorkflowExecutionContext, parentToken *WorkflowToken, activeWorkflow *domain.WorkflowDefinition) error {
+	if runtimeCtx == nil || parentToken == nil || parentToken.Subflow == nil {
+		return nil
+	}
+	_ = activeWorkflow
+	childWorkflow, err := workflowResolveSubflowDefinition(runtimeCtx, parentToken.Subflow)
+	if err != nil {
+		return err
+	}
+	childCtx := &WorkflowExecutionContext{
+		Workflow:     childWorkflow,
+		Context:      cloneWorkflowExecutionDomainContext(runtimeCtx.Context),
+		Input:        cloneWorkflowPayload(workflowRuntimeSharedInput(runtimeCtx)),
+		sharedInput:  cloneWorkflowPayload(workflowRuntimeSharedInput(runtimeCtx)),
+		Metadata:     cloneWorkflowPayload(workflowRuntimeSharedMetadata(runtimeCtx)),
+		CurrentToken: parentToken.Child(parentToken.Subflow.EntryNodeID, WorkflowTokenRouteLineage{SourceNodeID: parentToken.NodeID, SelectedNodeID: parentToken.Subflow.EntryNodeID}),
+		RootToken:    parentToken,
+	}
+	childCtx.CurrentToken.Branch = cloneWorkflowBranchContext(parentToken.Subflow.ParentBranch)
+	bindWorkflowPayloadBridge(childCtx)
+	if err := k.executeFrom(ctx, childCtx, childWorkflow.EntryNodeID); err != nil {
+		switch parentToken.Subflow.FailureStrategy {
+		case workflowSubflowFailureStrategyPauseParent:
+			parentToken.Subflow.State = workflowSubflowStateFailed
+			pauseWorkflowToken(parentToken, &WorkflowPauseState{Source: WorkflowPauseSourcePolicy, Scope: WorkflowPauseScopeToken, Reason: err.Error(), AllowedResumeModes: []WorkflowResumeMode{WorkflowResumeModeContinueToken}})
+			appendCheckpointWithSnapshot(runtimeCtx, "", parentToken.NodeID, workflowCheckpointSnapshot{Token: parentToken, PauseState: parentToken.PauseState})
+			return nil
+		case workflowSubflowFailureStrategyContinueParent:
+			parentToken.Subflow.State = workflowSubflowStateFailed
+			markWorkflowSubflowFailure(parentToken, err)
+			returnToken := workflowSubflowReturnToken(parentToken, nil)
+			pushActiveWorkflowToken(runtimeCtx, returnToken)
+			appendCheckpointWithSnapshot(runtimeCtx, "", returnToken.NodeID, workflowCheckpointSnapshot{Token: returnToken})
+			return nil
+		default:
+			return fmt.Errorf("child workflow %s: %w", strings.TrimSpace(parentToken.Subflow.ChildWorkflowID), err)
+		}
+	}
+	if len(childCtx.CompletedTokens) == 0 {
+		return fmt.Errorf("child workflow %s completed without terminal token", strings.TrimSpace(parentToken.Subflow.ChildWorkflowID))
+	}
+	childFinal := childCtx.CompletedTokens[len(childCtx.CompletedTokens)-1]
+	parentToken.Subflow.State = workflowSubflowStateDone
+	returnToken := workflowSubflowReturnToken(parentToken, childFinal)
+	pushActiveWorkflowToken(runtimeCtx, returnToken)
+	appendCheckpointWithSnapshot(runtimeCtx, "", returnToken.NodeID, workflowCheckpointSnapshot{Token: returnToken})
+	runtimeCtx.CompletedTokens = append(runtimeCtx.CompletedTokens, childCtx.CompletedTokens...)
+	if len(childCtx.Checkpoints) > 0 {
+		runtimeCtx.Checkpoints = append(runtimeCtx.Checkpoints, childCtx.Checkpoints...)
+	}
+	return nil
+}
+
+func markWorkflowSubflowFailure(parentToken *WorkflowToken, err error) {
+	if parentToken == nil || parentToken.Subflow == nil || parentToken.Branch == nil {
+		return
+	}
+	if parentToken.Branch.Result == nil {
+		parentToken.Branch.Result = map[string]any{}
+	}
+	parentToken.Branch.Result["subflow_status"] = "failed"
+	parentToken.Branch.Result["subflow_child_workflow_id"] = strings.TrimSpace(parentToken.Subflow.ChildWorkflowID)
+	parentToken.Branch.Result["subflow_failure_strategy"] = strings.TrimSpace(string(parentToken.Subflow.FailureStrategy))
+	parentToken.Branch.Result["subflow_error"] = strings.TrimSpace(err.Error())
+	if parentToken.Subflow.ParentBranch != nil {
+		if parentToken.Subflow.ParentBranch.Result == nil {
+			parentToken.Subflow.ParentBranch.Result = map[string]any{}
+		}
+		for _, key := range []string{"subflow_status", "subflow_child_workflow_id", "subflow_failure_strategy", "subflow_error"} {
+			parentToken.Subflow.ParentBranch.Result[key] = cloneWorkflowValue(parentToken.Branch.Result[key])
+		}
+	}
+}
+
+func workflowSubflowReturnToken(parentToken *WorkflowToken, childFinal *WorkflowToken) *WorkflowToken {
+	if parentToken == nil || parentToken.Subflow == nil {
+		return nil
+	}
+	parentBranch := cloneWorkflowBranchContext(parentToken.Subflow.ParentBranch)
+	if parentBranch == nil {
+		parentBranch = newWorkflowBranchContext(nil, nil)
+	}
+	base := &WorkflowToken{
+		ID:            firstNonEmpty(parentToken.Subflow.ParentTokenID, parentToken.ID),
+		OriginTokenID: parentToken.OriginTokenID,
+		OriginRoute:   parentToken.OriginRoute,
+		Branch:        parentBranch,
+	}
+	if parentToken.Subflow.State == workflowSubflowStateFailed && parentToken.Branch != nil {
+		if base.Branch.Result == nil {
+			base.Branch.Result = map[string]any{}
+		}
+		for _, key := range []string{"subflow_status", "subflow_child_workflow_id", "subflow_failure_strategy", "subflow_error"} {
+			if value, ok := parentToken.Branch.Result[key]; ok {
+				base.Branch.Result[key] = cloneWorkflowValue(value)
+			}
+		}
+	}
+	if childFinal != nil {
+		applyWorkflowSubflowReturnMapping(base, childFinal, parentToken.Subflow.ReturnMapping)
+	}
+	returnToken := base.Child(parentToken.Subflow.ReturnNodeID, WorkflowTokenRouteLineage{SourceNodeID: parentToken.NodeID, SelectedNodeID: parentToken.Subflow.ReturnNodeID})
+	returnToken.Branch = cloneWorkflowBranchContext(base.Branch)
+	if parentToken.Branch != nil {
+		for _, key := range []string{"subflow_status", "subflow_child_workflow_id", "subflow_failure_strategy", "subflow_error"} {
+			if value, ok := parentToken.Branch.Result[key]; ok {
+				returnToken.Branch.Result[key] = cloneWorkflowValue(value)
+			}
+		}
+	}
+	returnToken.Subflow = nil
+	return returnToken
+}
+
 func initializeWorkflowTokens(runtimeCtx *WorkflowExecutionContext, startNodeID string) {
 	if runtimeCtx == nil || len(runtimeCtx.ActiveTokens) > 0 {
 		return
@@ -422,6 +573,7 @@ func pauseWorkflowToken(token *WorkflowToken, pauseState *WorkflowPauseState) {
 	allowedResumeModes = append(allowedResumeModes, pauseState.AllowedResumeModes...)
 	token.PauseState = &WorkflowPauseState{
 		Source:             pauseState.Source,
+		Scope:              pauseState.Scope,
 		Reason:             pauseState.Reason,
 		Payload:            payload,
 		AllowedResumeModes: allowedResumeModes,
@@ -537,8 +689,10 @@ func validateWorkflowRuntimeGraph(wf *domain.WorkflowDefinition) error {
 		return fmt.Errorf("workflow definition is required")
 	}
 
+	nodeIndex := make(map[string]domain.WorkflowNode, len(wf.Nodes))
 	nodeIDs := make(map[string]struct{}, len(wf.Nodes))
 	for _, node := range wf.Nodes {
+		nodeIndex[node.ID] = node
 		nodeIDs[node.ID] = struct{}{}
 	}
 
@@ -555,6 +709,9 @@ func validateWorkflowRuntimeGraph(wf *domain.WorkflowDefinition) error {
 			return fmt.Errorf("workflow entry path references unknown node: %s", nodeID)
 		}
 		if _, ok := stack[nodeID]; ok {
+			if workflowLoopBackEdgeAllowed(nodeIndex, outgoing, nodeID, stack) {
+				return nil
+			}
 			return fmt.Errorf("unsupported cycle in workflow graph at node %s", nodeID)
 		}
 		if _, ok := visited[nodeID]; ok {
@@ -599,22 +756,49 @@ func indexWorkflowNodes(wf *domain.WorkflowDefinition) map[string]domain.Workflo
 	return result
 }
 
-func workflowLoopValidationAllowed(wf *domain.WorkflowDefinition, err error) bool {
-	if wf == nil || err == nil {
-		return false
-	}
-	message := err.Error()
-	if !strings.Contains(message, "unsupported cycle in workflow graph") {
-		return false
-	}
-	for _, node := range wf.Nodes {
-		if workflowNodeIsLoop(node) {
-			return true
-		}
-	}
-	return false
-}
-
 func workflowNodeIsLoop(node domain.WorkflowNode) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(node.Name)), "loop") || strings.Contains(strings.ToLower(strings.TrimSpace(node.Type)), "loop")
+}
+
+func workflowLoopBackEdgeAllowed(nodeIndex map[string]domain.WorkflowNode, outgoing map[string][]domain.WorkflowEdge, loopNodeID string, stack map[string]struct{}) bool {
+	loopNode, ok := nodeIndex[loopNodeID]
+	if !ok || !workflowNodeIsLoop(loopNode) {
+		return false
+	}
+	config, err := parseWorkflowLoopNodeConfig(loopNode.ConfigJSON)
+	if err != nil || config.BodyToNodeID == "" || config.ExitToNodeID == "" {
+		return false
+	}
+	bodyEdges, bodyAmbiguous := workflowLoopSelectEdgesByTarget(outgoing[loopNodeID], config, workflowLoopDecisionRepeat)
+	if bodyAmbiguous || len(bodyEdges) != 1 {
+		return false
+	}
+	bodyNodeID := strings.TrimSpace(bodyEdges[0].ToNodeID)
+	if bodyNodeID == "" {
+		return false
+	}
+	if len(stack) < 2 {
+		return false
+	}
+	if _, ok := stack[bodyNodeID]; !ok {
+		return false
+	}
+	current := bodyNodeID
+	for current != loopNodeID {
+		edges := outgoing[current]
+		if len(edges) != 1 {
+			return false
+		}
+		next := strings.TrimSpace(edges[0].ToNodeID)
+		if next == "" {
+			return false
+		}
+		if next != loopNodeID {
+			if _, ok := stack[next]; !ok {
+				return false
+			}
+		}
+		current = next
+	}
+	return true
 }

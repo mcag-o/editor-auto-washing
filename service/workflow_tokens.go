@@ -54,5 +54,6 @@ func (t *WorkflowToken) Child(nodeID string, route WorkflowTokenRouteLineage) *W
 		OriginTokenID: t.OriginTokenID,
 		OriginRoute:   originRoute,
 		Branch:        cloneWorkflowBranchContext(t.Branch),
+		Subflow:       cloneWorkflowSubflowFrame(t.Subflow),
 	}
 }

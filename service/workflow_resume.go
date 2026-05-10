@@ -143,6 +143,8 @@ func applyWorkflowResumeTarget(runtimeCtx *WorkflowExecutionContext, checkpoint 
 	if runtimeCtx == nil {
 		return
 	}
+	runtimeCtx.JoinBarriers = workflowJoinBarriersFromCheckpoint(checkpoint)
+	applyWorkflowLoopFrames(runtimeCtx, checkpoint)
 	switch mode {
 	case WorkflowResumeModeContinueToken:
 		runtimeCtx.CurrentToken = workflowTokenFromCheckpoint(checkpoint)

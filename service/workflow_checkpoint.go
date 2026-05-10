@@ -9,6 +9,7 @@ import (
 
 const workflowLatestRouteMetadataKey = "workflow_route_latest"
 const workflowActiveTokenSetMetadataKey = "active_token_set"
+const workflowJoinBarrierSetMetadataKey = "join_barrier_set"
 
 type workflowCheckpointSnapshot struct {
 	RouteSummary *WorkflowRouteOutcomeSummary
@@ -76,6 +77,12 @@ func appendCheckpointWithSnapshot(ctx *WorkflowExecutionContext, workflowRunID, 
 	}
 	if activeSet := workflowActiveTokenSetMetadata(ctx); activeSet != nil {
 		checkpoint.Metadata = mergeCheckpointMetadata(checkpoint.Metadata, activeSet)
+	}
+	if joinBarriers := workflowJoinBarrierSetMetadata(ctx); joinBarriers != nil {
+		checkpoint.Metadata = mergeCheckpointMetadata(checkpoint.Metadata, joinBarriers)
+	}
+	if loopFrames := workflowLoopFrameSetMetadata(ctx); loopFrames != nil {
+		checkpoint.Metadata = mergeCheckpointMetadata(checkpoint.Metadata, loopFrames)
 	}
 	ctx.Checkpoints = append(ctx.Checkpoints, checkpoint)
 }
@@ -178,6 +185,9 @@ func workflowTokenMetadata(token WorkflowToken) map[string]any {
 		metadata["token_branch_result"] = cloneWorkflowPayload(token.Branch.Result)
 		metadata["token_branch_artifacts"] = cloneWorkflowPayload(token.Branch.Artifacts)
 	}
+	if token.Subflow != nil {
+		metadata = mergeCheckpointMetadata(metadata, workflowSubflowMetadata(token.Subflow))
+	}
 	if token.Frame != nil {
 		metadata["token_frame_input"] = cloneWorkflowPayload(token.Frame.Input)
 		metadata["token_frame_metadata"] = cloneWorkflowPayload(token.Frame.Metadata)
@@ -200,6 +210,58 @@ func workflowActiveTokenSetMetadata(ctx *WorkflowExecutionContext) map[string]an
 		return nil
 	}
 	return map[string]any{workflowActiveTokenSetMetadataKey: activeSet}
+}
+
+func workflowJoinBarrierSetMetadata(ctx *WorkflowExecutionContext) map[string]any {
+	if ctx == nil || len(ctx.JoinBarriers) == 0 {
+		return nil
+	}
+	barriers := make([]map[string]any, 0, len(ctx.JoinBarriers))
+	for nodeID, barrier := range ctx.JoinBarriers {
+		if entry := workflowJoinBarrierMetadata(nodeID, barrier); len(entry) > 0 {
+			barriers = append(barriers, entry)
+		}
+	}
+	if len(barriers) == 0 {
+		return nil
+	}
+	return map[string]any{workflowJoinBarrierSetMetadataKey: barriers}
+}
+
+func workflowJoinBarrierMetadata(defaultNodeID string, barrier *workflowJoinBarrier) map[string]any {
+	if barrier == nil {
+		return nil
+	}
+	tokens := make([]map[string]any, 0, len(barrier.ArrivedTokenIDs))
+	for _, tokenID := range barrier.ArrivedTokenIDs {
+		token := barrier.tokens[tokenID]
+		if token == nil {
+			continue
+		}
+		tokens = append(tokens, workflowTokenMetadata(*token))
+	}
+	metadata := map[string]any{
+		"node_id":                             strings.TrimSpace(firstNonEmpty(barrier.NodeID, defaultNodeID)),
+		"expected_token_ids":                  append([]string(nil), barrier.ExpectedTokenIDs...),
+		"expected_count":                      barrier.ExpectedCount,
+		"arrived_token_ids":                   append([]string(nil), barrier.ArrivedTokenIDs...),
+		"failed_token_ids":                    append([]string(nil), barrier.FailedTokenIDs...),
+		"state":                               strings.TrimSpace(string(barrier.State)),
+		"parent_token_id":                     strings.TrimSpace(barrier.ParentTokenID),
+		"origin_token_id":                     strings.TrimSpace(barrier.OriginTokenID),
+		"origin_route_node_id":                strings.TrimSpace(barrier.OriginRoute.SourceNodeID),
+		"origin_route_edge_id":                strings.TrimSpace(barrier.OriginRoute.SelectedEdgeID),
+		"origin_route_selected_node_id":       strings.TrimSpace(barrier.OriginRoute.SelectedNodeID),
+		"merge_policy_variables":              strings.TrimSpace(string(barrier.MergePolicy.Variables)),
+		"merge_policy_result":                 strings.TrimSpace(string(barrier.MergePolicy.Result)),
+		"merge_policy_artifacts":              strings.TrimSpace(string(barrier.MergePolicy.Artifacts)),
+		"arrived_tokens":                      tokens,
+	}
+	if barrier.Frame != nil {
+		metadata["frame_input"] = cloneWorkflowPayload(barrier.Frame.Input)
+		metadata["frame_metadata"] = cloneWorkflowPayload(barrier.Frame.Metadata)
+	}
+	return metadata
 }
 
 func workflowTokenFromCheckpoint(checkpoint *domain.WorkflowCheckpoint) *WorkflowToken {
@@ -250,8 +312,40 @@ func workflowTokenFromMetadata(defaultNodeID string, metadata map[string]any) *W
 			Result:    workflowCheckpointPayload(metadata["token_branch_result"]),
 			Artifacts: workflowCheckpointPayload(metadata["token_branch_artifacts"]),
 		},
+		Subflow: workflowSubflowFrameFromCheckpointMetadata(metadata),
 		Frame: frame,
 	}
+}
+
+func workflowSubflowFrameFromCheckpointMetadata(metadata map[string]any) *workflowSubflowFrame {
+	if len(metadata) == 0 {
+		return nil
+	}
+	if rawSnapshot, ok := metadata["token_subflow_frame"].(map[string]any); ok && len(rawSnapshot) > 0 {
+		if frame := workflowSubflowFrameFromSnapshot(rawSnapshot); frame != nil {
+			if workflowSubflowFrameComplete(frame) {
+				return frame
+			}
+			if legacy := workflowSubflowFromMetadata(metadata); legacy != nil {
+				return legacy
+			}
+			return frame
+		}
+	}
+	return workflowSubflowFromMetadata(metadata)
+}
+
+func workflowSubflowFrameComplete(frame *workflowSubflowFrame) bool {
+	if frame == nil {
+		return false
+	}
+	if strings.TrimSpace(frame.ChildWorkflowID) == "" || strings.TrimSpace(frame.EntryNodeID) == "" || strings.TrimSpace(frame.ReturnNodeID) == "" {
+		return false
+	}
+	if strings.TrimSpace(string(frame.FailureStrategy)) == "" {
+		return false
+	}
+	return true
 }
 
 func workflowActiveTokensFromCheckpoint(checkpoint *domain.WorkflowCheckpoint) []*WorkflowToken {
@@ -289,6 +383,28 @@ func workflowActiveTokensFromCheckpoint(checkpoint *domain.WorkflowCheckpoint) [
 		}
 	}
 	return tokens
+}
+
+func workflowJoinBarriersFromCheckpoint(checkpoint *domain.WorkflowCheckpoint) map[string]*workflowJoinBarrier {
+	if checkpoint == nil || len(checkpoint.Metadata) == 0 {
+		return nil
+	}
+	rawSet := workflowJoinBarrierSetEntries(checkpoint.Metadata[workflowJoinBarrierSetMetadataKey])
+	if len(rawSet) == 0 {
+		return nil
+	}
+	barriers := make(map[string]*workflowJoinBarrier, len(rawSet))
+	for _, raw := range rawSet {
+		barrier := workflowJoinBarrierFromMetadata(raw)
+		if barrier == nil || strings.TrimSpace(barrier.NodeID) == "" {
+			continue
+		}
+		barriers[barrier.NodeID] = barrier
+	}
+	if len(barriers) == 0 {
+		return nil
+	}
+	return barriers
 }
 
 func workflowSyntheticPauseToken(checkpoint *domain.WorkflowCheckpoint, pauseState *WorkflowPauseState) *WorkflowToken {
@@ -375,6 +491,126 @@ func workflowActiveTokenSetEntries(raw any) []map[string]any {
 		return nil
 	}
 	return entries
+}
+
+func workflowJoinBarrierSetEntries(raw any) []map[string]any {
+	return workflowActiveTokenSetEntries(raw)
+}
+
+func workflowJoinBarrierFromMetadata(metadata map[string]any) *workflowJoinBarrier {
+	if len(metadata) == 0 {
+		return nil
+	}
+	nodeID := strings.TrimSpace(domain.DraftString(metadata["node_id"]))
+	if nodeID == "" {
+		return nil
+	}
+	barrier := newWorkflowJoinBarrier(nodeID, workflowStringList(metadata["expected_token_ids"]))
+	barrier.ExpectedCount = workflowIntValue(metadata["expected_count"])
+	barrier.ArrivedTokenIDs = workflowStringList(metadata["arrived_token_ids"])
+	barrier.FailedTokenIDs = workflowStringList(metadata["failed_token_ids"])
+	barrier.State = workflowJoinBarrierState(strings.TrimSpace(domain.DraftString(metadata["state"])))
+	barrier.ParentTokenID = strings.TrimSpace(domain.DraftString(metadata["parent_token_id"]))
+	barrier.OriginTokenID = strings.TrimSpace(domain.DraftString(metadata["origin_token_id"]))
+	barrier.OriginRoute = WorkflowTokenRouteLineage{
+		SourceNodeID:   strings.TrimSpace(domain.DraftString(metadata["origin_route_node_id"])),
+		SelectedEdgeID: strings.TrimSpace(domain.DraftString(metadata["origin_route_edge_id"])),
+		SelectedNodeID: strings.TrimSpace(domain.DraftString(metadata["origin_route_selected_node_id"])),
+	}
+	barrier.MergePolicy = workflowJoinMergePolicy{
+		Variables: workflowJoinMergeStrategy(strings.TrimSpace(domain.DraftString(metadata["merge_policy_variables"]))),
+		Result:    workflowJoinMergeStrategy(strings.TrimSpace(domain.DraftString(metadata["merge_policy_result"]))),
+		Artifacts: workflowJoinMergeStrategy(strings.TrimSpace(domain.DraftString(metadata["merge_policy_artifacts"]))),
+	}
+	if rawInput, hasInput := metadata["frame_input"]; hasInput {
+		barrier.Frame = &WorkflowExecutionFrame{Input: workflowCheckpointPayload(rawInput)}
+		if rawMetadata, hasMetadata := metadata["frame_metadata"]; hasMetadata {
+			barrier.Frame.Metadata = workflowCheckpointPayload(rawMetadata)
+		}
+	} else if rawMetadata, hasMetadata := metadata["frame_metadata"]; hasMetadata {
+		barrier.Frame = &WorkflowExecutionFrame{Metadata: workflowCheckpointPayload(rawMetadata)}
+	}
+	for _, tokenID := range barrier.ArrivedTokenIDs {
+		barrier.arrived[tokenID] = struct{}{}
+	}
+	for _, tokenID := range barrier.FailedTokenIDs {
+		barrier.failed[tokenID] = struct{}{}
+	}
+	for _, rawToken := range workflowActiveTokenSetEntries(metadata["arrived_tokens"]) {
+		token := workflowTokenFromMetadata(nodeID, rawToken)
+		if token == nil {
+			continue
+		}
+		barrier.tokens[token.ID] = token
+	}
+	if barrier.ExpectedCount == 0 {
+		barrier.ExpectedCount = len(barrier.ExpectedTokenIDs)
+	}
+	if barrier.State == "" {
+		barrier.State = workflowJoinBarrierStateWaiting
+	}
+	if barrier.MergePolicy.Variables == "" {
+		barrier.MergePolicy.Variables = workflowJoinMergeStrategyFirstWriterWins
+	}
+	if barrier.MergePolicy.Result == "" {
+		barrier.MergePolicy.Result = workflowJoinMergeStrategyLastWriterWins
+	}
+	if barrier.MergePolicy.Artifacts == "" {
+		barrier.MergePolicy.Artifacts = workflowJoinMergeStrategyLastWriterWins
+	}
+	return barrier
+}
+
+func workflowStringList(raw any) []string {
+	if raw == nil {
+		return nil
+	}
+	if typed, ok := raw.([]string); ok {
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if value := strings.TrimSpace(item); value != "" {
+				result = append(result, value)
+			}
+		}
+		return result
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		if value := strings.TrimSpace(domain.DraftString(item)); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func workflowIntValue(raw any) int {
+	switch value := raw.(type) {
+	case int:
+		return value
+	case int32:
+		return int(value)
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	case float32:
+		return int(value)
+	default:
+		return 0
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func workflowCheckpointPayload(value any) map[string]any {
