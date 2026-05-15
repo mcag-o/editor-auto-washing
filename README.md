@@ -12,7 +12,6 @@
 - workflow/template 管理通过同一浏览器界面完成，前端基础设施以 Material UI 与 React Flow 为主
 - 业务配置以数据库中的 runtime state 为准
 - 默认自动处理结果停在 draft + render；review / publish 为后续可选人工步骤
-- CLI 与 TUI 保留为开发、调试和辅助运维工具
 - folder-intake 保留为后端/内部兼容能力，不作为默认操作入口
 - 当前版本变更摘要见 `version.md`
 
@@ -121,70 +120,6 @@ curl http://localhost:8123/health
 curl http://localhost:8123/ready
 ```
 
-### 启动 TUI
-
-```bash
-go run ./cmd/tui --api http://localhost:8123
-```
-
-说明：TUI 用于基础监控与浏览，不覆盖全部 automation 管理能力。
-
----
-
-## CLI
-
-CLI 入口：`cmd/cli/main.go`
-
-说明：CLI 用于开发、调试和手工补救；日常操作以浏览器访问 `http://localhost:8123` 为主。
-
-### Workspace
-
-```bash
-go run ./cmd/cli workspace init --root .
-go run ./cmd/cli workspace show-config --root .
-go run ./cmd/cli workspace resolve-config --root .
-go run ./cmd/cli workspace doctor --root .
-```
-
-### Intake / Automation Debug
-
-```bash
-go run ./cmd/cli automation run-once --root .
-```
-
-### Formatting
-
-```bash
-go run ./cmd/cli formatting render <draft-id> --platform wechat --template daily-intelligence --root .
-go run ./cmd/cli formatting validate <draft-id> --platform wechat --template daily-intelligence --root .
-```
-
-### Rewrite
-
-```bash
-go run ./cmd/cli rewrite run <workspace-article-id> --target wechat-longform --source sspai --root .
-```
-
-### Review / Publish
-
-```bash
-go run ./cmd/cli review approve <review-id> --reviewer alice --notes ok --root .
-go run ./cmd/cli review reject <review-id> --reviewer alice --notes retry --root .
-go run ./cmd/cli publish run <review-id> --root .
-go run ./cmd/cli publish history <article-id> --root .
-```
-
-### Automation
-
-```bash
-go run ./cmd/cli automation run-once --root .
-go run ./cmd/cli automation daemon --root .
-go run ./cmd/cli automation retry-failed --root .
-go run ./cmd/cli automation status --root .
-go run ./cmd/cli automation health --root .
-go run ./cmd/cli automation stop --root .
-```
-
 ---
 
 ## HTTP API
@@ -252,7 +187,6 @@ go test ./...
 - browser upload / paste workflow 是默认操作人员 intake 路径
 - review / publish 不会自动进入默认链路
 - automation daemon 当前为单进程内模型
-- TUI 范围有意收敛，不覆盖全部 automation 管理面
 - publish provider 的完整能力取决于具体 provider 实现
 
 ---
@@ -261,9 +195,7 @@ go test ./...
 
 ```text
 ├── cmd/
-│   ├── cli/
-│   ├── server/
-│   └── tui/
+│   └── server/
 ├── collector/
 │   ├── httpclient/
 │   ├── plugin/
@@ -284,6 +216,5 @@ go test ./...
 ├── service/
 ├── testdata/
 └── transport/
-    ├── http/
-    └── tui/
+    └── http/
 ```

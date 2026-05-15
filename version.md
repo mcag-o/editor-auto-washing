@@ -19,7 +19,6 @@
 
 - collector source 元数据统一使用 `implementation_reference`。
 - 仓库默认 HTTP 端口、示例配置与当前文档均统一为 `8123`。
-- CLI 与 TUI 继续保留为开发、调试和辅助运维工具，不作为默认操作面。
 
 ## 参考
 

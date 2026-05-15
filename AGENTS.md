@@ -30,7 +30,7 @@ This repository is the active `content-hub` Go workspace rooted at the repositor
 - Draft + render are the default automated result path.
 - Review/publish are optional later manual steps, not part of the default automated chain.
 - Folder-intake remains backend/internal compatibility only unless a task explicitly targets it.
-- Do not present static shell, RSS/collector/ingestion HTTP, or CLI surfaces as current supported operator entrypoints unless the task explicitly targets development/debug support.
+- Do not present static shell or RSS/collector/ingestion HTTP surfaces as current supported operator entrypoints.
 - Preserve Chinese user-facing documentation where it already exists; bilingual docs are normal here.
 - Prefer minimal, local edits over broad cleanup unless the task explicitly asks for broader normalization.
 - Run the narrowest relevant test first, then broaden as needed.
@@ -44,10 +44,7 @@ Run from repository root.
 
 - Install dependencies: `go mod download`
 - Build server binary: `go build ./cmd/server`
-- Build CLI binary: `go build ./cmd/cli`
 - Run server / web control plane: `go run ./cmd/server`
-- Run CLI: `go run ./cmd/cli`
-- Run TUI: `go run ./cmd/tui --api http://localhost:8123`
 - Web control plane service verification: `go test ./service -run 'TestSource|TestFolder|TestRewrite|TestBuildWebControlRuntime|TestWorkflowTemplate|TestTemplateDefinition|TestWebControlPlaneService'`
 - Web control plane transport verification: `go test ./transport/http/... -run 'TestAPI|TestAdminFrontend|TestRewrite'`
 - Web control plane integration verification: `go test ./integration -run 'TestWebControlPlanePasteToRenderedResult|TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate|TestReactControlPlanePasteToRenderedResultWithWorkflowTemplate|TestRewritePipelineMainlineMaterializesDraft'`
@@ -123,7 +120,7 @@ Notes:
 
 - Read the nearest README, config, and tests for the target area before editing.
 - Make the smallest change that fits the existing architecture.
-- When describing operator workflows, default to the browser-based Chinese React + Vite web control plane on `8123`; describe the CLI as development/debug support unless the task explicitly centers CLI behavior.
+- When describing operator workflows, default to the browser-based Chinese React + Vite web control plane on `8123`.
 - When describing frontend foundations for workflow/template management, keep Material UI and React Flow as the default stack unless the task explicitly changes that architecture.
 - Re-run the most specific relevant test, then broaden as needed.
 - Mention build or lint results only when that workflow actually exists in the target area.
@@ -131,6 +128,6 @@ Notes:
 ## Common Mistakes To Avoid
 
 - Treating compatibility-only surfaces as the live operator workflow.
-- Presenting CLI or folder-intake as the default operator entrypoint.
+- Presenting folder-intake as the default operator entrypoint.
 - Claiming lint, formatter, or build workflows exist when the repository does not define them.
 - Mixing unrelated cleanup with active-runtime feature work without an explicit request.
