@@ -104,8 +104,8 @@ func TestChangeString(t *testing.T) {
 		expected string
 	}{
 		{
-			change:   Change{Type: "create", Path: "http.port", To: 8080},
-			expected: "+ http.port = 8080",
+			change:   Change{Type: "create", Path: "http.port", To: 8123},
+			expected: "+ http.port = 8123",
 		},
 		{
 			change:   Change{Type: "delete", Path: "log.format", From: "json"},

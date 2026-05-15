@@ -137,7 +137,7 @@ func configCollectorDefinition() config.CollectorSourceDef {
 		Goal:                "补齐知乎热榜实现与后续详情正文抽取",
 		Todo:                []string{"实现列表字段标准化", "确认详情抓取接口或页面回源方式"},
 		Notes:               []string{"适合作为下一批重点迁移平台之一。"},
-		MigrationReference:  "Archive/DataCollection/src/platforms/zhihu.js",
+		ImplementationReference: "source:zhihu",
 		SupportsArticle:     true,
 		PlaceholderRequired: true,
 	}

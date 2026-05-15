@@ -190,7 +190,7 @@ func runWithConfig(cfg config.Config, workspaceRoot string, selectedStandaloneFa
 }
 
 func normalizePrimaryOperatorPort(port int) int {
-	if port == 0 || port == 8080 {
+	if port == 0 {
 		return webControlPlanePort
 	}
 	return port

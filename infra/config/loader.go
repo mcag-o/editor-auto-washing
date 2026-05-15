@@ -608,8 +608,8 @@ func mergeCollectorSourceDef(base CollectorSourceDef, override CollectorSourceDe
 	if override.Notes != nil {
 		merged.Notes = append([]string(nil), override.Notes...)
 	}
-	if override.MigrationReference != "" {
-		merged.MigrationReference = override.MigrationReference
+	if override.ImplementationReference != "" {
+		merged.ImplementationReference = override.ImplementationReference
 	}
 	if presence.boolFields["supports_article"] {
 		merged.SupportsArticle = override.SupportsArticle

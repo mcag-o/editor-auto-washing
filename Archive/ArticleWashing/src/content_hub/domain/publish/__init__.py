@@ -1,1 +1,0 @@
-"""Publish domain models."""

@@ -219,7 +219,7 @@ func TestSourceRegistrySyncPersistsPlaceholderMetadata(t *testing.T) {
 	assert.Equal(t, domain.CollectorAuthModeNone, stored.AuthMode)
 	assert.JSONEq(t, `{"source_type":"json-api","source_url":"https://www.zhihu.com/api/v3/explore/guest/feeds","status":"placeholder","goal":"补齐知乎热榜实现与后续详情正文抽取","placeholder_required":true,"supports_article":true}`, string(stored.OptionsJSON))
 	assert.Contains(t, string(stored.HeadersJSON), "{}")
-	assert.Contains(t, stored.Metadata["migration_reference"], "Archive/DataCollection/src/platforms/zhihu.js")
+	assert.Contains(t, stored.Metadata["implementation_reference"], "source:zhihu")
 	assert.Contains(t, stored.Metadata["todo"], "实现列表字段标准化")
 }
 
@@ -321,7 +321,7 @@ func configStubSourceDefinition() config.CollectorSourceDef {
 		Goal:                "补齐知乎热榜实现与后续详情正文抽取",
 		Todo:                []string{"实现列表字段标准化", "确认详情抓取接口或页面回源方式"},
 		Notes:               []string{"适合作为下一批重点迁移平台之一。"},
-		MigrationReference:  "Archive/DataCollection/src/platforms/zhihu.js",
+		ImplementationReference: "source:zhihu",
 		SupportsArticle:     true,
 		PlaceholderRequired: true,
 		Headers:             map[string]string{},

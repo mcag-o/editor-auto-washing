@@ -102,7 +102,7 @@ func (p *placeholderPlugin) Descriptor() plugin.SourceDefinition {
 			"aliases":             append([]string(nil), p.definition.Aliases...),
 			"todo":                append([]string(nil), p.definition.Todo...),
 			"notes":               append([]string(nil), p.definition.Notes...),
-			"migration_reference": p.definition.MigrationReference,
+			"implementation_reference": p.definition.ImplementationReference,
 		},
 	}
 }
