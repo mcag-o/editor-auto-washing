@@ -88,7 +88,7 @@ func TestRegistry_RegistersPlaceholderPluginDescriptors(t *testing.T) {
 	assert.False(t, descriptor.Enabled)
 	assert.Equal(t, domain.CollectorAuthModeNone, descriptor.AuthMode)
 	assert.Equal(t, "json-api", descriptor.Options["source_type"])
-	assert.Equal(t, "补齐知乎热榜实现与后续详情正文抽取", descriptor.Options["goal"])
+	assert.Equal(t, true, descriptor.Options["supports_article"])
 }
 
 type stubPlugin struct {
@@ -122,23 +122,17 @@ func (s stubPlugin) Capabilities() plugin.SourceCapabilities {
 
 func configCollectorDefinition() config.CollectorSourceDef {
 	return config.CollectorSourceDef{
-		DisplayName:         "知乎热榜",
-		Aliases:             []string{"zhihu"},
-		SourceType:          "json-api",
-		SourceURL:           "https://www.zhihu.com/api/v3/explore/guest/feeds",
-		Enabled:             false,
-		ScheduleEnabled:     false,
-		IntervalMinutes:     30,
-		TimeoutMS:           10000,
-		HotlistLimit:        50,
-		Concurrency:         1,
-		AuthMode:            domain.CollectorAuthModeNone,
-		Status:              "placeholder",
-		Goal:                "补齐知乎热榜实现与后续详情正文抽取",
-		Todo:                []string{"实现列表字段标准化", "确认详情抓取接口或页面回源方式"},
-		Notes:               []string{"适合作为下一批重点迁移平台之一。"},
-		ImplementationReference: "source:zhihu",
-		SupportsArticle:     true,
-		PlaceholderRequired: true,
+		DisplayName:      "知乎热榜",
+		Aliases:          []string{"zhihu"},
+		SourceType:       "json-api",
+		SourceURL:        "https://www.zhihu.com/api/v3/explore/guest/feeds",
+		Enabled:          false,
+		ScheduleEnabled:  false,
+		IntervalMinutes:  30,
+		TimeoutMS:        10000,
+		HotlistLimit:     50,
+		Concurrency:      1,
+		AuthMode:         domain.CollectorAuthModeNone,
+		SupportsArticle:  true,
 	}
 }

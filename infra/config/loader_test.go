@@ -357,6 +357,57 @@ func TestLoaderApplyDefaults_MergesBuiltInCollectorPolicyMaps(t *testing.T) {
 	assert.Equal(t, "header", cfg.Collector.AuthProfiles["custom_header"].Mode)
 }
 
+func TestLoaderLoadAndSave_OmitsCollectorSourceNonRuntimeMetadataFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	require.NoError(t, os.WriteFile(path, []byte(`{
+	  "collector": {
+	    "sources": {
+	      "baidu": {
+	        "display_name": "百度热搜",
+	        "aliases": ["baidu"],
+	        "source_type": "json-api",
+	        "source_url": "https://top.baidu.com/api/board?platform=wise&tab=realtime",
+	        "enabled": true,
+	        "schedule_enabled": true,
+	        "interval_minutes": 30,
+	        "timeout_ms": 10000,
+	        "hotlist_limit": 50,
+	        "detail_fetch_enabled": true,
+	        "concurrency": 1,
+	        "auth_mode": "none",
+	        "supports_article": true
+	      }
+	    }
+	  }
+	}`), 0o644))
+
+	loader := NewLoader(path)
+	cfg, err := loader.Load()
+	require.NoError(t, err)
+	baidu, ok := cfg.Collector.SourceOrDefault("baidu")
+	require.True(t, ok)
+	assert.Equal(t, "百度热搜", baidu.DisplayName)
+	assert.Equal(t, "json-api", baidu.SourceType)
+	assert.Equal(t, "https://top.baidu.com/api/board?platform=wise&tab=realtime", baidu.SourceURL)
+	assert.True(t, baidu.Enabled)
+	assert.True(t, baidu.ScheduleEnabled)
+	assert.True(t, baidu.DetailFetchEnabled)
+	assert.True(t, baidu.SupportsArticle)
+	require.NoError(t, loader.Save(cfg))
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	assert.NotContains(t, string(data), `"status"`)
+	assert.NotContains(t, string(data), `"goal"`)
+	assert.NotContains(t, string(data), `"todo"`)
+	assert.NotContains(t, string(data), `"notes"`)
+	assert.NotContains(t, string(data), `"implementation_reference"`)
+	assert.NotContains(t, string(data), `"placeholder_required"`)
+}
+
 func TestLoaderApplyDefaults_PartiallyOverridesBuiltInRetryPolicy(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

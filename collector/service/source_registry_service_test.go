@@ -217,10 +217,9 @@ func TestSourceRegistrySyncPersistsPlaceholderMetadata(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, stored.Enabled)
 	assert.Equal(t, domain.CollectorAuthModeNone, stored.AuthMode)
-	assert.JSONEq(t, `{"source_type":"json-api","source_url":"https://www.zhihu.com/api/v3/explore/guest/feeds","status":"placeholder","goal":"补齐知乎热榜实现与后续详情正文抽取","placeholder_required":true,"supports_article":true}`, string(stored.OptionsJSON))
+	assert.JSONEq(t, `{"source_type":"json-api","source_url":"https://www.zhihu.com/api/v3/explore/guest/feeds","supports_article":true}`, string(stored.OptionsJSON))
 	assert.Contains(t, string(stored.HeadersJSON), "{}")
-	assert.Contains(t, stored.Metadata["implementation_reference"], "source:zhihu")
-	assert.Contains(t, stored.Metadata["todo"], "实现列表字段标准化")
+	assert.Equal(t, []any{"zhihu"}, stored.Metadata["aliases"])
 }
 
 func TestSourceRegistrySyncPersistsResolvedRetryMetadata(t *testing.T) {
@@ -234,7 +233,21 @@ func TestSourceRegistrySyncPersistsResolvedRetryMetadata(t *testing.T) {
 	stored, err := provider.CollectorSourceRepo().GetByID(t.Context(), "zhihu")
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"max_attempts":3,"wait":"500ms","max_wait":"5s"}`, string(stored.RetryPolicyJSON))
-	assert.JSONEq(t, `{"detail_fetch_enabled":false,"goal":"补齐知乎热榜实现与后续详情正文抽取","placeholder_required":true,"source_type":"json-api","source_url":"https://www.zhihu.com/api/v3/explore/guest/feeds?limit=30&ws_qiangzhisafe=0","status":"placeholder","supports_article":true}`, string(stored.OptionsJSON))
+	assert.JSONEq(t, `{"detail_fetch_enabled":false,"source_type":"json-api","source_url":"https://www.zhihu.com/api/v3/explore/guest/feeds?limit=30&ws_qiangzhisafe=0","supports_article":true}`, string(stored.OptionsJSON))
+}
+
+func TestSourceRegistrySyncWeiboDescriptorOmitsTrimmedMetadataKeys(t *testing.T) {
+	provider := newCollectorProvider(t)
+	registry := plugin.NewRegistry()
+	require.NoError(t, registry.Register(newRegistryWeiboPluginWithBaseURL(t, "https://weibo.com")))
+
+	svc := collectorsvc.NewSourceRegistryService(provider.CollectorSourceRepo(), registry)
+	require.NoError(t, svc.Sync(t.Context()))
+
+	stored, err := provider.CollectorSourceRepo().GetByID(t.Context(), "weibo")
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"source_type":"json-api","source_url":"https://weibo.com/ajax/side/hotSearch"}`, string(stored.OptionsJSON))
+	assert.NotContains(t, string(stored.OptionsJSON), `"status"`)
 }
 
 func TestSourceRegistrySyncPersistsResolvedAuthModeFromAuthProfile(t *testing.T) {
@@ -305,25 +318,19 @@ func newRegistryCookieClient(t *testing.T, statusCode int, fixture string, expec
 
 func configStubSourceDefinition() config.CollectorSourceDef {
 	return config.CollectorSourceDef{
-		DisplayName:         "知乎热榜",
-		Aliases:             []string{"zhihu"},
-		SourceType:          "json-api",
-		SourceURL:           "https://www.zhihu.com/api/v3/explore/guest/feeds",
-		Enabled:             false,
-		ScheduleEnabled:     false,
-		IntervalMinutes:     30,
-		TimeoutMS:           10000,
-		HotlistLimit:        50,
-		DetailFetchEnabled:  false,
-		Concurrency:         1,
-		AuthMode:            domain.CollectorAuthModeNone,
-		Status:              "placeholder",
-		Goal:                "补齐知乎热榜实现与后续详情正文抽取",
-		Todo:                []string{"实现列表字段标准化", "确认详情抓取接口或页面回源方式"},
-		Notes:               []string{"适合作为下一批重点迁移平台之一。"},
-		ImplementationReference: "source:zhihu",
-		SupportsArticle:     true,
-		PlaceholderRequired: true,
-		Headers:             map[string]string{},
+		DisplayName:        "知乎热榜",
+		Aliases:            []string{"zhihu"},
+		SourceType:         "json-api",
+		SourceURL:          "https://www.zhihu.com/api/v3/explore/guest/feeds",
+		Enabled:            false,
+		ScheduleEnabled:    false,
+		IntervalMinutes:    30,
+		TimeoutMS:          10000,
+		HotlistLimit:       50,
+		DetailFetchEnabled: false,
+		Concurrency:        1,
+		AuthMode:           domain.CollectorAuthModeNone,
+		SupportsArticle:    true,
+		Headers:            map[string]string{},
 	}
 }

@@ -17,7 +17,6 @@
 
 ## 一致性说明
 
-- collector source 元数据统一使用 `implementation_reference`。
 - 仓库默认 HTTP 端口、示例配置与当前文档均统一为 `8123`。
 
 ## 参考

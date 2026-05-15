@@ -89,11 +89,8 @@ func (r *PolicyResolver) buildResolvedSourceConfig(sourceID string, source confi
 		Auth: auth,
 		Options: map[string]any{
 			"detail_fetch_enabled": source.DetailFetchEnabled,
-			"goal":                 source.Goal,
-			"placeholder_required": source.PlaceholderRequired,
 			"source_type":          source.SourceType,
 			"source_url":           strings.TrimSpace(source.SourceURL),
-			"status":               source.Status,
 			"supports_article":     source.SupportsArticle,
 		},
 	}, nil

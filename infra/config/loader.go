@@ -483,7 +483,7 @@ func collectSourceFieldPresence(data []byte) (map[string]sourceFieldPresence, er
 		}
 		for fieldName := range fields {
 			switch fieldName {
-			case "enabled", "schedule_enabled", "detail_fetch_enabled", "supports_article", "placeholder_required":
+			case "enabled", "schedule_enabled", "detail_fetch_enabled", "supports_article":
 				item.boolFields[fieldName] = true
 			case "auth_mode", "auth_profile":
 				item.stringFields[fieldName] = true
@@ -523,12 +523,6 @@ func cloneCollectorSourceDef(source CollectorSourceDef) CollectorSourceDef {
 		for key, value := range source.Headers {
 			cloned.Headers[key] = value
 		}
-	}
-	if source.Todo != nil {
-		cloned.Todo = append([]string(nil), source.Todo...)
-	}
-	if source.Notes != nil {
-		cloned.Notes = append([]string(nil), source.Notes...)
 	}
 	return cloned
 }
@@ -596,26 +590,8 @@ func mergeCollectorSourceDef(base CollectorSourceDef, override CollectorSourceDe
 			merged.Headers[key] = value
 		}
 	}
-	if override.Status != "" {
-		merged.Status = override.Status
-	}
-	if override.Goal != "" {
-		merged.Goal = override.Goal
-	}
-	if override.Todo != nil {
-		merged.Todo = append([]string(nil), override.Todo...)
-	}
-	if override.Notes != nil {
-		merged.Notes = append([]string(nil), override.Notes...)
-	}
-	if override.ImplementationReference != "" {
-		merged.ImplementationReference = override.ImplementationReference
-	}
 	if presence.boolFields["supports_article"] {
 		merged.SupportsArticle = override.SupportsArticle
-	}
-	if presence.boolFields["placeholder_required"] {
-		merged.PlaceholderRequired = override.PlaceholderRequired
 	}
 	return merged
 }

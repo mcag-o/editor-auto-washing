@@ -28,19 +28,16 @@ func TestPolicyResolver_MergesDefaultsProfilesAndSourceOverrides(t *testing.T) {
 		MaxWaitMS:   9000,
 	}
 	cfg.Collector.Sources["zhihu"] = config.CollectorSourceDef{
-		DisplayName:         "知乎热榜",
-		SourceType:          "json-api",
-		SourceURL:           "https://www.zhihu.com/api/v3/explore/guest/feeds",
-		HTTPClient:          "custom_client",
-		RetryPolicy:         "aggressive",
-		AuthProfile:         "none",
-		TimeoutMS:           12000,
-		Headers:             map[string]string{"X-Override": "from-source", "X-Source": "set"},
-		DetailFetchEnabled:  true,
-		SupportsArticle:     true,
-		PlaceholderRequired: true,
-		Status:              "placeholder",
-		Goal:                "补齐知乎抓取实现",
+		DisplayName:        "知乎热榜",
+		SourceType:         "json-api",
+		SourceURL:          "https://www.zhihu.com/api/v3/explore/guest/feeds",
+		HTTPClient:         "custom_client",
+		RetryPolicy:        "aggressive",
+		AuthProfile:        "none",
+		TimeoutMS:          12000,
+		Headers:            map[string]string{"X-Override": "from-source", "X-Source": "set"},
+		DetailFetchEnabled: true,
+		SupportsArticle:    true,
 	}
 
 	resolver := NewPolicyResolver()
@@ -66,11 +63,8 @@ func TestPolicyResolver_MergesDefaultsProfilesAndSourceOverrides(t *testing.T) {
 	assert.Empty(t, resolved.Auth.HeaderValuePrefix)
 	assert.Equal(t, map[string]any{
 		"detail_fetch_enabled": true,
-		"goal":                 "补齐知乎抓取实现",
-		"placeholder_required": true,
 		"source_type":          "json-api",
 		"source_url":           "https://www.zhihu.com/api/v3/explore/guest/feeds",
-		"status":               "placeholder",
 		"supports_article":     true,
 	}, resolved.Options)
 }

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"testing"
 
 	"content-hub/domain"
@@ -345,6 +346,20 @@ func TestCollectorConfig_SourceOrDefault_DerivesAuthModeFromProfile(t *testing.T
 	require.True(t, ok)
 	assert.Equal(t, "cookie", source.AuthProfile)
 	assert.Equal(t, "cookie", source.AuthMode)
+}
+
+func TestDefaultCollectorConfig_SourceSchemaOmitsNonRuntimeMetadataFields(t *testing.T) {
+	cfg := DefaultCollectorConfig()
+
+	data, err := json.Marshal(cfg.Sources["baidu"])
+	require.NoError(t, err)
+
+	assert.NotContains(t, string(data), `"status"`)
+	assert.NotContains(t, string(data), `"goal"`)
+	assert.NotContains(t, string(data), `"todo"`)
+	assert.NotContains(t, string(data), `"notes"`)
+	assert.NotContains(t, string(data), `"implementation_reference"`)
+	assert.NotContains(t, string(data), `"placeholder_required"`)
 }
 
 func TestConfigValidate_RejectsCollectorSourceAuthModeProfileConflict(t *testing.T) {
