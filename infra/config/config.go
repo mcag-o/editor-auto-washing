@@ -9,7 +9,7 @@ import (
 
 const (
 	defaultHTTPHost = "0.0.0.0"
-	defaultHTTPPort = 8080
+	defaultHTTPPort = 8123
 	defaultLogLevel = "info"
 	defaultDBPath   = "./data/content-hub.db"
 
