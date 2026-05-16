@@ -91,7 +91,7 @@ func TestAPIArticlesStagesReturnsSourceAndRewriteStages(t *testing.T) {
 	doc.RewriteRunID = "run-1"
 	require.NoError(t, sourceRepo.Create(t.Context(), doc))
 
-	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "collector-1", "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "sspai")
 	run.ID = "run-1"
 	run.Status = domain.RewriteRunRunning
 	run.CurrentStage = "draft"
@@ -268,7 +268,7 @@ func TestAPIArticlesRetryResetsPreviousWorkflowExecutionForFreshRun(t *testing.T
 	doc.CompletedAt = &now
 	require.NoError(t, sourceRepo.Create(t.Context(), doc))
 
-	run := domain.NewRewritePipelineRun("profile-1", "v2", "workspace-1", doc.ID, "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-1", "v2", "workspace-1", "wechat-longform", "sspai")
 	run.ID = "run-1"
 	run.Status = domain.RewriteRunFailed
 	run.CurrentStage = "repair_draft"
@@ -340,7 +340,7 @@ func TestAPIArticlesRetryPreservesSavedWorkflowRunWhenWorkflowIsUnchanged(t *tes
 	doc.Metadata["workflow_template_version"] = "v1"
 	require.NoError(t, sourceRepo.Create(t.Context(), doc))
 
-	run := domain.NewRewritePipelineRun("profile-1", "v2", "workspace-1", doc.ID, "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-1", "v2", "workspace-1", "wechat-longform", "sspai")
 	run.ID = "run-1"
 	run.Status = domain.RewriteRunFailed
 	run.CurrentStage = "repair_draft"
@@ -414,7 +414,7 @@ func TestAPIArticlesRetryWithWorkflowChangeResetsSavedWorkflowRun(t *testing.T) 
 	require.NoError(t, sourceRepo.Create(t.Context(), doc))
 
 	now := time.Now().UTC()
-	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", doc.ID, "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "sspai")
 	run.ID = "run-1"
 	run.Status = domain.RewriteRunFailed
 	run.CurrentStage = "repair_draft"
@@ -908,7 +908,7 @@ func TestAPIArticlesDeleteRemovesWorkflowRecordsForPausedArticle(t *testing.T) {
 	doc.ClaimedAt = &now
 	doc.ProcessingStartedAt = &now
 	require.NoError(t, sourceRepo.Create(t.Context(), doc))
-	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", doc.ID, "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "sspai")
 	run.ID = doc.RewriteRunID
 	require.NoError(t, runRepo.Create(t.Context(), run))
 	require.NoError(t, stageRepo.Create(t.Context(), &domain.RewriteStageRun{
@@ -970,7 +970,7 @@ func TestAPIArticlesDeleteSuccessIgnoresAuditFailure(t *testing.T) {
 	doc.ClaimedAt = &now
 	doc.ProcessingStartedAt = &now
 	require.NoError(t, sourceRepo.Create(t.Context(), doc))
-	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", doc.ID, "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "sspai")
 	run.ID = doc.RewriteRunID
 	require.NoError(t, runRepo.Create(t.Context(), run))
 	require.NoError(t, stageRepo.Create(t.Context(), &domain.RewriteStageRun{
@@ -1022,7 +1022,7 @@ func TestAPIArticlesRetryWithWorkflowChangeKeepsWorkflowRecordsWhenSourceUpdateF
 	require.NoError(t, sourceRepo.Create(t.Context(), doc))
 
 	now := time.Now().UTC()
-	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", doc.ID, "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "sspai")
 	run.ID = "run-1"
 	run.Status = domain.RewriteRunFailed
 	run.CurrentStage = "repair_draft"
@@ -1084,7 +1084,7 @@ func TestAPIArticlesDeleteKeepsWorkflowRecordsWhenSourceDeleteFails(t *testing.T
 	doc.ClaimedAt = &now
 	doc.ProcessingStartedAt = &now
 	require.NoError(t, sourceRepo.Create(t.Context(), doc))
-	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", doc.ID, "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "sspai")
 	run.ID = doc.RewriteRunID
 	require.NoError(t, runRepo.Create(t.Context(), run))
 	require.NoError(t, stageRepo.Create(t.Context(), &domain.RewriteStageRun{
@@ -1138,7 +1138,7 @@ func TestAPIArticlesDeleteWorkflowCleanupFailureRecordsAuditContext(t *testing.T
 	doc.ClaimedAt = &now
 	doc.ProcessingStartedAt = &now
 	require.NoError(t, sourceRepo.Create(t.Context(), doc))
-	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", doc.ID, "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "sspai")
 	run.ID = doc.RewriteRunID
 	require.NoError(t, runRepo.Create(t.Context(), run))
 

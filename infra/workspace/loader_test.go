@@ -121,10 +121,6 @@ func TestLoaderLoadAppliesGranularDefaultsToPartialNestedConfig(t *testing.T) {
 	writeWorkspaceFile(t, root, `
 review_policy:
   default_mode: manual
-collector:
-  enabled: true
-  command: custom-command
-  working_dir: custom-collector
 `)
 
 	loader := NewLoader()
@@ -133,11 +129,6 @@ collector:
 	require.NoError(t, err)
 	assert.Equal(t, "manual", settings.ReviewPolicy.DefaultMode)
 	assert.Equal(t, []string{"missing_secret", "render_failed", "validation_failed"}, settings.ReviewPolicy.BlockingErrors)
-	assert.True(t, settings.Collector.Enabled)
-	assert.Equal(t, "custom-command", settings.Collector.Command)
-	assert.Equal(t, "custom-collector", settings.Collector.WorkingDir)
-	assert.Equal(t, "incoming/bundle-{timestamp}.json", settings.Collector.BundleOutPattern)
-	assert.Equal(t, 4, settings.Collector.GlobalConcurrency)
 }
 
 func TestLoaderLoadPreservesExplicitFalseProviderEnabled(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 )
 
 const defaultFolderIntakeRenderPlatform = "wechat"
+const defaultFolderIntakeConcurrency = 4
 
 type SourceDocumentParser func(path string) (*ParsedSourceDocument, error)
 
@@ -101,7 +102,7 @@ func BuildFolderIntakeConfigFromWorkspace(resolved domain.ResolvedWorkspaceSetti
 	return FolderIntakeConfig{
 		WatchDir:              resolved.Paths.IncomingDir,
 		ArchiveDir:            resolved.Paths.ProcessedDir,
-		Concurrency:           resolved.Workspace.Collector.GlobalConcurrency,
+		Concurrency:           defaultFolderIntakeConcurrency,
 		TargetType:            "wechat-longform",
 		SourceProfile:         "folder-default",
 		RenderPlatform:        defaultFolderIntakeRenderPlatform,

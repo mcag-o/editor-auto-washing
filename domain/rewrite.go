@@ -59,7 +59,6 @@ type RewritePipelineRun struct {
 	ProfileID          string         `json:"profile_id"`
 	ProfileVersion     string         `json:"profile_version"`
 	WorkspaceArticleID string         `json:"workspace_article_id"`
-	CollectorArticleID string         `json:"collector_article_id"`
 	TargetType         string         `json:"target_type"`
 	SourceProfile      string         `json:"source_profile"`
 	Status             string         `json:"status"`
@@ -113,14 +112,13 @@ type LLMProfile struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
-func NewRewritePipelineRun(profileID, profileVersion, workspaceArticleID, collectorArticleID, targetType, sourceProfile string) *RewritePipelineRun {
+func NewRewritePipelineRun(profileID, profileVersion, workspaceArticleID, targetType, sourceProfile string) *RewritePipelineRun {
 	now := time.Now().UTC()
 	return &RewritePipelineRun{
 		ID:                 id.New(),
 		ProfileID:          profileID,
 		ProfileVersion:     profileVersion,
 		WorkspaceArticleID: workspaceArticleID,
-		CollectorArticleID: collectorArticleID,
 		TargetType:         targetType,
 		SourceProfile:      sourceProfile,
 		Status:             RewriteRunPending,

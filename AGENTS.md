@@ -30,7 +30,7 @@ This repository is the active `content-hub` Go workspace rooted at the repositor
 - Draft + render are the default automated result path.
 - Review/publish are optional later manual steps, not part of the default automated chain.
 - Folder-intake remains backend/internal compatibility only unless a task explicitly targets it.
-- Do not present static shell or RSS/collector/ingestion HTTP surfaces as current supported operator entrypoints.
+- Do not present static shell or background ingestion HTTP surfaces as current supported operator entrypoints.
 - Preserve Chinese user-facing documentation where it already exists; bilingual docs are normal here.
 - Prefer minimal, local edits over broad cleanup unless the task explicitly asks for broader normalization.
 - Run the narrowest relevant test first, then broaden as needed.
@@ -65,17 +65,16 @@ Notes:
 - Go version from `go.mod`: `1.25.0`
 - SQLite uses `github.com/mattn/go-sqlite3`, so CGO and a local C toolchain are required.
 - `Makefile` builds `bin/server` with `CGO_ENABLED=1` and runs tests with `-race` and coverage.
-- Many collector and integration tests rely on fixtures under `testdata/`.
+- Many integration and runtime tests rely on fixtures under `testdata/`.
 
 ## Code Style Guidelines
 
 ### Architecture And Boundaries
 
-- Root Go code follows explicit package boundaries such as `domain`, `infra`, `service`, `collector`, `transport`, and `cmd`.
+- Root Go code follows explicit package boundaries such as `domain`, `infra`, `service`, `transport`, and `cmd`.
 - Keep transport concerns in `transport/`, persistence and adapters in `infra/`, orchestration in `service/`, and core models/errors in `domain/`.
 - `service/rewrite_*` owns rewrite orchestration and stage execution.
 - `infra/llm/` owns prompt rendering, structured decode, and provider adapters.
-- `collector/` stops at imported source article creation and bridge ingestion; it does not own rewrite profile selection or rewrite execution.
 - Avoid introducing cross-package helper layers unless existing boundaries clearly require them.
 - Preserve public interfaces unless the task explicitly changes behavior across layers.
 
@@ -93,7 +92,7 @@ Notes:
 
 - Go: prefer explicit structs and narrow interfaces; return concrete structs or pointers when the surrounding package already does so.
 - Go: use typed domain errors such as `domain.AppError` when callers need semantic handling or HTTP mapping.
-- Go: thread `context.Context` through service, collector, and transport paths that already expect it.
+- Go: thread `context.Context` through service and transport paths that already expect it.
 
 ### Naming Conventions
 
@@ -111,7 +110,7 @@ Notes:
 
 - Root Go tests are colocated with packages, plus integration coverage under `integration/`.
 - When fixing a bug, update the nearest existing test or add a close regression test instead of creating a disconnected test file.
-- Prefer fixture-driven tests for collector parsing and normalization behavior.
+- Prefer fixture-driven tests for parsing and normalization behavior.
 - Prefer `go test ./service -run TestRewrite...` for rewrite service verification before broader `go test ./...` runs.
 - Prefer `go test ./integration -run 'TestWebControlPlanePasteToRenderedResult|TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate|TestRewritePipelineMainlineMaterializesDraft'` when validating the default automated mainline.
 - Start with a package-level or exact-test run before `go test ./...`.

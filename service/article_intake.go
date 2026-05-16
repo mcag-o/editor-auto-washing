@@ -146,7 +146,6 @@ func (s *ArticleIntakeService) intake(ctx context.Context, workspaceArticleID st
 
 	run, err := s.rewrite.Run(ctx, RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: article.ExternalID,
 		Title:              article.Title,
 		TargetType:         article.TargetType,
 		SourceProfile:      article.SourceProfile,
@@ -219,7 +218,6 @@ func buildIntakeWorkspaceMetadata(article domain.IntakeArticle) map[string]any {
 	for key, value := range article.Metadata {
 		metadata[key] = value
 	}
-	metadata["collector_article_id"] = strings.TrimSpace(article.ExternalID)
 	metadata["rss_external_id"] = strings.TrimSpace(article.ExternalID)
 	metadata["rss_guid"] = strings.TrimSpace(article.ExternalID)
 	metadata["rss_subscription_id"] = strings.TrimSpace(article.SubscriptionID)

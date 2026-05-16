@@ -3,7 +3,7 @@ package domain
 import "testing"
 
 func TestDefaultRewritePipelineRunStartsPending(t *testing.T) {
-	run := NewRewritePipelineRun("profile-1", "v1", "workspace-1", "collector-1", "wechat-longform", "sspai")
+	run := NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "sspai")
 	if run.Status != RewriteRunPending {
 		t.Fatalf("expected pending status, got %s", run.Status)
 	}

@@ -91,7 +91,6 @@ func runRewritePipelineMainlineMaterializesDraft(t *testing.T) {
 
 	run, err := runtime.Orchestrator().Run(t.Context(), service.RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              workspace.Title,
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",

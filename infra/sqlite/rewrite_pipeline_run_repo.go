@@ -19,7 +19,7 @@ func (r *rewritePipelineRunRepo) Create(ctx context.Context, run *domain.Rewrite
 	if err != nil {
 		return fmt.Errorf("marshal rewrite pipeline run metadata: %w", err)
 	}
-	_, err = r.db.ExecContext(ctx, `INSERT INTO rewrite_pipeline_runs (id, profile_id, profile_version, workspace_article_id, collector_article_id, target_type, source_profile, status, current_stage, started_at, completed_at, final_draft_id, error_summary, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, run.ID, run.ProfileID, run.ProfileVersion, run.WorkspaceArticleID, run.CollectorArticleID, run.TargetType, run.SourceProfile, run.Status, run.CurrentStage, run.StartedAt.Format(time.RFC3339), nullableTime(run.CompletedAt), run.FinalDraftID, run.ErrorSummary, string(metadataJSON))
+	_, err = r.db.ExecContext(ctx, `INSERT INTO rewrite_pipeline_runs (id, profile_id, profile_version, workspace_article_id, target_type, source_profile, status, current_stage, started_at, completed_at, final_draft_id, error_summary, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, run.ID, run.ProfileID, run.ProfileVersion, run.WorkspaceArticleID, run.TargetType, run.SourceProfile, run.Status, run.CurrentStage, run.StartedAt.Format(time.RFC3339), nullableTime(run.CompletedAt), run.FinalDraftID, run.ErrorSummary, string(metadataJSON))
 	if err != nil {
 		return fmt.Errorf("insert rewrite pipeline run: %w", err)
 	}
@@ -31,7 +31,7 @@ func (r *rewritePipelineRunRepo) Update(ctx context.Context, run *domain.Rewrite
 	if err != nil {
 		return fmt.Errorf("marshal rewrite pipeline run metadata: %w", err)
 	}
-	result, err := r.db.ExecContext(ctx, `UPDATE rewrite_pipeline_runs SET profile_id = ?, profile_version = ?, workspace_article_id = ?, collector_article_id = ?, target_type = ?, source_profile = ?, status = ?, current_stage = ?, started_at = ?, completed_at = ?, final_draft_id = ?, error_summary = ?, metadata_json = ? WHERE id = ?`, run.ProfileID, run.ProfileVersion, run.WorkspaceArticleID, run.CollectorArticleID, run.TargetType, run.SourceProfile, run.Status, run.CurrentStage, run.StartedAt.Format(time.RFC3339), nullableTime(run.CompletedAt), run.FinalDraftID, run.ErrorSummary, string(metadataJSON), run.ID)
+	result, err := r.db.ExecContext(ctx, `UPDATE rewrite_pipeline_runs SET profile_id = ?, profile_version = ?, workspace_article_id = ?, target_type = ?, source_profile = ?, status = ?, current_stage = ?, started_at = ?, completed_at = ?, final_draft_id = ?, error_summary = ?, metadata_json = ? WHERE id = ?`, run.ProfileID, run.ProfileVersion, run.WorkspaceArticleID, run.TargetType, run.SourceProfile, run.Status, run.CurrentStage, run.StartedAt.Format(time.RFC3339), nullableTime(run.CompletedAt), run.FinalDraftID, run.ErrorSummary, string(metadataJSON), run.ID)
 	if err != nil {
 		return fmt.Errorf("update rewrite pipeline run: %w", err)
 	}
@@ -61,7 +61,7 @@ func (r *rewritePipelineRunRepo) Delete(ctx context.Context, id string) error {
 }
 
 func (r *rewritePipelineRunRepo) GetByID(ctx context.Context, id string) (*domain.RewritePipelineRun, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, profile_id, profile_version, workspace_article_id, collector_article_id, target_type, source_profile, status, current_stage, started_at, completed_at, final_draft_id, error_summary, metadata_json FROM rewrite_pipeline_runs WHERE id = ?`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT id, profile_id, profile_version, workspace_article_id, target_type, source_profile, status, current_stage, started_at, completed_at, final_draft_id, error_summary, metadata_json FROM rewrite_pipeline_runs WHERE id = ?`, id)
 	run, err := scanRewritePipelineRun(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -76,7 +76,7 @@ func (r *rewritePipelineRunRepo) List(ctx context.Context, limit int) ([]domain.
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, profile_id, profile_version, workspace_article_id, collector_article_id, target_type, source_profile, status, current_stage, started_at, completed_at, final_draft_id, error_summary, metadata_json FROM rewrite_pipeline_runs ORDER BY started_at DESC LIMIT ?`, limit)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, profile_id, profile_version, workspace_article_id, target_type, source_profile, status, current_stage, started_at, completed_at, final_draft_id, error_summary, metadata_json FROM rewrite_pipeline_runs ORDER BY started_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query rewrite pipeline runs: %w", err)
 	}
@@ -98,7 +98,7 @@ func scanRewritePipelineRun(row rewriteRunScanner) (*domain.RewritePipelineRun, 
 	var run domain.RewritePipelineRun
 	var completedAt sql.NullString
 	var startedAt, metadataJSON string
-	if err := row.Scan(&run.ID, &run.ProfileID, &run.ProfileVersion, &run.WorkspaceArticleID, &run.CollectorArticleID, &run.TargetType, &run.SourceProfile, &run.Status, &run.CurrentStage, &startedAt, &completedAt, &run.FinalDraftID, &run.ErrorSummary, &metadataJSON); err != nil {
+	if err := row.Scan(&run.ID, &run.ProfileID, &run.ProfileVersion, &run.WorkspaceArticleID, &run.TargetType, &run.SourceProfile, &run.Status, &run.CurrentStage, &startedAt, &completedAt, &run.FinalDraftID, &run.ErrorSummary, &metadataJSON); err != nil {
 		return nil, err
 	}
 	parsedStartedAt, err := time.Parse(time.RFC3339, startedAt)

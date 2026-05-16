@@ -72,13 +72,13 @@ func TestRunPropagatesServerStartupFailure(t *testing.T) {
 	buildRuntimeReposFn = func(root string) (*service.RuntimeRepos, func() error, error) {
 		provider := memory.NewProvider()
 		return &service.RuntimeRepos{
-			ArticleRepo: provider.ArticleRepo(), TemplateRepo: provider.TemplateRepo(), DraftRepo: provider.DraftRepo(), AssetRepo: provider.AssetRepo(), ReviewRepo: provider.ReviewRepo(), PublishRepo: provider.PublishRepo(), JobRepo: provider.JobRepo(), JobEventRepo: provider.JobEventRepo(), IngestionRepo: provider.IngestionRepo(), WorkspaceRepo: provider.WorkspaceRepo(), CollectorSourceRepo: provider.CollectorSourceRepo(), CollectorRunRepo: provider.CollectorRunRepo(), CollectorEntryRepo: provider.CollectorEntryRepo(), CollectorSchedulerRepo: provider.CollectorSchedulerRepo(), RenderedDir: t.TempDir(),
+			ArticleRepo: provider.ArticleRepo(), TemplateRepo: provider.TemplateRepo(), DraftRepo: provider.DraftRepo(), AssetRepo: provider.AssetRepo(), ReviewRepo: provider.ReviewRepo(), PublishRepo: provider.PublishRepo(), JobRepo: provider.JobRepo(), JobEventRepo: provider.JobEventRepo(), IngestionRepo: provider.IngestionRepo(), WorkspaceRepo: provider.WorkspaceRepo(), RenderedDir: t.TempDir(),
 		}, func() error { return nil }, nil
 	}
 	buildStandaloneRuntimeReposFn = func(cfg config.Config) (*service.RuntimeRepos, func() error, error) {
 		provider := memory.NewProvider()
 		return &service.RuntimeRepos{
-			ArticleRepo: provider.ArticleRepo(), TemplateRepo: provider.TemplateRepo(), DraftRepo: provider.DraftRepo(), AssetRepo: provider.AssetRepo(), ReviewRepo: provider.ReviewRepo(), PublishRepo: provider.PublishRepo(), JobRepo: provider.JobRepo(), JobEventRepo: provider.JobEventRepo(), IngestionRepo: provider.IngestionRepo(), WorkspaceRepo: provider.WorkspaceRepo(), CollectorSourceRepo: provider.CollectorSourceRepo(), CollectorRunRepo: provider.CollectorRunRepo(), CollectorEntryRepo: provider.CollectorEntryRepo(), CollectorSchedulerRepo: provider.CollectorSchedulerRepo(), RenderedDir: t.TempDir(),
+			ArticleRepo: provider.ArticleRepo(), TemplateRepo: provider.TemplateRepo(), DraftRepo: provider.DraftRepo(), AssetRepo: provider.AssetRepo(), ReviewRepo: provider.ReviewRepo(), PublishRepo: provider.PublishRepo(), JobRepo: provider.JobRepo(), JobEventRepo: provider.JobEventRepo(), IngestionRepo: provider.IngestionRepo(), WorkspaceRepo: provider.WorkspaceRepo(), RenderedDir: t.TempDir(),
 		}, func() error { return nil }, nil
 	}
 	newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serverRunner {
@@ -126,7 +126,7 @@ func TestRunUsesStandaloneExternalConfigFallbackWhenWorkspaceConfigFails(t *test
 	buildRuntimeReposFn = func(root string) (*service.RuntimeRepos, func() error, error) {
 		provider := memory.NewProvider()
 		return &service.RuntimeRepos{
-			ArticleRepo: provider.ArticleRepo(), TemplateRepo: provider.TemplateRepo(), DraftRepo: provider.DraftRepo(), AssetRepo: provider.AssetRepo(), ReviewRepo: provider.ReviewRepo(), PublishRepo: provider.PublishRepo(), JobRepo: provider.JobRepo(), JobEventRepo: provider.JobEventRepo(), IngestionRepo: provider.IngestionRepo(), WorkspaceRepo: provider.WorkspaceRepo(), CollectorSourceRepo: provider.CollectorSourceRepo(), CollectorRunRepo: provider.CollectorRunRepo(), CollectorEntryRepo: provider.CollectorEntryRepo(), CollectorSchedulerRepo: provider.CollectorSchedulerRepo(), RenderedDir: t.TempDir(),
+			ArticleRepo: provider.ArticleRepo(), TemplateRepo: provider.TemplateRepo(), DraftRepo: provider.DraftRepo(), AssetRepo: provider.AssetRepo(), ReviewRepo: provider.ReviewRepo(), PublishRepo: provider.PublishRepo(), JobRepo: provider.JobRepo(), JobEventRepo: provider.JobEventRepo(), IngestionRepo: provider.IngestionRepo(), WorkspaceRepo: provider.WorkspaceRepo(), RenderedDir: t.TempDir(),
 		}, func() error { return nil }, nil
 	}
 	newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serverRunner {
@@ -223,7 +223,7 @@ func TestRunStandaloneFallbackRemainsAuthoritativeThroughRuntimeBootstrap(t *tes
 	assert.NotContains(t, err.Error(), "daily-intelligence")
 }
 
-func TestBuildRuntimeReposExposesCollectorRepos(t *testing.T) {
+func TestBuildRuntimeReposExposesBrowserFirstRuntimeRepos(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "workspace.yaml"), []byte("name: runtime\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "secrets.yaml"), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
@@ -232,10 +232,10 @@ func TestBuildRuntimeReposExposesCollectorRepos(t *testing.T) {
 	require.NoError(t, err)
 	defer cleanup()
 
-	assert.NotNil(t, repos.CollectorSourceRepo)
-	assert.NotNil(t, repos.CollectorRunRepo)
-	assert.NotNil(t, repos.CollectorEntryRepo)
-	assert.NotNil(t, repos.CollectorSchedulerRepo)
+	assert.NotNil(t, repos.SourceDocumentRepo)
+	assert.NotNil(t, repos.RewritePipelineRunRepo)
+	assert.NotNil(t, repos.RewriteStageRunRepo)
+	assert.NotNil(t, repos.WorkflowRunRepo)
 }
 
 func TestRuntimeWorkflowEngineRegistersDefaultAutomationNodes(t *testing.T) {
@@ -292,10 +292,6 @@ func TestRunBuildsWebControlProviderDependencies(t *testing.T) {
 			IngestionRepo:          provider.IngestionRepo(),
 			WorkspaceRepo:          provider.WorkspaceRepo(),
 			BundleImportTxStarter:  provider,
-			CollectorSourceRepo:    provider.CollectorSourceRepo(),
-			CollectorRunRepo:       provider.CollectorRunRepo(),
-			CollectorEntryRepo:     provider.CollectorEntryRepo(),
-			CollectorSchedulerRepo: provider.CollectorSchedulerRepo(),
 			RewritePipelineRunRepo: provider.RewritePipelineRunRepo(),
 			RewriteStageRunRepo:    provider.RewriteStageRunRepo(),
 			WorkflowRunRepo:        provider.WorkflowRunRepo(),
@@ -321,10 +317,6 @@ func TestRunBuildsWebControlProviderDependencies(t *testing.T) {
 			IngestionRepo:          provider.IngestionRepo(),
 			WorkspaceRepo:          provider.WorkspaceRepo(),
 			BundleImportTxStarter:  provider,
-			CollectorSourceRepo:    provider.CollectorSourceRepo(),
-			CollectorRunRepo:       provider.CollectorRunRepo(),
-			CollectorEntryRepo:     provider.CollectorEntryRepo(),
-			CollectorSchedulerRepo: provider.CollectorSchedulerRepo(),
 			RewritePipelineRunRepo: provider.RewritePipelineRunRepo(),
 			RewriteStageRunRepo:    provider.RewriteStageRunRepo(),
 			WorkflowRunRepo:        provider.WorkflowRunRepo(),
@@ -394,10 +386,6 @@ func TestRunDefaultsWebControlPlaneToPrimaryPort8123(t *testing.T) {
 			IngestionRepo:          provider.IngestionRepo(),
 			WorkspaceRepo:          provider.WorkspaceRepo(),
 			BundleImportTxStarter:  provider,
-			CollectorSourceRepo:    provider.CollectorSourceRepo(),
-			CollectorRunRepo:       provider.CollectorRunRepo(),
-			CollectorEntryRepo:     provider.CollectorEntryRepo(),
-			CollectorSchedulerRepo: provider.CollectorSchedulerRepo(),
 			RewritePipelineRunRepo: provider.RewritePipelineRunRepo(),
 			RewriteStageRunRepo:    provider.RewriteStageRunRepo(),
 			WorkflowRunRepo:        provider.WorkflowRunRepo(),
@@ -423,10 +411,6 @@ func TestRunDefaultsWebControlPlaneToPrimaryPort8123(t *testing.T) {
 			IngestionRepo:          provider.IngestionRepo(),
 			WorkspaceRepo:          provider.WorkspaceRepo(),
 			BundleImportTxStarter:  provider,
-			CollectorSourceRepo:    provider.CollectorSourceRepo(),
-			CollectorRunRepo:       provider.CollectorRunRepo(),
-			CollectorEntryRepo:     provider.CollectorEntryRepo(),
-			CollectorSchedulerRepo: provider.CollectorSchedulerRepo(),
 			RewritePipelineRunRepo: provider.RewritePipelineRunRepo(),
 			RewriteStageRunRepo:    provider.RewriteStageRunRepo(),
 			WorkflowRunRepo:        provider.WorkflowRunRepo(),

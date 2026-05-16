@@ -27,12 +27,6 @@ type RuntimeRepos struct {
 	IngestionRepo              repo.IngestionRepo
 	WorkspaceRepo              repo.WorkspaceRepo
 	BundleImportTxStarter      repo.BundleImportTxStarter
-	CollectorSourceRepo        repo.CollectorSourceRepo
-	CollectorRunRepo           repo.CollectorRunRepo
-	CollectorEntryRepo         repo.CollectorEntryRepo
-	CollectorArticleRepo       repo.CollectorArticleRepo
-	CollectorAttemptRepo       repo.CollectorAttemptRepo
-	CollectorSchedulerRepo     repo.CollectorSchedulerStateRepo
 	RewritePipelineProfileRepo repo.RewritePipelineProfileRepo
 	RewritePipelineRunRepo     repo.RewritePipelineRunRepo
 	RewriteStageRunRepo        repo.RewriteStageRunRepo
@@ -104,12 +98,6 @@ func buildRuntimeReposFromResolved(runtimeCfg config.Config, renderedDir string,
 		IngestionRepo:              sqliteProvider.IngestionRepo(),
 		WorkspaceRepo:              sqliteProvider.WorkspaceRepo(),
 		BundleImportTxStarter:      sqliteProvider,
-		CollectorSourceRepo:        sqliteProvider.CollectorSourceRepo(),
-		CollectorRunRepo:           sqliteProvider.CollectorRunRepo(),
-		CollectorEntryRepo:         sqliteProvider.CollectorEntryRepo(),
-		CollectorArticleRepo:       sqliteProvider.CollectorArticleRepo(),
-		CollectorAttemptRepo:       sqliteProvider.CollectorAttemptRepo(),
-		CollectorSchedulerRepo:     sqliteProvider.CollectorSchedulerStateRepo(),
 		RewritePipelineProfileRepo: sqliteProvider.RewritePipelineProfileRepo(),
 		RewritePipelineRunRepo:     sqliteProvider.RewritePipelineRunRepo(),
 		RewriteStageRunRepo:        sqliteProvider.RewriteStageRunRepo(),

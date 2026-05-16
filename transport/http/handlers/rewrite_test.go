@@ -25,7 +25,6 @@ func TestRewriteHandlerRunReturnsCreated(t *testing.T) {
 			ProfileID:          "profile-1",
 			ProfileVersion:     "v1",
 			WorkspaceArticleID: "article-1",
-			CollectorArticleID: "collector-1",
 			TargetType:         "wechat-longform",
 			SourceProfile:      "sspai",
 			Status:             domain.RewriteRunRunning,
@@ -37,7 +36,7 @@ func TestRewriteHandlerRunReturnsCreated(t *testing.T) {
 	router := gin.New()
 	router.POST("/rewrite/runs", h.Run)
 
-	req := httptest.NewRequest(http.MethodPost, "/rewrite/runs", bytes.NewBufferString(`{"workspace_article_id":"article-1","collector_article_id":"collector-1","title":"Source","target_type":"wechat-longform","source_profile":"sspai","version":"v1"}`))
+	req := httptest.NewRequest(http.MethodPost, "/rewrite/runs", bytes.NewBufferString(`{"workspace_article_id":"article-1","title":"Source","target_type":"wechat-longform","source_profile":"sspai","version":"v1"}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -45,7 +44,6 @@ func TestRewriteHandlerRunReturnsCreated(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.Code)
 	require.Equal(t, service.RewriteRunRequest{
 		WorkspaceArticleID: "article-1",
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -65,7 +63,7 @@ func TestRewriteHandlerRunMapsServiceErrors(t *testing.T) {
 	router := gin.New()
 	router.POST("/rewrite/runs", h.Run)
 
-	req := httptest.NewRequest(http.MethodPost, "/rewrite/runs", bytes.NewBufferString(`{"workspace_article_id":"article-1","collector_article_id":"collector-1","title":"Source","target_type":"wechat-longform","source_profile":"sspai","version":"v1"}`))
+	req := httptest.NewRequest(http.MethodPost, "/rewrite/runs", bytes.NewBufferString(`{"workspace_article_id":"article-1","title":"Source","target_type":"wechat-longform","source_profile":"sspai","version":"v1"}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -92,6 +90,40 @@ func TestRewriteHandlerRunReturnsBadRequestForMalformedJSON(t *testing.T) {
 	require.Equal(t, service.RewriteRunRequest{}, runner.lastReq)
 }
 
+func TestRewriteHandlerRunAcceptsBrowserFirstRewriteRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	runner := &stubRewriteRunner{
+		run: &domain.RewritePipelineRun{
+			ID:                 "run-1",
+			ProfileID:          "profile-1",
+			ProfileVersion:     "v1",
+			WorkspaceArticleID: "article-1",
+			TargetType:         "wechat-longform",
+			SourceProfile:      "web-upload",
+			Status:             domain.RewriteRunRunning,
+			StartedAt:          time.Unix(1710000000, 0).UTC(),
+			Metadata:           map[string]any{"title": "Source"},
+		},
+	}
+	h := NewRewriteHandler(runner)
+	router := gin.New()
+	router.POST("/rewrite/runs", h.Run)
+
+	req := httptest.NewRequest(http.MethodPost, "/rewrite/runs", bytes.NewBufferString(`{"workspace_article_id":"article-1","title":"Source","target_type":"wechat-longform","source_profile":"web-upload","version":"v1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	require.Equal(t, http.StatusCreated, resp.Code)
+	require.Equal(t, service.RewriteRunRequest{
+		WorkspaceArticleID: "article-1",
+		Title:              "Source",
+		TargetType:         "wechat-longform",
+		SourceProfile:      "web-upload",
+		Version:            "v1",
+	}, runner.lastReq)
+}
+
 func TestRewriteRunRequestHasHTTPBindingTags(t *testing.T) {
 	type fieldExpectation struct {
 		name    string
@@ -100,7 +132,6 @@ func TestRewriteRunRequestHasHTTPBindingTags(t *testing.T) {
 
 	expected := []fieldExpectation{
 		{name: "WorkspaceArticleID", jsonTag: "workspace_article_id"},
-		{name: "CollectorArticleID", jsonTag: "collector_article_id"},
 		{name: "Title", jsonTag: "title"},
 		{name: "TargetType", jsonTag: "target_type"},
 		{name: "SourceProfile", jsonTag: "source_profile"},

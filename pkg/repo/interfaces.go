@@ -240,11 +240,6 @@ type LLMProvider interface {
 	Name() string
 }
 
-type CollectorProvider interface {
-	Collect(ctx context.Context, platforms []string) (*domain.CollectResult, error)
-	ListPlatforms(ctx context.Context) ([]domain.PlatformInfo, error)
-}
-
 type PublisherProvider interface {
 	Publish(ctx context.Context, req domain.PublishRequest) (*domain.PublishResult, error)
 	Platforms() []string

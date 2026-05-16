@@ -130,13 +130,11 @@ func TestArticleIntakeServiceCreatesWorkspaceArticleAndTriggersRewrite(t *testin
 	require.Equal(t, "rss", workspace.Source.SourceType)
 	require.Equal(t, "https://example.com/a", workspace.Source.URL)
 	require.Equal(t, "guid-1", workspace.Metadata["rss_guid"])
-	require.Equal(t, "guid-1", workspace.Metadata["collector_article_id"])
 	require.Equal(t, "sub-1", workspace.Metadata["rss_subscription_id"])
 	require.Equal(t, "Body", workspace.Metadata["source_body"])
 	require.True(t, rewrite.called)
 	require.Equal(t, RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "guid-1",
 		Title:              "Title",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -222,6 +220,69 @@ func TestArticleIntakeServiceReturnsExplicitRewriteResult(t *testing.T) {
 	require.NotNil(t, result.RewriteRun)
 	require.Equal(t, "run-1", result.RewriteRun.ID)
 	require.Equal(t, result.RewriteRun.FinalDraftID, result.DraftID)
+}
+
+func TestArticleIntakeServiceOmitsCollectorMetadataForBrowserFirstSources(t *testing.T) {
+	workspaceRepo := &stubArticleIntakeWorkspaceRepo{}
+	rewrite := &stubArticleIntakeRewriteRunner{}
+	svc := NewArticleIntakeService(workspaceRepo, rewrite)
+	article := domain.IntakeArticle{
+		ExternalID:            "doc-1",
+		SourceType:            "upload",
+		Title:                 "Title",
+		Body:                  "Body",
+		Summary:               "Summary",
+		OriginalURL:           "uploaded://doc-1",
+		TargetType:            "wechat-longform",
+		SourceProfile:         "web-upload",
+		RewriteProfileVersion: "v1",
+	}
+
+	workspace, err := svc.Intake(t.Context(), article)
+
+	require.NoError(t, err)
+	require.NotNil(t, workspace)
+	require.True(t, rewrite.called)
+	require.Equal(t, RewriteRunRequest{
+		WorkspaceArticleID: workspace.ID,
+		Title:              "Title",
+		TargetType:         "wechat-longform",
+		SourceProfile:      "web-upload",
+		Version:            "v1",
+	}, rewrite.lastReq)
+	require.NotContains(t, workspaceRepo.created[0].Metadata, "collector_article_id")
+}
+
+func TestArticleIntakeServiceDoesNotPreserveCollectorMetadataForCompatibilitySources(t *testing.T) {
+	workspaceRepo := &stubArticleIntakeWorkspaceRepo{}
+	rewrite := &stubArticleIntakeRewriteRunner{}
+	svc := NewArticleIntakeService(workspaceRepo, rewrite)
+	article := domain.IntakeArticle{
+		ExternalID:            "compat-collector-1",
+		SourceType:            "rss",
+		SubscriptionID:        "sub-1",
+		Title:                 "Title",
+		Body:                  "Body",
+		Summary:               "Summary",
+		OriginalURL:           "https://example.com/a",
+		TargetType:            "wechat-longform",
+		SourceProfile:         "web-upload",
+		RewriteProfileVersion: "v1",
+	}
+
+	workspace, err := svc.Intake(t.Context(), article)
+
+	require.NoError(t, err)
+	require.NotNil(t, workspace)
+	require.True(t, rewrite.called)
+	require.Equal(t, RewriteRunRequest{
+		WorkspaceArticleID: workspace.ID,
+		Title:              "Title",
+		TargetType:         "wechat-longform",
+		SourceProfile:      "web-upload",
+		Version:            "v1",
+	}, rewrite.lastReq)
+	require.NotContains(t, workspaceRepo.created[0].Metadata, "collector_article_id")
 }
 
 func TestArticleIntakeServiceCarriesWorkflowSelectionMetadataIntoRewriteRequest(t *testing.T) {

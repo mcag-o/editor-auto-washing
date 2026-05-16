@@ -206,7 +206,7 @@ func TestWebControlPlaneGraphWorkflowCanExposeMultipleActiveBranches(t *testing.
 	article.ProcessingStartedAt = &startedAt
 	require.NoError(t, repos.SourceDocumentRepo.Update(t.Context(), article))
 
-	run := domain.NewRewritePipelineRun("profile-web-mainline", "v1", article.WorkspaceArticleID, article.ID, "wechat-longform", "web-paste")
+	run := domain.NewRewritePipelineRun("profile-web-mainline", "v1", article.WorkspaceArticleID, "wechat-longform", "web-paste")
 	run.ID = article.RewriteRunID
 	run.Status = domain.RewriteRunRunning
 	run.CurrentStage = "review_draft"
@@ -404,7 +404,7 @@ func TestWebControlPlaneArticleOperationsAuditAndWorkflowSemantics(t *testing.T)
 	storedPauseDoc.ClaimedAt = &started
 	storedPauseDoc.ProcessingStartedAt = &started
 	require.NoError(t, repos.SourceDocumentRepo.Update(t.Context(), storedPauseDoc))
-	pauseRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", storedPauseDoc.ID, "wechat-longform", "web-paste")
+	pauseRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "web-paste")
 	pauseRun.ID = "run-pause"
 	pauseRun.Status = domain.RewriteRunRunning
 	pauseRun.CurrentStage = "generate_draft"
@@ -454,7 +454,7 @@ func TestWebControlPlaneArticleOperationsAuditAndWorkflowSemantics(t *testing.T)
 	storedDeleteDoc.ClaimedAt = &started
 	storedDeleteDoc.ProcessingStartedAt = &started
 	require.NoError(t, repos.SourceDocumentRepo.Update(t.Context(), storedDeleteDoc))
-	deleteRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", storedDeleteDoc.ID, "wechat-longform", "web-paste")
+	deleteRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "web-paste")
 	deleteRun.ID = "run-delete"
 	deleteRun.Metadata["workflow_template_id"] = "workflow-ops"
 	deleteRun.Metadata["workflow_template_version"] = "v1"
@@ -498,7 +498,7 @@ func TestWebControlPlaneArticleOperationsAuditAndWorkflowSemantics(t *testing.T)
 	storedRetryDoc.Metadata["workflow_template_id"] = "workflow-ops"
 	storedRetryDoc.Metadata["workflow_template_version"] = "v2"
 	require.NoError(t, repos.SourceDocumentRepo.Update(t.Context(), storedRetryDoc))
-	retryRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", storedRetryDoc.ID, "wechat-longform", "web-paste")
+	retryRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "web-paste")
 	retryRun.ID = "run-retry"
 	retryRun.Status = domain.RewriteRunFailed
 	retryRun.CurrentStage = "generate_draft"

@@ -93,7 +93,6 @@ func TestRewriteOrchestratorRunsPipelineAndCreatesDraft(t *testing.T) {
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -138,6 +137,64 @@ func TestRewriteOrchestratorRunsPipelineAndCreatesDraft(t *testing.T) {
 	require.Equal(t, draftMaterializedNote, storedWorkspace.Notes)
 }
 
+func TestRewriteOrchestratorRunsPipelineForBrowserFirstWorkspace(t *testing.T) {
+	provider := memory.NewProvider()
+	workspace := domain.NewArticleWorkspaceRecord("article-no-collector", "Title", "Summary", domain.ArticleWorkspaceSource{SourceType: "upload"}, nil)
+	require.NoError(t, provider.WorkspaceRepo().Create(t.Context(), workspace))
+
+	promptRepo := &stubRewritePromptRegistry{prompt: &domain.PromptTemplate{
+		Key:            "generate_draft",
+		Version:        "v1",
+		SystemTemplate: "sys",
+		UserTemplate:   "Title: {{title}}",
+	}}
+	profileRepo := &stubRewritePipelineProfileRepo{profile: &domain.RewritePipelineProfile{
+		ID:            "profile-no-collector",
+		TargetType:    "wechat-longform",
+		SourceProfile: "web-upload",
+		Version:       "v1",
+		Enabled:       true,
+		Stages: []domain.RewriteStageDefinition{{
+			Name:      "generate_draft",
+			Type:      "generate_draft",
+			PromptRef: "generate_draft@v1",
+			Enabled:   true,
+		}},
+	}}
+	executor := NewRewriteStageExecutor(promptRepo, &recordingLLMClient{response: &llminfra.GenerateResponse{Response: &domain.LLMResponse{
+		Content: `{"title":"Final Title","body":"Paragraph 1","template":"daily-intelligence"}`,
+		Model:   "mock-1",
+	}}}, NewQualityGateEngine())
+	materializer := NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo())
+	orchestrator := NewRewriteOrchestrator(
+		NewRewriteProfileRegistry(profileRepo),
+		provider.RewritePipelineRunRepo(),
+		provider.RewriteStageRunRepo(),
+		provider.WorkspaceRepo(),
+		executor,
+		materializer,
+	)
+
+	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
+		WorkspaceArticleID: workspace.ID,
+		Title:              "Source",
+		TargetType:         "wechat-longform",
+		SourceProfile:      "web-upload",
+		Version:            "v1",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, domain.RewriteRunSucceeded, run.Status)
+
+	storedRun, err := provider.RewritePipelineRunRepo().GetByID(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Equal(t, workspace.ID, storedRun.FinalDraftID)
+
+	storedWorkspace, err := provider.WorkspaceRepo().GetByID(t.Context(), workspace.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.ArticleWorkspaceStatusDraft, storedWorkspace.Status)
+}
+
 func TestRewriteOrchestratorRejectsDisabledProfile(t *testing.T) {
 	provider := memory.NewProvider()
 	workspace := domain.NewArticleWorkspaceRecord("article-disabled", "Title", "Summary", domain.ArticleWorkspaceSource{SourceType: "collector"}, nil)
@@ -161,7 +218,6 @@ func TestRewriteOrchestratorRejectsDisabledProfile(t *testing.T) {
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -232,7 +288,6 @@ func TestRewriteOrchestratorUsesProfileDefaultLLMProfileWhenStageIsUnset(t *test
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -279,7 +334,6 @@ func TestRewriteOrchestratorMarksRunFailedAndWorkspaceRewriteFailed(t *testing.T
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -350,7 +404,6 @@ func TestRewriteOrchestratorRunWorkspaceTransitionFailureDoesNotLeaveActiveRun(t
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -402,7 +455,6 @@ func TestRewriteOrchestratorRunRestoresWorkspaceWhenRewritingTransitionFails(t *
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -464,7 +516,6 @@ func TestRewriteOrchestratorWorkflowMetadataOverridesStagePromptRef(t *testing.T
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -548,7 +599,6 @@ func TestRewriteOrchestratorRoutesToRepairStageAndContinues(t *testing.T) {
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -629,7 +679,6 @@ func TestRewriteOrchestratorAppliesWorkflowOverridesToRepairStage(t *testing.T) 
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -698,7 +747,7 @@ func TestRewriteOrchestratorResumeReusesExistingRunAndContinuesFromSavedState(t 
 		NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo()),
 	)
 
-	run := domain.NewRewritePipelineRun("profile-resume", "v1", workspace.ID, "collector-1", "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-resume", "v1", workspace.ID, "wechat-longform", "sspai")
 	run.ID = "run-resume"
 	run.Status = domain.RewriteRunRunning
 	run.CurrentStage = "finalize"
@@ -786,7 +835,6 @@ func TestRewriteOrchestratorRunsThroughWorkflowKernelAndCreatesDraft(t *testing.
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -844,7 +892,7 @@ func TestRewriteOrchestratorResumeUsesCheckpointInsteadOfStageHistoryReconstruct
 		NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo()),
 	)
 
-	run := domain.NewRewritePipelineRun("profile-resume-checkpoint", "v1", workspace.ID, "collector-1", "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-resume-checkpoint", "v1", workspace.ID, "wechat-longform", "sspai")
 	run.ID = "run-resume-checkpoint"
 	run.Status = domain.RewriteRunRunning
 	run.CurrentStage = "finalize"
@@ -907,7 +955,7 @@ func TestRewriteOrchestratorResumeRequiresCheckpointInsteadOfStageHistoryReconst
 		NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo()),
 	)
 
-	run := domain.NewRewritePipelineRun("profile-resume-no-checkpoint", "v1", workspace.ID, "collector-1", "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-resume-no-checkpoint", "v1", workspace.ID, "wechat-longform", "sspai")
 	run.ID = "run-resume-no-checkpoint"
 	run.Status = domain.RewriteRunRunning
 	run.CurrentStage = "finalize"
@@ -991,7 +1039,7 @@ func TestRewriteOrchestratorResumeDoesNotRematerializeExistingWorkspaceDraft(t *
 		NewDraftMaterializer(provider.DraftRepo(), provider.WorkspaceRepo()),
 	)
 
-	run := domain.NewRewritePipelineRun("profile-resume-idempotent", "v1", workspace.ID, "collector-1", "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-resume-idempotent", "v1", workspace.ID, "wechat-longform", "sspai")
 	run.ID = "run-resume-idempotent"
 	run.Status = domain.RewriteRunRunning
 	run.CurrentStage = rewriteWorkflowMaterializeNodeID
@@ -1057,7 +1105,6 @@ func TestRewriteOrchestratorRunPersistsKernelFailureStageContextAndInputSnapshot
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -1124,7 +1171,6 @@ func TestRewriteOrchestratorDoesNotRepairWithoutRepairPolicyAction(t *testing.T)
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",
@@ -1198,7 +1244,6 @@ func TestRewriteOrchestratorFailsWhenRepairResultStillRequestsRepair(t *testing.
 
 	run, err := orchestrator.Run(t.Context(), RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
-		CollectorArticleID: "collector-1",
 		Title:              "Source",
 		TargetType:         "wechat-longform",
 		SourceProfile:      "sspai",

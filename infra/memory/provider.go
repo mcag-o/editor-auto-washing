@@ -26,12 +26,6 @@ var (
 	_ repo.RewriteStageRunRepo         = (*memRewriteStageRunRepo)(nil)
 	_ repo.WorkflowRunRepo             = (*memWorkflowRunRepo)(nil)
 	_ repo.WorkflowCheckpointRepo      = (*memWorkflowCheckpointRepo)(nil)
-	_ repo.CollectorSourceRepo         = (*memCollectorSourceRepo)(nil)
-	_ repo.CollectorRunRepo            = (*memCollectorRunRepo)(nil)
-	_ repo.CollectorEntryRepo          = (*memCollectorEntryRepo)(nil)
-	_ repo.CollectorArticleRepo        = (*memCollectorArticleRepo)(nil)
-	_ repo.CollectorAttemptRepo        = (*memCollectorAttemptRepo)(nil)
-	_ repo.CollectorSchedulerStateRepo = (*memCollectorSchedulerRepo)(nil)
 	_ repo.BundleImportTxStarter       = (*Provider)(nil)
 )
 
@@ -51,13 +45,6 @@ type Provider struct {
 	rewriteStageRuns    map[string][]*domain.RewriteStageRun
 	workflowRuns        map[string]*domain.WorkflowRun
 	workflowCheckpoints map[string][]*domain.WorkflowCheckpoint
-	collectorSources    map[string]*domain.CollectorSource
-	collectorRuns       map[string]*domain.CollectorRun
-	collectorSourceRuns map[string][]*domain.CollectorSourceRun
-	collectorEntries    map[string][]*domain.CollectorEntry
-	collectorArticles   map[string]*domain.CollectorArticle
-	collectorAttempts   map[string][]*domain.CollectorAttempt
-	collectorSchedulers map[string]*domain.CollectorSchedulerState
 }
 
 func NewProvider() *Provider {
@@ -76,13 +63,6 @@ func NewProvider() *Provider {
 		rewriteStageRuns:    make(map[string][]*domain.RewriteStageRun),
 		workflowRuns:        make(map[string]*domain.WorkflowRun),
 		workflowCheckpoints: make(map[string][]*domain.WorkflowCheckpoint),
-		collectorSources:    make(map[string]*domain.CollectorSource),
-		collectorRuns:       make(map[string]*domain.CollectorRun),
-		collectorSourceRuns: make(map[string][]*domain.CollectorSourceRun),
-		collectorEntries:    make(map[string][]*domain.CollectorEntry),
-		collectorArticles:   make(map[string]*domain.CollectorArticle),
-		collectorAttempts:   make(map[string][]*domain.CollectorAttempt),
-		collectorSchedulers: make(map[string]*domain.CollectorSchedulerState),
 	}
 }
 
@@ -107,20 +87,6 @@ func (p *Provider) WorkflowRunRepo() repo.WorkflowRunRepo {
 }
 func (p *Provider) WorkflowCheckpointRepo() repo.WorkflowCheckpointRepo {
 	return &memWorkflowCheckpointRepo{p: p}
-}
-func (p *Provider) CollectorSourceRepo() repo.CollectorSourceRepo {
-	return &memCollectorSourceRepo{p: p}
-}
-func (p *Provider) CollectorRunRepo() repo.CollectorRunRepo     { return &memCollectorRunRepo{p: p} }
-func (p *Provider) CollectorEntryRepo() repo.CollectorEntryRepo { return &memCollectorEntryRepo{p: p} }
-func (p *Provider) CollectorArticleRepo() repo.CollectorArticleRepo {
-	return &memCollectorArticleRepo{p: p}
-}
-func (p *Provider) CollectorAttemptRepo() repo.CollectorAttemptRepo {
-	return &memCollectorAttemptRepo{p: p}
-}
-func (p *Provider) CollectorSchedulerRepo() repo.CollectorSchedulerStateRepo {
-	return &memCollectorSchedulerRepo{p: p}
 }
 
 func (p *Provider) BeginBundleImport(_ context.Context) (repo.BundleImportTx, error) {

@@ -250,7 +250,6 @@ func applyWorkspaceDefaults(settings *domain.WorkspaceSettings) {
 	}
 	applyReviewPolicyDefaults(&settings.ReviewPolicy, defaults.ReviewPolicy)
 	applyAutomationDefaults(&settings.Automation, defaults.Automation)
-	applyCollectorDefaults(&settings.Collector, defaults.Collector)
 	applyProviderProfileDefaults(settings.ProviderProfiles, defaults.ProviderProfiles[defaults.DefaultProviderProfile])
 	applyArticleProfileDefaults(settings.ArticleProfiles, defaults.ArticleProfiles[defaults.DefaultArticleProfile])
 	applyPublishProfileDefaults(settings.PublishProfiles, defaults.PublishProfiles[defaults.DefaultPublishProfile])
@@ -271,48 +270,6 @@ func applyReviewPolicyDefaults(policy *domain.ReviewPolicy, defaults domain.Revi
 func applyAutomationDefaults(policy *domain.AutomationPolicy, defaults domain.AutomationPolicy) {
 	if policy.IntervalSeconds == 0 {
 		policy.IntervalSeconds = defaults.IntervalSeconds
-	}
-}
-
-func applyCollectorDefaults(collector *domain.CollectorPolicy, defaults domain.CollectorPolicy) {
-	if collector.Command == "" {
-		collector.Command = defaults.Command
-	}
-	if collector.WorkingDir == "" {
-		collector.WorkingDir = defaults.WorkingDir
-	}
-	if collector.BundleOutPattern == "" {
-		collector.BundleOutPattern = defaults.BundleOutPattern
-	}
-	if collector.Platforms == nil {
-		collector.Platforms = defaults.Platforms
-	}
-	if collector.GlobalConcurrency == 0 {
-		collector.GlobalConcurrency = defaults.GlobalConcurrency
-	}
-	if collector.HTTPTimeoutMS == 0 {
-		collector.HTTPTimeoutMS = defaults.HTTPTimeoutMS
-	}
-	if collector.HTTPRetryCount == 0 {
-		collector.HTTPRetryCount = defaults.HTTPRetryCount
-	}
-	if collector.HTTPRetryBaseMS == 0 {
-		collector.HTTPRetryBaseMS = defaults.HTTPRetryBaseMS
-	}
-	if collector.DefaultUserAgent == "" {
-		collector.DefaultUserAgent = defaults.DefaultUserAgent
-	}
-	if collector.HTTPProxy == "" {
-		collector.HTTPProxy = defaults.HTTPProxy
-	}
-	if collector.HTTPSProxy == "" {
-		collector.HTTPSProxy = defaults.HTTPSProxy
-	}
-	if collector.WeiboCookie == "" {
-		collector.WeiboCookie = defaults.WeiboCookie
-	}
-	if collector.XueqiuCookie == "" {
-		collector.XueqiuCookie = defaults.XueqiuCookie
 	}
 }
 

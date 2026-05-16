@@ -12,23 +12,17 @@ const (
 	defaultHTTPPort = 8123
 	defaultLogLevel = "info"
 	defaultDBPath   = "./data/content-hub.db"
-
-	defaultCollectorHTTPClientProfileID  = "default_api_client"
-	defaultCollectorRetryPolicyProfileID = "default_api"
-	defaultCollectorAuthProfileID        = "none"
 )
 
 type Config struct {
-	HTTP      HTTPConfig      `json:"http"`
-	Log       LogConfig       `json:"log"`
-	Database  DatabaseConfig  `json:"database"`
-	Storage   StorageConfig   `json:"storage"`
-	Workflow  WorkflowConfig  `json:"workflow"`
-	Collector CollectorConfig `json:"collector"`
-	Platforms PlatformsConfig `json:"platforms"`
-	Secrets   SecretsConfig   `json:"secrets,omitempty"`
-	LLM       LLMConfig       `json:"llm"`
-	Template  TemplateConfig  `json:"template"`
+	HTTP     HTTPConfig     `json:"http"`
+	Log      LogConfig      `json:"log"`
+	Database DatabaseConfig `json:"database"`
+	Storage  StorageConfig  `json:"storage"`
+	Workflow WorkflowConfig `json:"workflow"`
+	Secrets  SecretsConfig  `json:"secrets,omitempty"`
+	LLM      LLMConfig      `json:"llm"`
+	Template TemplateConfig `json:"template"`
 }
 
 type HTTPConfig struct {
@@ -93,20 +87,6 @@ type TemplateConfig struct {
 	CacheEnabled  bool   `json:"cache_enabled"`
 }
 
-type PlatformsConfig struct {
-	Baidu   PlatformEntry `json:"baidu"`
-	WeChat  PlatformEntry `json:"wechat"`
-	Zhihu   PlatformEntry `json:"zhihu"`
-	Toutiao PlatformEntry `json:"toutiao"`
-	CSDN    PlatformEntry `json:"csdn"`
-}
-
-type PlatformEntry struct {
-	Enabled bool   `json:"enabled"`
-	Cookie  string `json:"cookie,omitempty"`
-	Token   string `json:"token,omitempty"`
-}
-
 type SecretsConfig struct {
 	EnvPrefix string `json:"env_prefix"`
 }
@@ -139,14 +119,6 @@ func DefaultConfig() Config {
 			MaxConcurrentJobs: 5,
 			RetryMaxAttempts:  3,
 			TimeoutSec:        300,
-		},
-		Collector: DefaultCollectorConfig(),
-		Platforms: PlatformsConfig{
-			Baidu:   PlatformEntry{Enabled: false},
-			WeChat:  PlatformEntry{Enabled: false},
-			Zhihu:   PlatformEntry{Enabled: false},
-			Toutiao: PlatformEntry{Enabled: false},
-			CSDN:    PlatformEntry{Enabled: false},
 		},
 		Secrets: SecretsConfig{
 			EnvPrefix: "CONTENTHUB",
@@ -216,39 +188,10 @@ func (c *Config) Validate() error {
 	if c.Workflow.RetryMaxAttempts < 0 {
 		return fmt.Errorf("workflow.retry_max_attempts cannot be negative")
 	}
-	if err := c.Collector.Validate(); err != nil {
-		return err
-	}
-	if len(c.Collector.Sources) == 0 {
-		return fmt.Errorf("collector.sources cannot be empty")
-	}
 	if err := c.validateLLM(); err != nil {
 		return err
 	}
 	return nil
-}
-
-func (c *Config) ResolveSecrets() {
-	c.resolvePlatformSecrets(&c.Platforms.Baidu, "BAIDU")
-	c.resolvePlatformSecrets(&c.Platforms.WeChat, "WECHAT")
-	c.resolvePlatformSecrets(&c.Platforms.Zhihu, "ZHIHU")
-	c.resolvePlatformSecrets(&c.Platforms.Toutiao, "TOUTIAO")
-	c.resolvePlatformSecrets(&c.Platforms.CSDN, "CSDN")
-	c.resolveLLMSecrets()
-}
-
-func (c *Config) resolvePlatformSecrets(p *PlatformEntry, platformKey string) {
-	prefix := c.Secrets.EnvPrefix
-	if p.Cookie == "" {
-		p.Cookie = os.Getenv(fmt.Sprintf("%s_%s_COOKIE", prefix, platformKey))
-	}
-	if p.Token == "" {
-		p.Token = os.Getenv(fmt.Sprintf("%s_%s_TOKEN", prefix, platformKey))
-	}
-}
-
-func (c *Config) resolveLLMSecrets() {
-	_ = c.ResolveLLMRuntime()
 }
 
 func (c *Config) ResolveLLMRuntime() error {
@@ -347,46 +290,10 @@ func fnvHash(data []byte) uint64 {
 	return hash
 }
 
-func (c *Config) PlatformStatus() map[string]bool {
-	return map[string]bool{
-		"baidu":   c.Platforms.Baidu.Enabled,
-		"wechat":  c.Platforms.WeChat.Enabled,
-		"zhihu":   c.Platforms.Zhihu.Enabled,
-		"toutiao": c.Platforms.Toutiao.Enabled,
-		"csdn":    c.Platforms.CSDN.Enabled,
-	}
-}
-
-func (c *Config) EnabledPlatforms() []string {
-	var enabled []string
-	for name, active := range c.PlatformStatus() {
-		if active {
-			enabled = append(enabled, name)
-		}
-	}
-	return enabled
-}
-
 func (c *Config) Redacted() Config {
 	redacted := *c
-	redacted.Platforms.Baidu = redactPlatform(redacted.Platforms.Baidu)
-	redacted.Platforms.WeChat = redactPlatform(redacted.Platforms.WeChat)
-	redacted.Platforms.Zhihu = redactPlatform(redacted.Platforms.Zhihu)
-	redacted.Platforms.Toutiao = redactPlatform(redacted.Platforms.Toutiao)
-	redacted.Platforms.CSDN = redactPlatform(redacted.Platforms.CSDN)
 	if redacted.LLM.APIKey != "" {
 		redacted.LLM.APIKey = maskSecret(redacted.LLM.APIKey)
-	}
-	return redacted
-}
-
-func redactPlatform(p PlatformEntry) PlatformEntry {
-	redacted := p
-	if redacted.Cookie != "" {
-		redacted.Cookie = maskSecret(redacted.Cookie)
-	}
-	if redacted.Token != "" {
-		redacted.Token = maskSecret(redacted.Token)
 	}
 	return redacted
 }

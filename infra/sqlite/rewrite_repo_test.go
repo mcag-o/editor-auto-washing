@@ -60,7 +60,7 @@ func TestRewritePipelineProfileRepo_UpsertGetListKeepsLogicalIDStable(t *testing
 
 func TestRewritePipelineRunRepo_CreateAndGetByID(t *testing.T) {
 	provider := newRuntimeProvider(t)
-	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "collector-1", "wechat-longform", "sspai")
+	run := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "sspai")
 
 	require.NoError(t, provider.RewritePipelineRunRepo().Create(t.Context(), run))
 
@@ -73,9 +73,9 @@ func TestRewritePipelineRunRepo_CreateAndGetByID(t *testing.T) {
 
 func TestRewritePipelineRunRepo_UpdateAndList(t *testing.T) {
 	provider := newRuntimeProvider(t)
-	older := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "collector-1", "wechat-longform", "sspai")
+	older := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "sspai")
 	older.StartedAt = time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
-	newer := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-2", "collector-2", "wechat-longform", "sspai")
+	newer := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-2", "wechat-longform", "sspai")
 	newer.StartedAt = time.Now().UTC().Truncate(time.Second)
 	newer.Status = domain.RewriteRunRunning
 	newer.CurrentStage = "draft"
@@ -110,7 +110,7 @@ func TestRewritePipelineRunRepo_UpdateAndList(t *testing.T) {
 
 func TestRewriteStageRunRepo_CreateAndListByPipelineRunID(t *testing.T) {
 	provider := newRuntimeProvider(t)
-	pipelineRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "collector-1", "wechat-longform", "sspai")
+	pipelineRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "sspai")
 	require.NoError(t, provider.RewritePipelineRunRepo().Create(t.Context(), pipelineRun))
 
 	first := &domain.RewriteStageRun{
@@ -155,7 +155,7 @@ func TestRewriteStageRunRepo_CreateAndListByPipelineRunID(t *testing.T) {
 
 func TestRewriteStageRunRepo_Update(t *testing.T) {
 	provider := newRuntimeProvider(t)
-	pipelineRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "collector-1", "wechat-longform", "sspai")
+	pipelineRun := domain.NewRewritePipelineRun("profile-1", "v1", "workspace-1", "wechat-longform", "sspai")
 	require.NoError(t, provider.RewritePipelineRunRepo().Create(t.Context(), pipelineRun))
 
 	stage := &domain.RewriteStageRun{

@@ -495,7 +495,7 @@ func TestCreateContentMissingTitle(t *testing.T) {
 func TestRewriteRunsRouteIsRegistered(t *testing.T) {
 	s, _ := newTestServer(t)
 
-	body := strings.NewReader(`{"workspace_article_id":"article-1","collector_article_id":"collector-1","title":"Source","target_type":"wechat-longform","source_profile":"sspai","version":"v1"}`)
+	body := strings.NewReader(`{"workspace_article_id":"article-1","title":"Source","target_type":"wechat-longform","source_profile":"sspai","version":"v1"}`)
 	req := httptest.NewRequest(http.MethodPost, "/rewrite/runs", body)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -579,7 +579,7 @@ func TestSubmitJob(t *testing.T) {
 	}
 }
 
-func TestAutomationEndpointsExposeRunOnceDaemonStatusHealthRetryFailedAndStop(t *testing.T) {
+func TestAutomationEndpointsExposeRunOnceAndDaemonOnly(t *testing.T) {
 	s, _ := newTestServer(t)
 
 	body := strings.NewReader(`{}`)
@@ -590,12 +590,6 @@ func TestAutomationEndpointsExposeRunOnceDaemonStatusHealthRetryFailedAndStop(t 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "run-once")
 
-	req = httptest.NewRequest(http.MethodPost, "/automation/retry-failed", strings.NewReader(`{}`))
-	req.Header.Set("Content-Type", "application/json")
-	w = httptest.NewRecorder()
-	s.engine.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
-
 	req = httptest.NewRequest(http.MethodPost, "/automation/daemon", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
@@ -604,24 +598,23 @@ func TestAutomationEndpointsExposeRunOnceDaemonStatusHealthRetryFailedAndStop(t 
 	assert.Contains(t, w.Body.String(), "daemon")
 	assert.Contains(t, w.Body.String(), "running")
 
-	req = httptest.NewRequest(http.MethodGet, "/automation/status", nil)
-	w = httptest.NewRecorder()
-	s.engine.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "state")
-
-	req = httptest.NewRequest(http.MethodGet, "/automation/health", nil)
-	w = httptest.NewRecorder()
-	s.engine.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "status")
-
-	req = httptest.NewRequest(http.MethodPost, "/automation/stop", strings.NewReader(`{}`))
-	req.Header.Set("Content-Type", "application/json")
-	w = httptest.NewRecorder()
-	s.engine.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "stopped")
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/automation/retry-failed"},
+		{method: http.MethodGet, path: "/automation/status"},
+		{method: http.MethodGet, path: "/automation/health"},
+		{method: http.MethodPost, path: "/automation/stop"},
+	} {
+		req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`))
+		if tc.method == http.MethodPost {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		w = httptest.NewRecorder()
+		s.engine.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusNotFound, w.Code, "%s %s should not be registered", tc.method, tc.path)
+	}
 }
 
 func TestLegacyRSSRoutesRemovedFromActiveRuntime(t *testing.T) {
@@ -655,6 +648,7 @@ func TestLegacyRSSRoutesRemovedFromActiveRuntime(t *testing.T) {
 		method string
 		path   string
 	}{
+		{method: http.MethodGet, path: "/collector"},
 		{method: http.MethodGet, path: "/collector/sources"},
 		{method: http.MethodGet, path: "/ingestion"},
 		{method: http.MethodPost, path: "/ingestion/import"},

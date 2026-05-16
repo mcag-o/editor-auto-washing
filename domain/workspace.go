@@ -77,24 +77,6 @@ type AutomationPolicy struct {
 	AlertWebhookCooldownSeconds *int   `yaml:"alert_webhook_cooldown_seconds" json:"alert_webhook_cooldown_seconds"`
 }
 
-type CollectorPolicy struct {
-	Enabled               bool     `yaml:"enabled" json:"enabled"`
-	Command               string   `yaml:"command" json:"command"`
-	WorkingDir            string   `yaml:"working_dir" json:"working_dir"`
-	BundleOutPattern      string   `yaml:"bundle_out_pattern" json:"bundle_out_pattern"`
-	Platforms             []string `yaml:"platforms" json:"platforms"`
-	GlobalConcurrency     int      `yaml:"global_concurrency" json:"global_concurrency"`
-	HTTPTimeoutMS         int      `yaml:"http_timeout_ms" json:"http_timeout_ms"`
-	HTTPRetryCount        int      `yaml:"http_retry_count" json:"http_retry_count"`
-	HTTPRetryBaseMS       int      `yaml:"http_retry_base_ms" json:"http_retry_base_ms"`
-	DefaultUserAgent      string   `yaml:"default_user_agent" json:"default_user_agent"`
-	HTTPProxy             string   `yaml:"http_proxy" json:"http_proxy"`
-	HTTPSProxy            string   `yaml:"https_proxy" json:"https_proxy"`
-	WeiboCookie           string   `yaml:"weibo_cookie" json:"weibo_cookie"`
-	XueqiuCookie          string   `yaml:"xueqiu_cookie" json:"xueqiu_cookie"`
-	EnableBrowserFallback bool     `yaml:"enable_browser_fallback" json:"enable_browser_fallback"`
-}
-
 type WorkspaceSettings struct {
 	Name                   string                     `yaml:"name" json:"name"`
 	Paths                  WorkspacePaths             `yaml:"paths" json:"paths"`
@@ -106,7 +88,6 @@ type WorkspaceSettings struct {
 	DefaultProviderProfile string                     `yaml:"default_provider_profile" json:"default_provider_profile"`
 	DefaultArticleProfile  string                     `yaml:"default_article_profile" json:"default_article_profile"`
 	DefaultPublishProfile  string                     `yaml:"default_publish_profile" json:"default_publish_profile"`
-	Collector              CollectorPolicy            `yaml:"collector" json:"collector"`
 }
 
 type ResolvedWorkspacePaths struct {
@@ -196,16 +177,6 @@ func DefaultWorkspaceSettings() WorkspaceSettings {
 		DefaultProviderProfile: "default",
 		DefaultArticleProfile:  "wechat-daily",
 		DefaultPublishProfile:  "wechat-review",
-		Collector: CollectorPolicy{
-			Enabled:           false,
-			WorkingDir:        "DataCollection",
-			BundleOutPattern:  "incoming/bundle-{timestamp}.json",
-			Platforms:         []string{},
-			GlobalConcurrency: 4,
-			HTTPTimeoutMS:     10000,
-			HTTPRetryCount:    2,
-			HTTPRetryBaseMS:   250,
-		},
 	}
 }
 

@@ -2,11 +2,48 @@ package sqlite
 
 import (
 	"content-hub/domain"
+	"database/sql"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	_ "github.com/mattn/go-sqlite3"
 )
+
+func TestNewProviderDropsRetiredCollectorTablesDuringMigration(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "upgrade.db")
+	legacyDB, err := sql.Open("sqlite3", dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = legacyDB.Close() })
+
+	legacyTables := []string{
+		"collector_sources",
+		"collector_runs",
+		"collector_source_runs",
+		"collector_entries",
+		"collector_articles",
+		"collector_attempts",
+		"collector_scheduler_state",
+	}
+	for _, table := range legacyTables {
+		_, err := legacyDB.Exec(`CREATE TABLE ` + table + ` (id TEXT PRIMARY KEY)`)
+		require.NoError(t, err)
+	}
+	require.NoError(t, legacyDB.Close())
+
+	provider, err := NewProvider(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = provider.Close() })
+
+	for _, table := range legacyTables {
+		row := provider.DB().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table)
+		var count int
+		require.NoError(t, row.Scan(&count))
+		require.Zero(t, count, table)
+	}
+}
 
 func TestProviderExposesFolderIntakeRepos(t *testing.T) {
 	provider := newRuntimeProvider(t)

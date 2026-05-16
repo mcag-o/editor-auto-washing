@@ -324,10 +324,6 @@ func (s *Server) registerRoutes() {
 	{
 		automation.POST("/run-once", automationHandler.RunOnce)
 		automation.POST("/daemon", automationHandler.Daemon)
-		automation.POST("/retry-failed", automationHandler.RetryFailed)
-		automation.GET("/status", automationHandler.Status)
-		automation.GET("/health", automationHandler.Health)
-		automation.POST("/stop", automationHandler.Stop)
 	}
 
 	workspace := s.engine.Group("/workspace")

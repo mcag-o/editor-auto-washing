@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS rewrite_pipeline_runs (
     profile_id TEXT NOT NULL,
     profile_version TEXT NOT NULL,
     workspace_article_id TEXT NOT NULL,
-    collector_article_id TEXT NOT NULL,
     target_type TEXT NOT NULL,
     source_profile TEXT NOT NULL,
     status TEXT NOT NULL,

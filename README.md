@@ -35,23 +35,20 @@
 ### 2. Intake 与文章工作区
 
 - 浏览器 upload / paste workflow 为默认 intake 主路径
-- source document 导入后进入 intake、rewrite、draft materialize、render 组成的默认处理链
+- 内容导入后进入 intake、rewrite、draft materialize、render 组成的默认处理链
 - article workspace record 与状态流转由 Go runtime 持久化
 - workflow/template 管理通过 `8123` 上的 browser UI 完成
 
 相关代码：
 
 - `service/folder_intake_runtime.go`
-- `service/source_processing_scheduler.go`
-- `service/source_processing_worker.go`
 - `service/article_intake.go`
-- `infra/sqlite/source_document_repo.go`
 - `infra/sqlite/article_workspace_repo.go`
 
 ### 3. Rewrite
 
 - imported workspace article 可在 draft 创建前进入独立 rewrite pipeline
-- rewrite run 按 `target type + source profile + version` 选择 profile
+- rewrite run 按 `target type + profile + version` 选择 profile
 - rewrite 会持久化 stage history、prompt snapshot 与 draft linkage
 - rewrite 成功后由 materializer 创建 draft，随后执行 render 并结束默认链路
 
@@ -80,7 +77,7 @@
 
 - workflow nodes 注册与执行
 - job queue / worker / cancel / event history
-- automation `run-once / daemon / retry-failed / status / health / stop`
+- automation `run-once / daemon`
 
 相关代码：
 
@@ -153,10 +150,6 @@ curl http://localhost:8123/ready
 - `POST /workflows/execute`
 - `POST /automation/run-once`
 - `POST /automation/daemon`
-- `POST /automation/retry-failed`
-- `GET /automation/status`
-- `GET /automation/health`
-- `POST /automation/stop`
 
 ---
 
@@ -196,12 +189,6 @@ go test ./...
 ```text
 ├── cmd/
 │   └── server/
-├── collector/
-│   ├── httpclient/
-│   ├── plugin/
-│   ├── runtime/
-│   ├── scheduler/
-│   └── service/
 ├── config/
 ├── domain/
 ├── infra/

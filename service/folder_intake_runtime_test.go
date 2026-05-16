@@ -101,7 +101,6 @@ func TestBuildFolderIntakeConfigFromWorkspaceProvidesDefaultProcessingMetadata(t
 			ArticleProfiles: map[string]domain.ArticleProfile{
 				"wechat-daily": {Template: "daily-intelligence"},
 			},
-			Collector: domain.CollectorPolicy{GlobalConcurrency: 4},
 		},
 	}
 

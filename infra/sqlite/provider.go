@@ -29,12 +29,6 @@ type Provider struct {
 	jobEventRepo                repo.JobEventRepo
 	ingestionRepo               repo.IngestionRepo
 	workspaceRepo               repo.WorkspaceRepo
-	collectorSourceRepo         repo.CollectorSourceRepo
-	collectorRunRepo            repo.CollectorRunRepo
-	collectorEntryRepo          repo.CollectorEntryRepo
-	collectorArticleRepo        repo.CollectorArticleRepo
-	collectorAttemptRepo        repo.CollectorAttemptRepo
-	collectorSchedulerStateRepo repo.CollectorSchedulerStateRepo
 	rewritePipelineProfileRepo  repo.RewritePipelineProfileRepo
 	rewritePipelineRunRepo      repo.RewritePipelineRunRepo
 	rewriteStageRunRepo         repo.RewriteStageRunRepo
@@ -90,12 +84,6 @@ func NewProvider(dbPath string) (*Provider, error) {
 	p.jobEventRepo = &jobEventRepo{db: db}
 	p.ingestionRepo = &ingestionRepo{db: db}
 	p.workspaceRepo = &articleWorkspaceRepo{db: db}
-	p.collectorSourceRepo = &collectorSourceRepo{db: db}
-	p.collectorRunRepo = &collectorRunRepo{db: db}
-	p.collectorEntryRepo = &collectorEntryRepo{db: db}
-	p.collectorArticleRepo = &collectorArticleRepo{db: db}
-	p.collectorAttemptRepo = &collectorAttemptRepo{db: db}
-	p.collectorSchedulerStateRepo = &collectorSchedulerStateRepo{db: db}
 	p.rewritePipelineProfileRepo = &rewritePipelineProfileRepo{db: db}
 	p.rewritePipelineRunRepo = &rewritePipelineRunRepo{db: db}
 	p.rewriteStageRunRepo = &rewriteStageRunRepo{db: db}
@@ -172,30 +160,6 @@ func (p *Provider) IngestionRepo() repo.IngestionRepo {
 
 func (p *Provider) WorkspaceRepo() repo.WorkspaceRepo {
 	return p.workspaceRepo
-}
-
-func (p *Provider) CollectorSourceRepo() repo.CollectorSourceRepo {
-	return p.collectorSourceRepo
-}
-
-func (p *Provider) CollectorRunRepo() repo.CollectorRunRepo {
-	return p.collectorRunRepo
-}
-
-func (p *Provider) CollectorEntryRepo() repo.CollectorEntryRepo {
-	return p.collectorEntryRepo
-}
-
-func (p *Provider) CollectorArticleRepo() repo.CollectorArticleRepo {
-	return p.collectorArticleRepo
-}
-
-func (p *Provider) CollectorAttemptRepo() repo.CollectorAttemptRepo {
-	return p.collectorAttemptRepo
-}
-
-func (p *Provider) CollectorSchedulerStateRepo() repo.CollectorSchedulerStateRepo {
-	return p.collectorSchedulerStateRepo
 }
 
 func (p *Provider) RewritePipelineProfileRepo() repo.RewritePipelineProfileRepo {

@@ -97,6 +97,9 @@ func BuildRuntimeConfig(resolved domain.ResolvedWorkspaceSettings) (config.Confi
 	if !ok {
 		return config.Config{}, fmt.Errorf("missing publish profile: %s", resolved.Workspace.DefaultPublishProfile)
 	}
+	if publishProfile.Platform != "wechat" {
+		return config.Config{}, fmt.Errorf("unsupported publish platform: %q", publishProfile.Platform)
+	}
 
 	cfg.Storage.BasePath = resolved.Paths.DataDir
 	cfg.Database.Path = filepath.Join(resolved.Paths.DataDir, "content-hub.db")
@@ -122,8 +125,6 @@ func BuildRuntimeConfig(resolved domain.ResolvedWorkspaceSettings) (config.Confi
 	cfg.LLM.APIKey = resolved.Secrets[providerProfile.SecretRef]
 	cfg.LLM.DefaultProfile = ""
 	cfg.LLM.Profiles = nil
-	cfg.Platforms.WeChat.Enabled = publishProfile.Platform == "wechat"
-	cfg.Platforms.WeChat.Token = resolved.Secrets[publishProfile.SecretRef]
 
 	return cfg, cfg.Validate()
 }

@@ -60,7 +60,33 @@ func TestWorkspaceConfigServiceResolveConfigBuildsRuntimeConfig(t *testing.T) {
 	assert.Equal(t, "openai-compatible", runtimeCfg.LLM.Provider)
 	assert.Equal(t, "runtime-secret", runtimeCfg.LLM.APIKey)
 	assert.Equal(t, "daily-intelligence", runtimeCfg.Template.DefaultPrompt)
-	assert.True(t, runtimeCfg.Platforms.WeChat.Enabled)
+	assert.Empty(t, runtimeCfg.LLM.DefaultProfile)
+	assert.Nil(t, runtimeCfg.LLM.Profiles)
+}
+
+func TestWorkspaceConfigServiceResolveConfigRejectsUnsupportedPublishPlatform(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("LLM_API_KEY", "runtime-secret")
+	svc := NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator())
+
+	_, err := svc.Init(root)
+	require.NoError(t, err)
+
+	configPath := filepath.Join(root, workspaceinfra.WorkspaceConfigFileName)
+	require.NoError(t, os.WriteFile(configPath, []byte(`name: content-workspace
+publish_profiles:
+  wechat-review:
+    platform: unsupported
+    account: main
+    secret_ref: wechat.main
+default_publish_profile: wechat-review
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceSecretsFileName), []byte("wechat:\n  main: publish-secret\n"), 0o600))
+
+	_, err = svc.RuntimeConfig(root)
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, `unsupported publish platform: "unsupported"`)
 }
 
 func TestWorkspaceConfigServiceInitPreservesExistingWorkspaceConfig(t *testing.T) {
