@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,4 +67,15 @@ func TestSQLiteJobEventRepoListByJobIgnoresTimestampLexicographicQuirks(t *testi
 	require.Len(t, events, 2)
 	assert.Equal(t, first.ID, events[0].ID)
 	assert.Equal(t, second.ID, events[1].ID)
+}
+
+func TestProviderDoesNotExposeRSSRepos(t *testing.T) {
+	provider := newRuntimeProvider(t)
+	providerType := reflect.TypeOf(provider)
+	for i := range providerType.NumMethod() {
+		method := providerType.Method(i)
+		if strings.HasPrefix(method.Name, "RSS") {
+			t.Fatalf("expected Provider to omit RSS methods, found %s", method.Name)
+		}
+	}
 }

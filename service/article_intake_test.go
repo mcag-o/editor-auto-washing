@@ -129,9 +129,18 @@ func TestArticleIntakeServiceCreatesWorkspaceArticleAndTriggersRewrite(t *testin
 	require.Equal(t, "Summary", workspace.Summary)
 	require.Equal(t, "rss", workspace.Source.SourceType)
 	require.Equal(t, "https://example.com/a", workspace.Source.URL)
-	require.Equal(t, "guid-1", workspace.Metadata["rss_guid"])
-	require.Equal(t, "sub-1", workspace.Metadata["rss_subscription_id"])
+	require.Equal(t, "guid-1", workspace.Metadata["external_id"])
+	require.Equal(t, "sub-1", workspace.Metadata["subscription_id"])
+	require.Equal(t, "https://example.com/a", workspace.Metadata["original_url"])
 	require.Equal(t, "Body", workspace.Metadata["source_body"])
+	require.NotContains(t, workspace.Metadata, "rss_guid")
+	require.NotContains(t, workspace.Metadata, "rss_subscription_id")
+	require.NotContains(t, workspace.Metadata, "rss_original_url")
+	require.NotContains(t, workspace.Metadata, "rss_published_at")
+	require.NotContains(t, workspace.Metadata, "rss_tags")
+	require.NotContains(t, workspace.Metadata, "rss_author")
+	require.Len(t, workspace.LifecycleHistory, 1)
+	require.Equal(t, "created from article intake", workspace.LifecycleHistory[0].Notes)
 	require.True(t, rewrite.called)
 	require.Equal(t, RewriteRunRequest{
 		WorkspaceArticleID: workspace.ID,
@@ -251,6 +260,9 @@ func TestArticleIntakeServiceOmitsCollectorMetadataForBrowserFirstSources(t *tes
 		Version:            "v1",
 	}, rewrite.lastReq)
 	require.NotContains(t, workspaceRepo.created[0].Metadata, "collector_article_id")
+	require.NotContains(t, workspaceRepo.created[0].Metadata, "rss_external_id")
+	require.NotContains(t, workspaceRepo.created[0].Metadata, "rss_guid")
+	require.NotContains(t, workspaceRepo.created[0].Metadata, "rss_subscription_id")
 }
 
 func TestArticleIntakeServiceDoesNotPreserveCollectorMetadataForCompatibilitySources(t *testing.T) {

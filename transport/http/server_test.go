@@ -425,6 +425,40 @@ func TestAPIBackendRoutesAreNotSwallowedByFrontendFallback(t *testing.T) {
 	require.NotContains(t, w.Body.String(), `<div id="root"></div>`)
 }
 
+func TestRetiredRSSPathsReturnHardNotFoundEvenWithFrontendFallback(t *testing.T) {
+	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", "")
+	useTestFrontendFS(t, fstest.MapFS{
+		"index.html":      &fstest.MapFile{Data: []byte(`<!doctype html><html><head><title>Content Hub Control Plane</title></head><body><div id="root"></div></body></html>`)},
+		"assets/index.js": &fstest.MapFile{Data: []byte(`console.log("asset")`)},
+	})
+
+	s, _ := newTestServer(t)
+
+	for _, tc := range []struct {
+		name   string
+		method string
+		path   string
+		code   int
+	}{
+		{name: "root get", method: http.MethodGet, path: "/rss", code: http.StatusNotFound},
+		{name: "root head", method: http.MethodHead, path: "/rss", code: http.StatusNotFound},
+		{name: "nested get", method: http.MethodGet, path: "/rss/subscriptions", code: http.StatusNotFound},
+		{name: "nested head", method: http.MethodHead, path: "/rss/subscriptions", code: http.StatusNotFound},
+		{name: "non-get remains missing", method: http.MethodPost, path: "/rss/subscriptions", code: http.StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			w := httptest.NewRecorder()
+			s.engine.ServeHTTP(w, req)
+
+			require.Equal(t, tc.code, w.Code)
+			require.NotContains(t, w.Header().Get("Content-Type"), "text/html")
+			require.NotContains(t, w.Body.String(), "<title>Content Hub Control Plane</title>")
+			require.NotContains(t, w.Body.String(), `<div id="root"></div>`)
+		})
+	}
+}
+
 func TestAdminFrontendFallsBackToLegacyStaticShellWhenReactBuildIsUnavailable(t *testing.T) {
 	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", filepath.Join(t.TempDir(), "missing-dist"))
 	disableTestFrontendFS(t)
@@ -617,15 +651,21 @@ func TestAutomationEndpointsExposeRunOnceAndDaemonOnly(t *testing.T) {
 	}
 }
 
-func TestLegacyRSSRoutesRemovedFromActiveRuntime(t *testing.T) {
+func TestLegacyRSSRoutesAreNotRegisteredWithoutFrontendFallback(t *testing.T) {
+	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", filepath.Join(t.TempDir(), "missing-dist"))
+	disableTestFrontendFS(t)
+
 	s, _ := newTestServer(t)
 
 	rssRequests := []struct {
 		method string
 		path   string
 	}{
+		{method: http.MethodGet, path: "/rss"},
+		{method: http.MethodHead, path: "/rss"},
 		{method: http.MethodPost, path: "/rss/subscriptions"},
 		{method: http.MethodGet, path: "/rss/subscriptions"},
+		{method: http.MethodHead, path: "/rss/subscriptions"},
 		{method: http.MethodGet, path: "/rss/subscriptions/sub-1"},
 		{method: http.MethodPut, path: "/rss/subscriptions/sub-1"},
 		{method: http.MethodDelete, path: "/rss/subscriptions/sub-1"},
@@ -643,6 +683,13 @@ func TestLegacyRSSRoutesRemovedFromActiveRuntime(t *testing.T) {
 		s.engine.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusNotFound, w.Code, "%s %s should not be registered", tc.method, tc.path)
 	}
+}
+
+func TestLegacyCollectorAndIngestionRoutesAreNotRegisteredWithoutFrontendFallback(t *testing.T) {
+	t.Setenv("CONTENT_HUB_WEBAPP_DIST_DIR", filepath.Join(t.TempDir(), "missing-dist"))
+	disableTestFrontendFS(t)
+
+	s, _ := newTestServer(t)
 
 	legacyRequests := []struct {
 		method string

@@ -38,9 +38,6 @@ type Provider struct {
 	templateDefinitionRepo      repo.TemplateDefinitionRepo
 	sourceDocumentRepo          repo.SourceDocumentRepo
 	importRunRepo               repo.ImportRunRepo
-	rssSubscriptionRepo         repo.RSSSubscriptionRepo
-	rssPullRunRepo              repo.RSSPullRunRepo
-	rssItemRepo                 repo.RSSItemRepo
 	promptTemplateRepo          repo.PromptTemplateRepo
 	llmProfileRepo              repo.LLMProfileRepo
 }
@@ -93,9 +90,6 @@ func NewProvider(dbPath string) (*Provider, error) {
 	p.templateDefinitionRepo = &templateDefinitionRepo{db: db}
 	p.sourceDocumentRepo = &sourceDocumentRepo{db: db}
 	p.importRunRepo = &importRunRepo{db: db}
-	p.rssSubscriptionRepo = &rssSubscriptionRepo{db: db}
-	p.rssPullRunRepo = &rssPullRunRepo{db: db}
-	p.rssItemRepo = &rssItemRepo{db: db}
 	p.promptTemplateRepo = &promptTemplateRepo{db: db}
 	p.llmProfileRepo = &llmProfileRepo{db: db}
 
@@ -196,18 +190,6 @@ func (p *Provider) SourceDocumentRepo() repo.SourceDocumentRepo {
 
 func (p *Provider) ImportRunRepo() repo.ImportRunRepo {
 	return p.importRunRepo
-}
-
-func (p *Provider) RSSSubscriptionRepo() repo.RSSSubscriptionRepo {
-	return p.rssSubscriptionRepo
-}
-
-func (p *Provider) RSSPullRunRepo() repo.RSSPullRunRepo {
-	return p.rssPullRunRepo
-}
-
-func (p *Provider) RSSItemRepo() repo.RSSItemRepo {
-	return p.rssItemRepo
 }
 
 func (p *Provider) PromptTemplateRepo() repo.PromptTemplateRepo {

@@ -1,6 +1,10 @@
 package service
 
-import "testing"
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
 
 func TestBuildRuntimeReposExposesRewriteRepos(t *testing.T) {
 	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
@@ -31,7 +35,7 @@ func TestBuildRuntimeReposExposesRewriteRepos(t *testing.T) {
 	}
 }
 
-func TestBuildRuntimeReposExposesRSSRepos(t *testing.T) {
+func TestBuildRuntimeReposDoesNotExposeRSSRepos(t *testing.T) {
 	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
 	if cleanup != nil {
 		defer func() {
@@ -43,11 +47,12 @@ func TestBuildRuntimeReposExposesRSSRepos(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildRuntimeRepos returned error: %v", err)
 	}
-	if repos.RSSSubscriptionRepo == nil {
-		t.Fatal("expected RSSSubscriptionRepo to be wired")
-	}
-	if repos.RSSItemRepo == nil {
-		t.Fatal("expected RSSItemRepo to be wired")
+	repoType := reflect.TypeOf(*repos)
+	for i := range repoType.NumField() {
+		field := repoType.Field(i)
+		if strings.HasPrefix(field.Name, "RSS") {
+			t.Fatalf("expected RuntimeRepos to omit RSS fields, found %s", field.Name)
+		}
 	}
 }
 

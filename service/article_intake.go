@@ -130,7 +130,7 @@ func (s *ArticleIntakeService) intake(ctx context.Context, workspaceArticleID st
 		}, buildIntakeWorkspaceMetadata(article))
 		workspace.LifecycleHistory = []domain.ArticleWorkspaceLifecycleEntry{{
 			Status:    domain.ArticleWorkspaceStatusImported,
-			Notes:     "created from rss intake",
+			Notes:     "created from article intake",
 			CreatedAt: workspace.CreatedAt,
 		}}
 
@@ -218,19 +218,18 @@ func buildIntakeWorkspaceMetadata(article domain.IntakeArticle) map[string]any {
 	for key, value := range article.Metadata {
 		metadata[key] = value
 	}
-	metadata["rss_external_id"] = strings.TrimSpace(article.ExternalID)
-	metadata["rss_guid"] = strings.TrimSpace(article.ExternalID)
-	metadata["rss_subscription_id"] = strings.TrimSpace(article.SubscriptionID)
-	metadata["rss_original_url"] = strings.TrimSpace(article.OriginalURL)
+	metadata["external_id"] = strings.TrimSpace(article.ExternalID)
+	metadata["subscription_id"] = strings.TrimSpace(article.SubscriptionID)
+	metadata["original_url"] = strings.TrimSpace(article.OriginalURL)
 	metadata["source_body"] = article.Body
 	if article.PublishedAt != nil {
-		metadata["rss_published_at"] = article.PublishedAt.UTC().Format(time.RFC3339)
+		metadata["published_at"] = article.PublishedAt.UTC().Format(time.RFC3339)
 	}
 	if len(article.Tags) > 0 {
-		metadata["rss_tags"] = append([]string(nil), article.Tags...)
+		metadata["tags"] = append([]string(nil), article.Tags...)
 	}
 	if strings.TrimSpace(article.Author) != "" {
-		metadata["rss_author"] = strings.TrimSpace(article.Author)
+		metadata["author"] = strings.TrimSpace(article.Author)
 	}
 	return metadata
 }

@@ -32,9 +32,6 @@ type RuntimeRepos struct {
 	RewriteStageRunRepo        repo.RewriteStageRunRepo
 	WorkflowRunRepo            repo.WorkflowRunRepo
 	WorkflowCheckpointRepo     repo.WorkflowCheckpointRepo
-	RSSSubscriptionRepo        repo.RSSSubscriptionRepo
-	RSSPullRunRepo             repo.RSSPullRunRepo
-	RSSItemRepo                repo.RSSItemRepo
 	SourceDocumentRepo         repo.SourceDocumentRepo
 	ImportRunRepo              repo.ImportRunRepo
 	PromptTemplateRepo         repo.PromptTemplateRepo
@@ -103,9 +100,6 @@ func buildRuntimeReposFromResolved(runtimeCfg config.Config, renderedDir string,
 		RewriteStageRunRepo:        sqliteProvider.RewriteStageRunRepo(),
 		WorkflowRunRepo:            sqliteProvider.WorkflowRunRepo(),
 		WorkflowCheckpointRepo:     sqliteProvider.WorkflowCheckpointRepo(),
-		RSSSubscriptionRepo:        sqliteProvider.RSSSubscriptionRepo(),
-		RSSPullRunRepo:             sqliteProvider.RSSPullRunRepo(),
-		RSSItemRepo:                sqliteProvider.RSSItemRepo(),
 		SourceDocumentRepo:         sqliteProvider.SourceDocumentRepo(),
 		ImportRunRepo:              sqliteProvider.ImportRunRepo(),
 		PromptTemplateRepo:         sqliteProvider.PromptTemplateRepo(),

@@ -22,50 +22,6 @@ func (staticLLMProvider) Name() string {
 	return "static"
 }
 
-type rssSubscriptionRepoCompileStub struct{}
-
-func (rssSubscriptionRepoCompileStub) Create(context.Context, *domain.RSSSubscription) error {
-	return nil
-}
-func (rssSubscriptionRepoCompileStub) Update(context.Context, *domain.RSSSubscription) error {
-	return nil
-}
-func (rssSubscriptionRepoCompileStub) Delete(context.Context, string) error { return nil }
-func (rssSubscriptionRepoCompileStub) GetByID(context.Context, string) (*domain.RSSSubscription, error) {
-	return nil, nil
-}
-func (rssSubscriptionRepoCompileStub) List(context.Context) ([]domain.RSSSubscription, error) {
-	return nil, nil
-}
-
-type rssPullRunRepoCompileStub struct{}
-
-func (rssPullRunRepoCompileStub) Create(context.Context, *domain.RSSPullRun) error { return nil }
-func (rssPullRunRepoCompileStub) Update(context.Context, *domain.RSSPullRun) error { return nil }
-func (rssPullRunRepoCompileStub) GetByID(context.Context, string) (*domain.RSSPullRun, error) {
-	return nil, nil
-}
-func (rssPullRunRepoCompileStub) List(context.Context, int) ([]domain.RSSPullRun, error) {
-	return nil, nil
-}
-
-type rssItemRepoCompileStub struct{}
-
-func (rssItemRepoCompileStub) Create(context.Context, *domain.RSSItemRecord) error { return nil }
-func (rssItemRepoCompileStub) Update(context.Context, *domain.RSSItemRecord) error { return nil }
-func (rssItemRepoCompileStub) FindDuplicate(context.Context, domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
-	return nil, nil
-}
-func (rssItemRepoCompileStub) FindRetryableDuplicate(context.Context, domain.RSSDuplicateKey) (*domain.RSSItemRecord, error) {
-	return nil, nil
-}
-func (rssItemRepoCompileStub) GetByID(context.Context, string) (*domain.RSSItemRecord, error) {
-	return nil, nil
-}
-func (rssItemRepoCompileStub) List(context.Context, int) ([]domain.RSSItemRecord, error) {
-	return nil, nil
-}
-
 type sourceDocumentRepoCompileStub struct{}
 
 func (sourceDocumentRepoCompileStub) Create(context.Context, *domain.SourceDocument) error {
@@ -108,24 +64,6 @@ func (importRunRepoCompileStub) GetByID(context.Context, string) (*domain.Import
 }
 func (importRunRepoCompileStub) List(context.Context, int) ([]domain.ImportRun, error) {
 	return nil, nil
-}
-
-func TestRSSItemRepoFindDuplicateUsesStructuredKey(t *testing.T) {
-	var repo RSSItemRepo = rssItemRepoCompileStub{}
-	_, _ = repo.FindDuplicate(t.Context(), domain.RSSDuplicateKey{
-		SubscriptionID: "sub-1",
-		GUID:           "guid-1",
-		Link:           "https://example.com/item",
-		ContentHash:    "hash-1",
-	})
-}
-
-func TestRSSSubscriptionRepoUsesCompileContract(t *testing.T) {
-	var _ RSSSubscriptionRepo = rssSubscriptionRepoCompileStub{}
-}
-
-func TestRSSPullRunRepoUsesCompileContract(t *testing.T) {
-	var _ RSSPullRunRepo = rssPullRunRepoCompileStub{}
 }
 
 func TestSourceDocumentRepoUsesCompileContract(t *testing.T) {

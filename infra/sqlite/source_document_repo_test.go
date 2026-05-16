@@ -12,7 +12,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func TestNewProviderDropsRetiredCollectorTablesDuringMigration(t *testing.T) {
+func TestNewProviderDropsRetiredCollectorAndRSSTablesDuringMigration(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "upgrade.db")
 	legacyDB, err := sql.Open("sqlite3", dbPath)
 	require.NoError(t, err)
@@ -26,6 +26,9 @@ func TestNewProviderDropsRetiredCollectorTablesDuringMigration(t *testing.T) {
 		"collector_articles",
 		"collector_attempts",
 		"collector_scheduler_state",
+		"rss_subscriptions",
+		"rss_pull_runs",
+		"rss_items",
 	}
 	for _, table := range legacyTables {
 		_, err := legacyDB.Exec(`CREATE TABLE ` + table + ` (id TEXT PRIMARY KEY)`)
