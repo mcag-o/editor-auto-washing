@@ -35,8 +35,9 @@ func TestStartupMessageCentersWebControlPlaneBrowserIntake(t *testing.T) {
 	assert.Contains(t, message, "web control plane")
 	assert.Contains(t, message, "only active operator intake")
 	assert.Contains(t, message, "browser upload/paste")
+	assert.Contains(t, message, "workflow/template management stays in the browser UI")
 	assert.NotContains(t, message, "development/debug")
-	assert.Contains(t, message, "backend/internal compatibility")
+	assert.NotContains(t, message, "backend/internal compatibility")
 	assert.NotContains(t, message, "static shell")
 }
 
@@ -338,7 +339,7 @@ func TestRunBuildsWebControlProviderDependencies(t *testing.T) {
 	assert.Contains(t, err.Error(), "bind failed")
 }
 
-func TestRunBuildsWebControlProviderWithoutFolderIntakeCompatibilityChain(t *testing.T) {
+func TestRunBuildsWebControlProviderWithoutLegacyIntakeCompatibilityChain(t *testing.T) {
 	workingDir := t.TempDir()
 	t.Chdir(workingDir)
 	configDir := filepath.Join(workingDir, "config")

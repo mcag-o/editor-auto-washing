@@ -291,7 +291,6 @@ describe('ArticlesPage', () => {
               profile_id: 'profile-1',
               profile_version: 'v1',
               workspace_article_id: 'workspace-1',
-              collector_article_id: 'article-1',
               target_type: 'web',
               source_profile: 'default',
               status: 'paused',

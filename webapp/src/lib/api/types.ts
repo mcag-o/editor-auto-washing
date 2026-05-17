@@ -61,7 +61,6 @@ export type RewritePipelineRun = {
   profile_id: string;
   profile_version: string;
   workspace_article_id: string;
-  collector_article_id: string;
   target_type: string;
   source_profile: string;
   status: string;

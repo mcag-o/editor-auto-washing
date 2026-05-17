@@ -56,7 +56,7 @@ func TestBuildRuntimeReposDoesNotExposeRSSRepos(t *testing.T) {
 	}
 }
 
-func TestBuildRuntimeReposOmitsFolderIntakeCompatibilityRepos(t *testing.T) {
+func TestBuildRuntimeReposOmitsLegacyIntakeCompatibilityRepos(t *testing.T) {
 	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
 	if cleanup != nil {
 		defer func() {

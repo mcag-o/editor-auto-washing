@@ -16,7 +16,7 @@ import (
 type AutomationService struct {
 	workspaceConfig *WorkspaceConfigService
 	ingestion       *IngestionPipelineService
-	folderIntake    automationFolderIntake
+	legacyIntake    automationLegacyIntake
 	jobSvc          *JobService
 	mu              sync.Mutex
 	running         bool
@@ -25,12 +25,12 @@ type AutomationService struct {
 	daemonDoneCh    chan struct{}
 }
 
-type automationFolderIntake interface {
-	RunOnce(ctx context.Context, root string) (automationFolderRunSummary, error)
-	RetryFailed(ctx context.Context, root string) (automationFolderRunSummary, error)
+type automationLegacyIntake interface {
+	RunOnce(ctx context.Context, root string) (automationLegacyRunSummary, error)
+	RetryFailed(ctx context.Context, root string) (automationLegacyRunSummary, error)
 }
 
-type automationFolderRunSummary struct {
+type automationLegacyRunSummary struct {
 	ScannedFiles       int
 	ImportedFiles      int
 	SkippedFiles       int
@@ -41,8 +41,8 @@ type automationFolderRunSummary struct {
 	FailedDocuments    int
 }
 
-func NewAutomationService(workspaceConfig *WorkspaceConfigService, ingestion *IngestionPipelineService, folderIntake automationFolderIntake, jobSvc *JobService) *AutomationService {
-	return &AutomationService{workspaceConfig: workspaceConfig, ingestion: ingestion, folderIntake: folderIntake, jobSvc: jobSvc}
+func NewAutomationService(workspaceConfig *WorkspaceConfigService, ingestion *IngestionPipelineService, legacyIntake automationLegacyIntake, jobSvc *JobService) *AutomationService {
+	return &AutomationService{workspaceConfig: workspaceConfig, ingestion: ingestion, legacyIntake: legacyIntake, jobSvc: jobSvc}
 }
 
 func (s *AutomationService) SetJobService(jobSvc *JobService) {
@@ -51,20 +51,20 @@ func (s *AutomationService) SetJobService(jobSvc *JobService) {
 	s.jobSvc = jobSvc
 }
 
-func (s *AutomationService) SetFolderIntake(folderIntake automationFolderIntake) {
+func (s *AutomationService) SetLegacyIntake(legacyIntake automationLegacyIntake) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.folderIntake = folderIntake
+	s.legacyIntake = legacyIntake
 }
 
 func (s *AutomationService) RunOnce(ctx context.Context, root string) (*domain.AutomationRunResult, error) {
-	if s.folderIntake != nil {
+	if s.legacyIntake != nil {
 		return s.runAndPersist(ctx, root, "run-once", func(runCtx context.Context) (map[string]any, error) {
-			result, err := s.folderIntake.RunOnce(runCtx, root)
+			result, err := s.legacyIntake.RunOnce(runCtx, root)
 			if err != nil {
 				return nil, err
 			}
-			return folderIntakeSummaryMap(result), nil
+			return legacyIntakeSummaryMap(result), nil
 		})
 	}
 	return s.runAndPersist(ctx, root, "run-once", func(runCtx context.Context) (map[string]any, error) {
@@ -77,13 +77,13 @@ func (s *AutomationService) RunOnce(ctx context.Context, root string) (*domain.A
 }
 
 func (s *AutomationService) RetryFailed(ctx context.Context, root string) (*domain.AutomationRunResult, error) {
-	if s.folderIntake != nil {
+	if s.legacyIntake != nil {
 		return s.runAndPersist(ctx, root, "retry-failed", func(runCtx context.Context) (map[string]any, error) {
-			result, err := s.folderIntake.RetryFailed(runCtx, root)
+			result, err := s.legacyIntake.RetryFailed(runCtx, root)
 			if err != nil {
 				return nil, err
 			}
-			return folderIntakeSummaryMap(result), nil
+			return legacyIntakeSummaryMap(result), nil
 		})
 	}
 	return s.runAndPersist(ctx, root, "retry-failed", func(runCtx context.Context) (map[string]any, error) {
@@ -342,7 +342,7 @@ func ingestionSummaryMap(result *domain.IngestionRunResult) map[string]any {
 	}
 }
 
-func folderIntakeSummaryMap(result automationFolderRunSummary) map[string]any {
+func legacyIntakeSummaryMap(result automationLegacyRunSummary) map[string]any {
 	return map[string]any{
 		"scanned_files":               result.ScannedFiles,
 		"imported_files":              result.ImportedFiles,

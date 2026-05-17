@@ -16,8 +16,8 @@ func TestBuildDefaultWorkflowEngineRegistersConcreteAutomationNodes(t *testing.T
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceConfigFileName), []byte("name: workflow\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceSecretsFileName), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
-	intake := &stubAutomationFolderIntake{runOnceResult: automationFolderRunSummary{ProcessedPending: 1, CompletedDocuments: 1}}
-	automationSvc := newAutomationServiceWithFolderIntakeForTest(root, intake)
+	intake := &stubAutomationLegacyIntake{runOnceResult: automationLegacyRunSummary{ProcessedPending: 1, CompletedDocuments: 1}}
+	automationSvc := newAutomationServiceWithLegacyIntakeForTest(root, intake)
 
 	engine := BuildDefaultWorkflowEngine(root, automationSvc)
 
@@ -27,12 +27,12 @@ func TestBuildDefaultWorkflowEngineRegistersConcreteAutomationNodes(t *testing.T
 	assert.Equal(t, 1, intake.runOnceCalls)
 }
 
-func TestBuildDefaultWorkflowEngineDispatchesRetryFailedThroughFolderIntakeAutomation(t *testing.T) {
+func TestBuildDefaultWorkflowEngineDispatchesRetryFailedThroughLegacyIntakeAutomation(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceConfigFileName), []byte("name: workflow\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceSecretsFileName), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
-	intake := &stubAutomationFolderIntake{retryResult: automationFolderRunSummary{ProcessedFailed: 1, CompletedDocuments: 1}}
-	automationSvc := newAutomationServiceWithFolderIntakeForTest(root, intake)
+	intake := &stubAutomationLegacyIntake{retryResult: automationLegacyRunSummary{ProcessedFailed: 1, CompletedDocuments: 1}}
+	automationSvc := newAutomationServiceWithLegacyIntakeForTest(root, intake)
 
 	engine := BuildDefaultWorkflowEngine(root, automationSvc)
 	wc := &domain.WorkflowContext{Payload: map[string]any{"automation_command": "retry-failed"}}
@@ -46,8 +46,8 @@ func TestAutomationDispatchNodeRequiresExplicitCommand(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceConfigFileName), []byte("name: workflow\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceinfra.WorkspaceSecretsFileName), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
-	intake := &stubAutomationFolderIntake{runOnceResult: automationFolderRunSummary{ProcessedPending: 1, CompletedDocuments: 1}}
-	automationSvc := newAutomationServiceWithFolderIntakeForTest(root, intake)
+	intake := &stubAutomationLegacyIntake{runOnceResult: automationLegacyRunSummary{ProcessedPending: 1, CompletedDocuments: 1}}
+	automationSvc := newAutomationServiceWithLegacyIntakeForTest(root, intake)
 
 	engine := BuildDefaultWorkflowEngine(root, automationSvc)
 	wc := &domain.WorkflowContext{}

@@ -70,8 +70,8 @@ func TestStopReturnsConflictWhenDaemonNotRunning(t *testing.T) {
 func TestRunOnceUsesFolderSourceProcessingWhenConfiguredAlongsideIngestion(t *testing.T) {
 	root := newAutomationWorkspace(t)
 	provider := memory.NewProvider()
-	intake := &stubAutomationFolderIntake{
-		runOnceResult: automationFolderRunSummary{
+	intake := &stubAutomationLegacyIntake{
+		runOnceResult: automationLegacyRunSummary{
 			ScannedFiles:       2,
 			ImportedFiles:      1,
 			SkippedFiles:       1,
@@ -81,7 +81,7 @@ func TestRunOnceUsesFolderSourceProcessingWhenConfiguredAlongsideIngestion(t *te
 			CompletedDocuments: 1,
 		},
 	}
-	service := newAutomationServiceWithIngestionAndFolderIntakeForTest(root, provider, intake)
+	service := newAutomationServiceWithIngestionAndLegacyIntakeForTest(root, provider, intake)
 
 	incomingDir := filepath.Join(root, "incoming")
 	require.NoError(t, os.WriteFile(filepath.Join(incomingDir, "bundle-1.json"), []byte(`{"items":[]}`), 0o644))
@@ -100,15 +100,15 @@ func TestRunOnceUsesFolderSourceProcessingWhenConfiguredAlongsideIngestion(t *te
 func TestRetryFailedUsesFolderSourceProcessingWhenConfiguredAlongsideIngestion(t *testing.T) {
 	root := newAutomationWorkspace(t)
 	provider := memory.NewProvider()
-	intake := &stubAutomationFolderIntake{
-		retryResult: automationFolderRunSummary{
+	intake := &stubAutomationLegacyIntake{
+		retryResult: automationLegacyRunSummary{
 			ProcessedPending:   0,
 			ProcessedFailed:    2,
 			CompletedDocuments: 2,
 			FailedDocuments:    0,
 		},
 	}
-	service := newAutomationServiceWithIngestionAndFolderIntakeForTest(root, provider, intake)
+	service := newAutomationServiceWithIngestionAndLegacyIntakeForTest(root, provider, intake)
 
 	result, err := service.RetryFailed(context.Background(), root)
 
@@ -119,9 +119,9 @@ func TestRetryFailedUsesFolderSourceProcessingWhenConfiguredAlongsideIngestion(t
 	assert.Equal(t, 2, result.Summary["completed_documents"])
 }
 
-func TestRetryFailedReturnsFolderIntakeError(t *testing.T) {
+func TestRetryFailedReturnsLegacyIntakeError(t *testing.T) {
 	root := newAutomationWorkspace(t)
-	service := newAutomationServiceWithFolderIntakeForTest(root, &stubAutomationFolderIntake{retryErr: errors.New("retry exploded")})
+	service := newAutomationServiceWithLegacyIntakeForTest(root, &stubAutomationLegacyIntake{retryErr: errors.New("retry exploded")})
 
 	result, err := service.RetryFailed(context.Background(), root)
 
@@ -239,10 +239,10 @@ func TestRunWorkerDaemonCommandCompletesWithoutBlockingWorkerIndefinitely(t *tes
 	require.NoError(t, stopErr)
 }
 
-func TestRunWorkerExecutesRetryFailedWithFolderIntakeAutomation(t *testing.T) {
+func TestRunWorkerExecutesRetryFailedWithLegacyIntakeAutomation(t *testing.T) {
 	root := newAutomationWorkspace(t)
-	intake := &stubAutomationFolderIntake{retryResult: automationFolderRunSummary{ProcessedFailed: 1, CompletedDocuments: 1}}
-	automationSvc := newAutomationServiceWithFolderIntakeForTest(root, intake)
+	intake := &stubAutomationLegacyIntake{retryResult: automationLegacyRunSummary{ProcessedFailed: 1, CompletedDocuments: 1}}
+	automationSvc := newAutomationServiceWithLegacyIntakeForTest(root, intake)
 	engine := BuildDefaultWorkflowEngine(root, automationSvc)
 	jobSvc := NewJobService(memory.NewProvider().JobRepo(), memory.NewProvider().JobEventRepo(), engine)
 	automationSvc.SetJobService(jobSvc)
@@ -293,40 +293,40 @@ func newAutomationServiceForTest(t *testing.T, root string, provider *memory.Pro
 	return automationSvc
 }
 
-func newAutomationServiceWithFolderIntakeForTest(root string, intake automationFolderIntake) *AutomationService {
+func newAutomationServiceWithLegacyIntakeForTest(root string, intake automationLegacyIntake) *AutomationService {
 	jobProvider := memory.NewProvider()
 	jobSvc := NewJobService(jobProvider.JobRepo(), jobProvider.JobEventRepo(), NewWorkflowEngine())
 	return NewAutomationService(NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), nil, intake, jobSvc)
 }
 
-func newAutomationServiceWithIngestionAndFolderIntakeForTest(root string, provider *memory.Provider, intake automationFolderIntake) *AutomationService {
+func newAutomationServiceWithIngestionAndLegacyIntakeForTest(root string, provider *memory.Provider, intake automationLegacyIntake) *AutomationService {
 	jobSvc := NewJobService(provider.JobRepo(), provider.JobEventRepo(), NewWorkflowEngine())
 	ingestionSvc := NewIngestionPipelineService(provider.IngestionRepo(), provider.WorkspaceRepo(), provider, workspaceinfra.NewLoader())
 	_ = root
 	return NewAutomationService(NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), ingestionSvc, intake, jobSvc)
 }
 
-type stubAutomationFolderIntake struct {
+type stubAutomationLegacyIntake struct {
 	runOnceCalls     int
 	retryFailedCalls int
-	runOnceResult    automationFolderRunSummary
-	retryResult      automationFolderRunSummary
+	runOnceResult    automationLegacyRunSummary
+	retryResult      automationLegacyRunSummary
 	runOnceErr       error
 	retryErr         error
 }
 
-func (s *stubAutomationFolderIntake) RunOnce(ctx context.Context, root string) (automationFolderRunSummary, error) {
+func (s *stubAutomationLegacyIntake) RunOnce(ctx context.Context, root string) (automationLegacyRunSummary, error) {
 	s.runOnceCalls++
 	if s.runOnceErr != nil {
-		return automationFolderRunSummary{}, s.runOnceErr
+		return automationLegacyRunSummary{}, s.runOnceErr
 	}
 	return s.runOnceResult, nil
 }
 
-func (s *stubAutomationFolderIntake) RetryFailed(ctx context.Context, root string) (automationFolderRunSummary, error) {
+func (s *stubAutomationLegacyIntake) RetryFailed(ctx context.Context, root string) (automationLegacyRunSummary, error) {
 	s.retryFailedCalls++
 	if s.retryErr != nil {
-		return automationFolderRunSummary{}, s.retryErr
+		return automationLegacyRunSummary{}, s.retryErr
 	}
 	return s.retryResult, nil
 }
