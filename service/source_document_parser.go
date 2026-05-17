@@ -65,6 +65,17 @@ func ParseSourceDocumentBytes(filename string, raw []byte) (*ParsedSourceDocumen
 	}
 }
 
+func sourceDocumentMetadata(parsed *ParsedSourceDocument) map[string]any {
+	metadata := map[string]any{}
+	if parsed == nil {
+		return metadata
+	}
+	if len(parsed.Tags) > 0 {
+		metadata["tags"] = append([]string(nil), parsed.Tags...)
+	}
+	return metadata
+}
+
 func parseMarkdownDocumentBytes(filename string, body []byte) (*ParsedSourceDocument, error) {
 	text := string(body)
 	return &ParsedSourceDocument{

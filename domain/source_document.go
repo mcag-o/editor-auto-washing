@@ -16,11 +16,6 @@ const (
 	SourceDocumentStatusPaused         = "paused"
 	SourceDocumentStatusCompleted      = "completed"
 	SourceDocumentStatusFailed         = "failed"
-
-	ImportRunStatusPending   = "pending"
-	ImportRunStatusRunning   = "running"
-	ImportRunStatusCompleted = "completed"
-	ImportRunStatusFailed    = "failed"
 )
 
 var validSourceDocumentStatuses = map[string]struct{}{
@@ -33,13 +28,6 @@ var validSourceDocumentStatuses = map[string]struct{}{
 	SourceDocumentStatusPaused:         {},
 	SourceDocumentStatusCompleted:      {},
 	SourceDocumentStatusFailed:         {},
-}
-
-var validImportRunStatuses = map[string]struct{}{
-	ImportRunStatusPending:   {},
-	ImportRunStatusRunning:   {},
-	ImportRunStatusCompleted: {},
-	ImportRunStatusFailed:    {},
 }
 
 type SourceDocument struct {
@@ -63,18 +51,6 @@ type SourceDocument struct {
 	ProcessingStartedAt *time.Time     `json:"processing_started_at"`
 	CompletedAt         *time.Time     `json:"completed_at"`
 	ErrorSummary        string         `json:"error_summary"`
-}
-
-type ImportRun struct {
-	ID            string         `json:"id"`
-	SourceType    string         `json:"source_type"`
-	Status        string         `json:"status"`
-	StartedAt     time.Time      `json:"started_at"`
-	CompletedAt   *time.Time     `json:"completed_at"`
-	ImportedCount int            `json:"imported_count"`
-	FailedCount   int            `json:"failed_count"`
-	ErrorSummary  string         `json:"error_summary"`
-	Metadata      map[string]any `json:"metadata"`
 }
 
 func NewSourceDocument(filename, originalPath, fileType, title, body, hash string) *SourceDocument {
@@ -151,37 +127,6 @@ func (d SourceDocument) Validate() error {
 		if strings.TrimSpace(d.ErrorSummary) == "" {
 			return NewValidationErr("error summary is required", nil)
 		}
-	}
-	return nil
-}
-
-func NewImportRun(sourceType string) *ImportRun {
-	now := time.Now().UTC()
-	return &ImportRun{
-		ID:         id.New(),
-		SourceType: strings.TrimSpace(sourceType),
-		Status:     ImportRunStatusPending,
-		StartedAt:  now,
-		Metadata:   map[string]any{},
-	}
-}
-
-func (r ImportRun) Validate() error {
-	if strings.TrimSpace(r.SourceType) == "" {
-		return NewValidationErr("source type is required", nil)
-	}
-	status := strings.TrimSpace(r.Status)
-	if status == "" {
-		return NewValidationErr("status is required", nil)
-	}
-	if _, ok := validImportRunStatuses[status]; !ok {
-		return NewValidationErr("unsupported import run status", nil)
-	}
-	if r.ImportedCount < 0 {
-		return NewValidationErr("imported count must be greater than or equal to zero", nil)
-	}
-	if r.FailedCount < 0 {
-		return NewValidationErr("failed count must be greater than or equal to zero", nil)
 	}
 	return nil
 }

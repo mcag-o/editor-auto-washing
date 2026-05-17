@@ -1,7 +1,6 @@
 package main
 
 import (
-	"content-hub/domain"
 	"content-hub/infra/config"
 	"content-hub/infra/memory"
 	"content-hub/service"
@@ -232,7 +231,6 @@ func TestBuildRuntimeReposExposesBrowserFirstRuntimeRepos(t *testing.T) {
 	require.NoError(t, err)
 	defer cleanup()
 
-	assert.NotNil(t, repos.SourceDocumentRepo)
 	assert.NotNil(t, repos.RewritePipelineRunRepo)
 	assert.NotNil(t, repos.RewriteStageRunRepo)
 	assert.NotNil(t, repos.WorkflowRunRepo)
@@ -296,7 +294,6 @@ func TestRunBuildsWebControlProviderDependencies(t *testing.T) {
 			RewriteStageRunRepo:    provider.RewriteStageRunRepo(),
 			WorkflowRunRepo:        provider.WorkflowRunRepo(),
 			WorkflowCheckpointRepo:  provider.WorkflowCheckpointRepo(),
-			SourceDocumentRepo:     &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}},
 			BusinessConfigRepo:     &stubBusinessConfigRepo{},
 			SystemControlStateRepo: &stubSystemControlStateRepo{},
 			AuditLogRepo:           &stubAuditLogRepo{},
@@ -321,7 +318,6 @@ func TestRunBuildsWebControlProviderDependencies(t *testing.T) {
 			RewriteStageRunRepo:    provider.RewriteStageRunRepo(),
 			WorkflowRunRepo:        provider.WorkflowRunRepo(),
 			WorkflowCheckpointRepo:  provider.WorkflowCheckpointRepo(),
-			SourceDocumentRepo:     &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}},
 			BusinessConfigRepo:     &stubBusinessConfigRepo{},
 			SystemControlStateRepo: &stubSystemControlStateRepo{},
 			AuditLogRepo:           &stubAuditLogRepo{},
@@ -331,10 +327,97 @@ func TestRunBuildsWebControlProviderDependencies(t *testing.T) {
 
 	newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serverRunner {
 		require.NotNil(t, provider.WebControlRuntime)
-		require.NotNil(t, provider.SourceDocumentRepo)
 		require.NotNil(t, provider.RewriteRunRepo)
 		require.NotNil(t, provider.RewriteStageRepo)
 		require.NotNil(t, provider.AuditLogRepo)
+		return failingServerRunner{err: errors.New("bind failed")}
+	}
+
+	err := run()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bind failed")
+}
+
+func TestRunBuildsWebControlProviderWithoutFolderIntakeCompatibilityChain(t *testing.T) {
+	workingDir := t.TempDir()
+	t.Chdir(workingDir)
+	configDir := filepath.Join(workingDir, "config")
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.json"), []byte(`{
+	  "llm": {
+	    "default_profile": "default_openai",
+	    "profiles": {
+	      "default_openai": {
+	        "provider": "openai",
+	        "model": "gpt-4.1",
+	        "temperature": 0.2,
+	        "max_tokens": 4096,
+	        "timeout_sec": 60
+	      }
+	    }
+	  }
+	}`), 0o644))
+
+	originalBuild := buildRuntimeReposFn
+	originalStandaloneBuild := buildStandaloneRuntimeReposFn
+	originalNewServer := newHTTPServer
+	defer func() {
+		buildRuntimeReposFn = originalBuild
+		buildStandaloneRuntimeReposFn = originalStandaloneBuild
+		newHTTPServer = originalNewServer
+	}()
+
+	buildRuntimeReposFn = func(root string) (*service.RuntimeRepos, func() error, error) {
+		provider := memory.NewProvider()
+		return &service.RuntimeRepos{
+			ArticleRepo:            provider.ArticleRepo(),
+			TemplateRepo:           provider.TemplateRepo(),
+			DraftRepo:              provider.DraftRepo(),
+			AssetRepo:              provider.AssetRepo(),
+			ReviewRepo:             provider.ReviewRepo(),
+			PublishRepo:            provider.PublishRepo(),
+			JobRepo:                provider.JobRepo(),
+			JobEventRepo:           provider.JobEventRepo(),
+			IngestionRepo:          provider.IngestionRepo(),
+			WorkspaceRepo:          provider.WorkspaceRepo(),
+			BundleImportTxStarter:  provider,
+			RewritePipelineRunRepo: provider.RewritePipelineRunRepo(),
+			RewriteStageRunRepo:    provider.RewriteStageRunRepo(),
+			WorkflowRunRepo:        provider.WorkflowRunRepo(),
+			WorkflowCheckpointRepo:  provider.WorkflowCheckpointRepo(),
+			BusinessConfigRepo:     &stubBusinessConfigRepo{},
+			SystemControlStateRepo: &stubSystemControlStateRepo{},
+			AuditLogRepo:           &stubAuditLogRepo{},
+			RenderedDir:            t.TempDir(),
+		}, func() error { return nil }, nil
+	}
+	buildStandaloneRuntimeReposFn = func(cfg config.Config) (*service.RuntimeRepos, func() error, error) {
+		provider := memory.NewProvider()
+		return &service.RuntimeRepos{
+			ArticleRepo:            provider.ArticleRepo(),
+			TemplateRepo:           provider.TemplateRepo(),
+			DraftRepo:              provider.DraftRepo(),
+			AssetRepo:              provider.AssetRepo(),
+			ReviewRepo:             provider.ReviewRepo(),
+			PublishRepo:            provider.PublishRepo(),
+			JobRepo:                provider.JobRepo(),
+			JobEventRepo:           provider.JobEventRepo(),
+			IngestionRepo:          provider.IngestionRepo(),
+			WorkspaceRepo:          provider.WorkspaceRepo(),
+			BundleImportTxStarter:  provider,
+			RewritePipelineRunRepo: provider.RewritePipelineRunRepo(),
+			RewriteStageRunRepo:    provider.RewriteStageRunRepo(),
+			WorkflowRunRepo:        provider.WorkflowRunRepo(),
+			WorkflowCheckpointRepo:  provider.WorkflowCheckpointRepo(),
+			BusinessConfigRepo:     &stubBusinessConfigRepo{},
+			SystemControlStateRepo: &stubSystemControlStateRepo{},
+			AuditLogRepo:           &stubAuditLogRepo{},
+			RenderedDir:            t.TempDir(),
+		}, func() error { return nil }, nil
+	}
+
+	newHTTPServer = func(cfg config.Config, provider *httpserver.Provider) serverRunner {
+		require.NotNil(t, provider.WebControlRuntime)
 		return failingServerRunner{err: errors.New("bind failed")}
 	}
 
@@ -390,7 +473,6 @@ func TestRunDefaultsWebControlPlaneToPrimaryPort8123(t *testing.T) {
 			RewriteStageRunRepo:    provider.RewriteStageRunRepo(),
 			WorkflowRunRepo:        provider.WorkflowRunRepo(),
 			WorkflowCheckpointRepo:  provider.WorkflowCheckpointRepo(),
-			SourceDocumentRepo:     &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}},
 			BusinessConfigRepo:     &stubBusinessConfigRepo{},
 			SystemControlStateRepo: &stubSystemControlStateRepo{},
 			AuditLogRepo:           &stubAuditLogRepo{},
@@ -415,7 +497,6 @@ func TestRunDefaultsWebControlPlaneToPrimaryPort8123(t *testing.T) {
 			RewriteStageRunRepo:    provider.RewriteStageRunRepo(),
 			WorkflowRunRepo:        provider.WorkflowRunRepo(),
 			WorkflowCheckpointRepo:  provider.WorkflowCheckpointRepo(),
-			SourceDocumentRepo:     &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}},
 			BusinessConfigRepo:     &stubBusinessConfigRepo{},
 			SystemControlStateRepo: &stubSystemControlStateRepo{},
 			AuditLogRepo:           &stubAuditLogRepo{},

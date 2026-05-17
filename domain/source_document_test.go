@@ -148,39 +148,6 @@ func TestSourceDocumentValidateFailedRequiresErrorSummary(t *testing.T) {
 	}
 }
 
-func TestNewImportRunDefaultsToPending(t *testing.T) {
-	run := NewImportRun("folder")
-	if run.Status != ImportRunStatusPending {
-		t.Fatalf("expected pending status, got %s", run.Status)
-	}
-	if err := run.Validate(); err != nil {
-		t.Fatalf("expected new import run to validate: %v", err)
-	}
-	if run.Metadata == nil {
-		t.Fatal("expected metadata to be initialized")
-	}
-	if run.ID == "" {
-		t.Fatal("expected new import run to have an id")
-	}
-	if run.SourceType != "folder" {
-		t.Fatalf("unexpected source type: %s", run.SourceType)
-	}
-}
-
-func TestImportRunValidateRequiresCoreFields(t *testing.T) {
-	run := ImportRun{}
-	if err := run.Validate(); err == nil {
-		t.Fatal("expected validate to reject empty import run")
-	}
-}
-
-func TestImportRunValidateRejectsUnsupportedStatus(t *testing.T) {
-	run := ImportRun{SourceType: "folder", Status: "unknown"}
-	if err := run.Validate(); err == nil {
-		t.Fatal("expected validate to reject unsupported status")
-	}
-}
-
 func validParsedSourceDocument(status string) SourceDocument {
 	return SourceDocument{
 		SourceType:       "folder",

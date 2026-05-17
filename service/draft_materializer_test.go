@@ -301,6 +301,10 @@ func (failingWorkspaceRepoForDraftMaterializer) Create(context.Context, *domain.
 	return nil
 }
 
+func (failingWorkspaceRepoForDraftMaterializer) Update(context.Context, *domain.ArticleWorkspaceRecord) error {
+	return nil
+}
+
 func (f failingWorkspaceRepoForDraftMaterializer) GetByID(context.Context, string) (*domain.ArticleWorkspaceRecord, error) {
 	return nil, f.err
 }

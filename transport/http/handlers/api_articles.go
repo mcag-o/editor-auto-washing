@@ -9,16 +9,19 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
 type APIArticlesHandler struct {
-	articles  *service.ArticleQueryService
-	runs      repo.RewritePipelineRunRepo
-	stages    repo.RewriteStageRunRepo
-	source    repo.SourceDocumentRepo
-	workflows interface {
+	articles     *service.ArticleQueryService
+	runs         repo.RewritePipelineRunRepo
+	stages       repo.RewriteStageRunRepo
+	workspaces   articleWorkspaceRepo
+	workflowRuns repo.WorkflowRunRepo
+	checkpoints  repo.WorkflowCheckpointRepo
+	workflows    interface {
 		GetByID(context.Context, string) (*domain.WorkflowDefinition, error)
 	}
 	audit   repo.AuditLogRepo
@@ -27,7 +30,12 @@ type APIArticlesHandler struct {
 	}
 }
 
-type sourceDocumentDeleteRepo interface {
+type articleWorkspaceRepo interface {
+	GetByID(context.Context, string) (*domain.ArticleWorkspaceRecord, error)
+	List(context.Context, *string) ([]domain.ArticleWorkspaceRecord, error)
+	Create(context.Context, *domain.ArticleWorkspaceRecord) error
+	Update(context.Context, *domain.ArticleWorkspaceRecord) error
+	TransitionStatus(context.Context, string, string, string) error
 	Delete(context.Context, string) error
 }
 
@@ -37,16 +45,26 @@ type rewriteStageRunUpdater interface {
 
 const articleOperationsActor = "local-admin"
 
-func NewAPIArticlesHandler(articles *service.ArticleQueryService, runs repo.RewritePipelineRunRepo, stages repo.RewriteStageRunRepo, source repo.SourceDocumentRepo, workflows interface {
+func NewAPIArticlesHandler(articles *service.ArticleQueryService, runs repo.RewritePipelineRunRepo, stages repo.RewriteStageRunRepo, workflows interface {
 	GetByID(context.Context, string) (*domain.WorkflowDefinition, error)
 }, audit repo.AuditLogRepo, control interface {
 	Get(context.Context) (*domain.SystemControlState, error)
-}) *APIArticlesHandler {
-	return &APIArticlesHandler{articles: articles, runs: runs, stages: stages, source: source, workflows: workflows, audit: audit, control: control}
+}, checkpoints ...repo.WorkflowCheckpointRepo) *APIArticlesHandler {
+	var workspaces articleWorkspaceRepo
+	var workflowRuns repo.WorkflowRunRepo
+	var workflowCheckpoints repo.WorkflowCheckpointRepo
+	if articles != nil {
+		workspaces = articles.WorkspaceRepo()
+		workflowRuns = articles.WorkflowRunRepo()
+	}
+	if len(checkpoints) > 0 {
+		workflowCheckpoints = checkpoints[0]
+	}
+	return &APIArticlesHandler{articles: articles, runs: runs, stages: stages, workspaces: workspaces, workflowRuns: workflowRuns, checkpoints: workflowCheckpoints, workflows: workflows, audit: audit, control: control}
 }
 
 func (h *APIArticlesHandler) List(c *gin.Context) {
-	items, err := h.articles.ListSourceDocuments(c.Request.Context(), service.ArticleQueryFilter{Status: c.Query("status"), Limit: 100})
+	items, err := h.articles.ListArticles(c.Request.Context(), service.ArticleQueryFilter{Status: c.Query("status"), Limit: 100})
 	if err != nil {
 		HandleError(c, err)
 		return
@@ -55,7 +73,7 @@ func (h *APIArticlesHandler) List(c *gin.Context) {
 }
 
 func (h *APIArticlesHandler) Get(c *gin.Context) {
-	item, err := h.articles.GetSourceDocument(c.Request.Context(), c.Param("id"))
+	item, err := h.articles.GetArticle(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		HandleError(c, err)
 		return
@@ -64,7 +82,7 @@ func (h *APIArticlesHandler) Get(c *gin.Context) {
 }
 
 func (h *APIArticlesHandler) Stages(c *gin.Context) {
-	item, err := h.articles.GetSourceDocument(c.Request.Context(), c.Param("id"))
+	item, err := h.articles.GetArticle(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		HandleError(c, err)
 		return
@@ -93,29 +111,25 @@ func (h *APIArticlesHandler) Stages(c *gin.Context) {
 }
 
 func (h *APIArticlesHandler) Retry(c *gin.Context) {
-	item, err := h.source.GetByID(c.Request.Context(), c.Param("id"))
+	workspace, err := h.workspaces.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		HandleError(c, err)
 		return
 	}
-	if item.Status != domain.SourceDocumentStatusFailed {
+	item, err := h.articles.GetArticle(c.Request.Context(), workspace.ID)
+	if err != nil {
+		HandleError(c, err)
+		return
+	}
+	if workspace.Status != domain.ArticleWorkspaceStatusRewriteFailed && workspace.Status != domain.ArticleWorkspaceStatusFailed {
 		err := domain.NewValidationErr("retry is only allowed from failed state", nil)
 		h.recordArticleAudit(c.Request.Context(), item, "retry", "failure", err.Error(), nil)
 		HandleError(c, err)
 		return
 	}
-	previousRunID := item.RewriteRunID
+	previousRunID := strings.TrimSpace(item.RewriteRunID)
 	workflowStateReset := false
-
-	item.Status = domain.SourceDocumentStatusPending
-	item.ErrorSummary = ""
-	item.ClaimedBy = ""
-	item.ClaimedAt = nil
-	item.ProcessingStartedAt = nil
-	item.CompletedAt = nil
-	item.RewriteRunID = previousRunID
-
-	workflowChanged, err := h.workflowExecutionChanged(c.Request.Context(), item)
+	workflowChanged, err := h.workflowExecutionChanged(c.Request.Context(), workspace, previousRunID)
 	if err != nil {
 		HandleError(c, err)
 		return
@@ -123,11 +137,25 @@ func (h *APIArticlesHandler) Retry(c *gin.Context) {
 	if workflowChanged {
 		workflowStateReset = true
 	}
-	if workflowStateReset {
-		item.RewriteRunID = ""
+	now := time.Now().UTC()
+	workspace.Status = domain.ArticleWorkspaceStatusImported
+	workspace.StatusHistory = append(workspace.StatusHistory, domain.ArticleWorkspaceStatusImported)
+	workspace.LifecycleHistory = append(workspace.LifecycleHistory, domain.ArticleWorkspaceLifecycleEntry{
+		Status:    domain.ArticleWorkspaceStatusImported,
+		Notes:     "retry queued from browser article operations",
+		CreatedAt: now,
+	})
+	workspace.Notes = "retry queued from browser article operations"
+	workspace.UpdatedAt = now
+	if !workflowStateReset && previousRunID != "" {
+		if workspace.Metadata == nil {
+			workspace.Metadata = map[string]any{}
+		}
+		workspace.Metadata["resume_rewrite_run_id"] = previousRunID
+	} else if workspace.Metadata != nil {
+		delete(workspace.Metadata, "resume_rewrite_run_id")
 	}
-
-	if err := h.source.UpdateIfStatus(c.Request.Context(), item, domain.SourceDocumentStatusFailed); err != nil {
+	if err := h.workspaces.Update(c.Request.Context(), workspace); err != nil {
 		HandleError(c, err)
 		return
 	}
@@ -156,6 +184,10 @@ func (h *APIArticlesHandler) Retry(c *gin.Context) {
 		"worker_running":       workerRunning,
 		"system_state":         systemState,
 	})
+	updatedItem, loadErr := h.articles.GetArticle(c.Request.Context(), workspace.ID)
+	if loadErr == nil {
+		item = updatedItem
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":         "requeued",
@@ -167,65 +199,105 @@ func (h *APIArticlesHandler) Retry(c *gin.Context) {
 }
 
 func (h *APIArticlesHandler) Stop(c *gin.Context) {
-	item, err := h.source.GetByID(c.Request.Context(), c.Param("id"))
+	workspace, err := h.workspaces.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		HandleError(c, err)
 		return
 	}
-	if item.Status != domain.SourceDocumentStatusProcessing {
+	item, err := h.articles.GetArticle(c.Request.Context(), workspace.ID)
+	if err != nil {
+		HandleError(c, err)
+		return
+	}
+	if workspace.Status != domain.ArticleWorkspaceStatusRewriting {
 		err := domain.NewValidationErr("stop is only allowed from processing state", nil)
 		h.recordArticleAudit(c.Request.Context(), item, "stop", "failure", err.Error(), nil)
 		HandleError(c, err)
 		return
 	}
-
-	item.Status = domain.SourceDocumentStatusPaused
-	item.ClaimedBy = ""
-	item.ClaimedAt = nil
-	if err := h.source.UpdateIfStatus(c.Request.Context(), item, domain.SourceDocumentStatusProcessing); err != nil {
-		HandleError(c, err)
-		return
+	workflowRun := h.latestWorkflowRunForWorkspace(c.Request.Context(), workspace.ID)
+	if workflowRun != nil && workflowRun.Status != domain.WorkflowRunPaused {
+		originalStatus := workflowRun.Status
+		originalResumable := workflowRun.Resumable
+		originalMetadata := map[string]any{}
+		for key, value := range workflowRun.Metadata {
+			originalMetadata[key] = value
+		}
+		workflowRun.Status = domain.WorkflowRunPaused
+		workflowRun.Resumable = true
+		if workflowRun.Metadata == nil {
+			workflowRun.Metadata = map[string]any{}
+		}
+		workflowRun.Metadata["pause_source"] = "manual"
+		workflowRun.Metadata["pause_reason"] = "pause requested from article operations"
+		workflowRun.Metadata["pause_allowed_resume_modes"] = []string{"continue_active_tokens", "replay_from_checkpoint"}
+		if err := h.workflowRuns.Update(c.Request.Context(), workflowRun); err != nil {
+			HandleError(c, err)
+			return
+		}
+		if err := h.workspaces.TransitionStatus(c.Request.Context(), workspace.ID, domain.ArticleWorkspaceStatusPaused, "pause requested; awaiting workflow resume"); err != nil {
+			workflowRun.Status = originalStatus
+			workflowRun.Resumable = originalResumable
+			workflowRun.Metadata = originalMetadata
+			_ = h.workflowRuns.Update(c.Request.Context(), workflowRun)
+			HandleError(c, err)
+			return
+		}
+	} else {
+		if err := h.workspaces.TransitionStatus(c.Request.Context(), workspace.ID, domain.ArticleWorkspaceStatusPaused, "pause requested; awaiting workflow resume"); err != nil {
+			HandleError(c, err)
+			return
+		}
 	}
 	message := "pause requested; the current worker step is not synchronously interrupted"
 	h.recordArticleAuditBestEffort(c.Request.Context(), item, "stop", "success", message, map[string]any{
 		"workflow_position_preserved": strings.TrimSpace(item.RewriteRunID) != "",
-		"pause_requested":            true,
-		"workflow_run_id":            strings.TrimSpace(item.RewriteRunID),
-		"pause_source":               "manual",
+		"pause_requested":             true,
+		"workflow_run_id":             strings.TrimSpace(item.RewriteRunID),
+		"pause_source":                "manual",
 	})
 
 	c.JSON(http.StatusAccepted, gin.H{
-		"status":          domain.SourceDocumentStatusPaused,
+		"status":          domain.WorkflowRunPaused,
 		"requested_pause": true,
 		"message":         message,
-		"article":         item,
+		"article":         mustLoadBrowserArticle(c.Request.Context(), h.articles, workspace.ID, item),
 	})
 }
 
 func (h *APIArticlesHandler) Resume(c *gin.Context) {
-	item, err := h.source.GetByID(c.Request.Context(), c.Param("id"))
+	workspace, err := h.workspaces.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		HandleError(c, err)
 		return
 	}
-	if item.Status != domain.SourceDocumentStatusPaused {
+	item, err := h.articles.GetArticle(c.Request.Context(), workspace.ID)
+	if err != nil {
+		HandleError(c, err)
+		return
+	}
+	workflowRun := h.latestWorkflowRunForWorkspace(c.Request.Context(), workspace.ID)
+	if workspace.Status != domain.ArticleWorkspaceStatusPaused || workflowRun == nil || workflowRun.Status != domain.WorkflowRunPaused {
 		err := domain.NewValidationErr("resume is only allowed from paused state", nil)
 		h.recordArticleAudit(c.Request.Context(), item, "resume", "failure", err.Error(), nil)
 		HandleError(c, err)
 		return
 	}
-	if strings.TrimSpace(item.ClaimedBy) != "" || item.ClaimedAt != nil {
-		err := domain.NewValidationErr("resume is not allowed while prior processing markers are still active", nil)
-		h.recordArticleAudit(c.Request.Context(), item, "resume", "failure", err.Error(), nil)
-		HandleError(c, err)
-		return
+	now := time.Now().UTC()
+	workspace.Status = domain.ArticleWorkspaceStatusImported
+	workspace.StatusHistory = append(workspace.StatusHistory, domain.ArticleWorkspaceStatusImported)
+	workspace.LifecycleHistory = append(workspace.LifecycleHistory, domain.ArticleWorkspaceLifecycleEntry{
+		Status:    domain.ArticleWorkspaceStatusImported,
+		Notes:     "resume queued from paused workflow position",
+		CreatedAt: now,
+	})
+	workspace.Notes = "resume queued from paused workflow position"
+	workspace.UpdatedAt = now
+	if workspace.Metadata == nil {
+		workspace.Metadata = map[string]any{}
 	}
-
-	item.Status = domain.SourceDocumentStatusPending
-	item.ClaimedBy = ""
-	item.ClaimedAt = nil
-	item.ProcessingStartedAt = nil
-	if err := h.source.UpdateIfStatus(c.Request.Context(), item, domain.SourceDocumentStatusPaused); err != nil {
+	workspace.Metadata["resume_rewrite_run_id"] = strings.TrimSpace(item.RewriteRunID)
+	if err := h.workspaces.Update(c.Request.Context(), workspace); err != nil {
 		HandleError(c, err)
 		return
 	}
@@ -257,23 +329,28 @@ func (h *APIArticlesHandler) Resume(c *gin.Context) {
 		"message":        message,
 		"worker_running": workerRunning,
 		"system_state":   systemState,
-		"article":        item,
+		"article":        mustLoadBrowserArticle(c.Request.Context(), h.articles, workspace.ID, item),
 	})
 }
 
 func (h *APIArticlesHandler) Delete(c *gin.Context) {
-	item, err := h.source.GetByID(c.Request.Context(), c.Param("id"))
+	workspace, err := h.workspaces.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		HandleError(c, err)
 		return
 	}
-	if item.Status == domain.SourceDocumentStatusProcessing {
+	item, err := h.articles.GetArticle(c.Request.Context(), workspace.ID)
+	if err != nil {
+		HandleError(c, err)
+		return
+	}
+	if workspace.Status == domain.ArticleWorkspaceStatusRewriting {
 		err := domain.NewValidationErr("delete is not allowed while article is processing", nil)
 		h.recordArticleAudit(c.Request.Context(), item, "delete", "failure", err.Error(), nil)
 		HandleError(c, err)
 		return
 	}
-	if item.Status != domain.SourceDocumentStatusPending && item.Status != domain.SourceDocumentStatusPaused && item.Status != domain.SourceDocumentStatusCompleted {
+	if workspace.Status != domain.ArticleWorkspaceStatusImported && workspace.Status != domain.ArticleWorkspaceStatusDraft && workspace.Status != domain.ArticleWorkspaceStatusRendered && workspace.Status != domain.ArticleWorkspaceStatusRewriteFailed && workspace.Status != domain.ArticleWorkspaceStatusFailed && workspace.Status != domain.ArticleWorkspaceStatusPaused {
 		err := domain.NewValidationErr("delete is only allowed from pending, paused, or completed state", nil)
 		h.recordArticleAudit(c.Request.Context(), item, "delete", "failure", err.Error(), nil)
 		HandleError(c, err)
@@ -282,7 +359,7 @@ func (h *APIArticlesHandler) Delete(c *gin.Context) {
 
 	workflowRecordsDeleted := false
 	runID := strings.TrimSpace(item.RewriteRunID)
-	if err := h.source.DeleteIfStatus(c.Request.Context(), item.ID, domain.SourceDocumentStatusPending, domain.SourceDocumentStatusPaused, domain.SourceDocumentStatusCompleted); err != nil {
+	if err := h.workspaces.Delete(c.Request.Context(), workspace.ID); err != nil {
 		HandleError(c, err)
 		return
 	}
@@ -317,7 +394,7 @@ func (h *APIArticlesHandler) AssignWorkflowTemplate(c *gin.Context) {
 		HandleError(c, domain.NewInternalErr("workflow template assignment is not configured", nil))
 		return
 	}
-	item, err := h.source.GetByID(c.Request.Context(), c.Param("id"))
+	workspace, err := h.workspaces.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		HandleError(c, err)
 		return
@@ -331,20 +408,26 @@ func (h *APIArticlesHandler) AssignWorkflowTemplate(c *gin.Context) {
 		HandleError(c, domain.NewValidationErr(fmt.Sprintf("workflow template %s is disabled", workflow.ID), nil))
 		return
 	}
-	if item.Metadata == nil {
-		item.Metadata = map[string]any{}
+	if workspace.Metadata == nil {
+		workspace.Metadata = map[string]any{}
 	}
-	item.Metadata["workflow_template_id"] = workflow.ID
-	item.Metadata["workflow_template_name"] = workflow.Name
-	item.Metadata["workflow_template_version"] = workflow.Version
-	if err := h.source.Update(c.Request.Context(), item); err != nil {
+	workspace.Metadata["workflow_template_id"] = workflow.ID
+	workspace.Metadata["workflow_template_name"] = workflow.Name
+	workspace.Metadata["workflow_template_version"] = workflow.Version
+	workspace.UpdatedAt = time.Now().UTC()
+	if err := h.workspaces.Update(c.Request.Context(), workspace); err != nil {
+		HandleError(c, err)
+		return
+	}
+	item, err := h.articles.GetArticle(c.Request.Context(), workspace.ID)
+	if err != nil {
 		HandleError(c, err)
 		return
 	}
 	if _, err := service.NewAuditLogService(h.audit).Create(c.Request.Context(), service.AuditLogCreateInput{
 		Actor:      articleOperationsActor,
 		Action:     "web_control.article.workflow_template_assigned",
-		Resource:   "source_document",
+		Resource:   "workspace_article",
 		ResourceID: item.ID,
 		Result:     "success",
 		Message:    "assigned workflow template to article",
@@ -358,14 +441,14 @@ func (h *APIArticlesHandler) AssignWorkflowTemplate(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
-func (h *APIArticlesHandler) recordArticleAudit(ctx context.Context, item *domain.SourceDocument, action, result, message string, metadata map[string]any) error {
+func (h *APIArticlesHandler) recordArticleAudit(ctx context.Context, item *service.BrowserArticle, action, result, message string, metadata map[string]any) error {
 	if h == nil || h.audit == nil || item == nil {
 		return nil
 	}
 	_, err := service.NewAuditLogService(h.audit).Create(ctx, service.AuditLogCreateInput{
 		Actor:      articleOperationsActor,
 		Action:     "web_control.article." + strings.TrimSpace(action),
-		Resource:   "source_document",
+		Resource:   "workspace_article",
 		ResourceID: item.ID,
 		Result:     strings.TrimSpace(result),
 		Message:    strings.TrimSpace(message),
@@ -374,23 +457,23 @@ func (h *APIArticlesHandler) recordArticleAudit(ctx context.Context, item *domai
 	return err
 }
 
-func (h *APIArticlesHandler) recordArticleAuditBestEffort(ctx context.Context, item *domain.SourceDocument, action, result, message string, metadata map[string]any) {
+func (h *APIArticlesHandler) recordArticleAuditBestEffort(ctx context.Context, item *service.BrowserArticle, action, result, message string, metadata map[string]any) {
 	if err := h.recordArticleAudit(ctx, item, action, result, message, metadata); err != nil {
 		log.Printf("warning: write article lifecycle audit action=%s resource_id=%s: %v", strings.TrimSpace(action), item.ID, err)
 	}
 }
 
-func (h *APIArticlesHandler) workflowExecutionChanged(ctx context.Context, item *domain.SourceDocument) (bool, error) {
-	if item == nil || strings.TrimSpace(item.RewriteRunID) == "" {
+func (h *APIArticlesHandler) workflowExecutionChanged(ctx context.Context, workspace *domain.ArticleWorkspaceRecord, rewriteRunID string) (bool, error) {
+	if workspace == nil || strings.TrimSpace(rewriteRunID) == "" {
 		return false, nil
 	}
-	run, err := h.runs.GetByID(ctx, item.RewriteRunID)
+	run, err := h.runs.GetByID(ctx, rewriteRunID)
 	if err != nil {
 		return false, err
 	}
-	return workflowMetadataValue(item.Metadata, "workflow_template_id") != workflowMetadataValue(run.Metadata, "workflow_template_id") ||
-		workflowMetadataValue(item.Metadata, "workflow_template_version") != workflowMetadataValue(run.Metadata, "workflow_template_version") ||
-		workflowMetadataValue(item.Metadata, "workflow_template_name") != workflowMetadataValue(run.Metadata, "workflow_template_name"), nil
+	return workflowMetadataValue(workspace.Metadata, "workflow_template_id") != workflowMetadataValue(run.Metadata, "workflow_template_id") ||
+		workflowMetadataValue(workspace.Metadata, "workflow_template_version") != workflowMetadataValue(run.Metadata, "workflow_template_version") ||
+		workflowMetadataValue(workspace.Metadata, "workflow_template_name") != workflowMetadataValue(run.Metadata, "workflow_template_name"), nil
 }
 
 func workflowMetadataValue(metadata map[string]any, key string) string {
@@ -405,6 +488,34 @@ func (h *APIArticlesHandler) deleteWorkflowExecution(ctx context.Context, runID 
 	if strings.TrimSpace(runID) == "" {
 		return nil
 	}
+	workspaceArticleID := ""
+	if h.runs != nil {
+		run, err := h.runs.GetByID(ctx, runID)
+		if err != nil {
+			return err
+		}
+		workspaceArticleID = strings.TrimSpace(run.WorkspaceArticleID)
+	}
+	if h.workflowRuns != nil {
+		workflowRuns, err := h.workflowRuns.List(ctx, 0)
+		if err != nil {
+			return err
+		}
+		for i := range workflowRuns {
+			workflowRun := workflowRuns[i]
+			if workspaceArticleID == "" || strings.TrimSpace(workflowRun.WorkspaceArticleID) != workspaceArticleID {
+				continue
+			}
+			if h.checkpoints != nil {
+				if err := h.checkpoints.DeleteByWorkflowRunID(ctx, workflowRun.ID); err != nil {
+					return err
+				}
+			}
+			if err := h.workflowRuns.Delete(ctx, workflowRun.ID); err != nil {
+				return err
+			}
+		}
+	}
 	if err := h.stages.DeleteByPipelineRunID(ctx, runID); err != nil {
 		return err
 	}
@@ -414,7 +525,7 @@ func (h *APIArticlesHandler) deleteWorkflowExecution(ctx context.Context, runID 
 	return nil
 }
 
-func (h *APIArticlesHandler) resetWorkflowExecution(ctx context.Context, item *domain.SourceDocument) error {
+func (h *APIArticlesHandler) resetWorkflowExecution(ctx context.Context, item *service.BrowserArticle) error {
 	if item == nil || strings.TrimSpace(item.RewriteRunID) == "" {
 		return nil
 	}
@@ -451,4 +562,37 @@ func (h *APIArticlesHandler) resetWorkflowExecution(ctx context.Context, item *d
 		}
 	}
 	return nil
+}
+
+func (h *APIArticlesHandler) latestWorkflowRunForWorkspace(ctx context.Context, workspaceID string) *domain.WorkflowRun {
+	if h == nil || h.workflowRuns == nil || strings.TrimSpace(workspaceID) == "" {
+		return nil
+	}
+	runs, err := h.workflowRuns.List(ctx, 0)
+	if err != nil {
+		return nil
+	}
+	var selected *domain.WorkflowRun
+	for i := range runs {
+		run := runs[i]
+		if strings.TrimSpace(run.WorkspaceArticleID) != strings.TrimSpace(workspaceID) {
+			continue
+		}
+		if selected == nil || run.StartedAt.After(selected.StartedAt) || (run.StartedAt.Equal(selected.StartedAt) && strings.TrimSpace(run.ID) > strings.TrimSpace(selected.ID)) {
+			copyRun := run
+			selected = &copyRun
+		}
+	}
+	return selected
+}
+
+func mustLoadBrowserArticle(ctx context.Context, query *service.ArticleQueryService, id string, fallback *service.BrowserArticle) *service.BrowserArticle {
+	if query == nil {
+		return fallback
+	}
+	item, err := query.GetArticle(ctx, id)
+	if err != nil {
+		return fallback
+	}
+	return item
 }

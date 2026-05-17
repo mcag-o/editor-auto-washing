@@ -103,6 +103,130 @@ type stubSourceDocumentRepo struct {
 	afterGet   func(id string, doc *domain.SourceDocument)
 }
 
+type stubArticleWorkspaceRepo struct {
+	created    []*domain.ArticleWorkspaceRecord
+	updated    []*domain.ArticleWorkspaceRecord
+	storedByID map[string]*domain.ArticleWorkspaceRecord
+	createErr  error
+	updateErr  error
+	deleteErr  error
+	listErr    error
+	getErr     error
+	transitionErr error
+	afterGet   func(id string, record *domain.ArticleWorkspaceRecord)
+}
+
+func (r *stubArticleWorkspaceRepo) Create(_ context.Context, record *domain.ArticleWorkspaceRecord) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
+	copyValue := cloneArticleWorkspaceRecordStub(record)
+	r.created = append(r.created, copyValue)
+	if r.storedByID == nil {
+		r.storedByID = map[string]*domain.ArticleWorkspaceRecord{}
+	}
+	r.storedByID[record.ID] = copyValue
+	return nil
+}
+
+func (r *stubArticleWorkspaceRepo) GetByID(_ context.Context, id string) (*domain.ArticleWorkspaceRecord, error) {
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	record, ok := r.storedByID[id]
+	if !ok {
+		return nil, domain.NewNotFoundErr("workspace", id)
+	}
+	copyValue := cloneArticleWorkspaceRecordStub(record)
+	if r.afterGet != nil {
+		r.afterGet(id, record)
+	}
+	return copyValue, nil
+}
+
+func (r *stubArticleWorkspaceRepo) List(_ context.Context, status *string) ([]domain.ArticleWorkspaceRecord, error) {
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
+	items := make([]domain.ArticleWorkspaceRecord, 0, len(r.storedByID))
+	for _, record := range r.storedByID {
+		if status != nil && *status != "" && record.Status != *status {
+			continue
+		}
+		items = append(items, *cloneArticleWorkspaceRecordStub(record))
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
+	return items, nil
+}
+
+func (r *stubArticleWorkspaceRepo) ListByIngestionID(_ context.Context, ingestionID string) ([]domain.ArticleWorkspaceRecord, error) {
+	items := []domain.ArticleWorkspaceRecord{}
+	for _, record := range r.storedByID {
+		if strings.TrimSpace(record.Source.IngestionID) == strings.TrimSpace(ingestionID) {
+			items = append(items, *cloneArticleWorkspaceRecordStub(record))
+		}
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
+	return items, nil
+}
+
+func (r *stubArticleWorkspaceRepo) TransitionStatus(_ context.Context, id string, newStatus, notes string) error {
+	if r.transitionErr != nil {
+		return r.transitionErr
+	}
+	record, ok := r.storedByID[id]
+	if !ok {
+		return domain.NewNotFoundErr("workspace", id)
+	}
+	now := time.Now().UTC()
+	record.Status = newStatus
+	record.StatusHistory = append(record.StatusHistory, newStatus)
+	record.LifecycleHistory = append(record.LifecycleHistory, domain.ArticleWorkspaceLifecycleEntry{Status: newStatus, Notes: notes, CreatedAt: now})
+	record.Notes = notes
+	record.UpdatedAt = now
+	return nil
+}
+
+func (r *stubArticleWorkspaceRepo) Update(_ context.Context, record *domain.ArticleWorkspaceRecord) error {
+	if r.updateErr != nil {
+		return r.updateErr
+	}
+	if _, ok := r.storedByID[record.ID]; !ok {
+		return domain.NewNotFoundErr("workspace", record.ID)
+	}
+	copyValue := cloneArticleWorkspaceRecordStub(record)
+	r.updated = append(r.updated, copyValue)
+	r.storedByID[record.ID] = copyValue
+	return nil
+}
+
+func (r *stubArticleWorkspaceRepo) Delete(_ context.Context, id string) error {
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
+	if _, ok := r.storedByID[id]; !ok {
+		return domain.NewNotFoundErr("workspace", id)
+	}
+	delete(r.storedByID, id)
+	return nil
+}
+
+func cloneArticleWorkspaceRecordStub(record *domain.ArticleWorkspaceRecord) *domain.ArticleWorkspaceRecord {
+	if record == nil {
+		return nil
+	}
+	copyValue := *record
+	copyValue.StatusHistory = append([]string(nil), record.StatusHistory...)
+	copyValue.LifecycleHistory = append([]domain.ArticleWorkspaceLifecycleEntry(nil), record.LifecycleHistory...)
+	if record.Metadata != nil {
+		copyValue.Metadata = map[string]any{}
+		for k, v := range record.Metadata {
+			copyValue.Metadata[k] = v
+		}
+	}
+	return &copyValue
+}
+
 func (r *stubSourceDocumentRepo) Create(_ context.Context, doc *domain.SourceDocument) error {
 	if r.createErr != nil {
 		return r.createErr
@@ -485,7 +609,8 @@ func (r *stubRewriteStageRunRepo) Update(_ context.Context, run *domain.RewriteS
 }
 
 type stubWorkflowRunRepo struct {
-	runs map[string]*domain.WorkflowRun
+	runs      map[string]*domain.WorkflowRun
+	updateErr error
 }
 
 func (r *stubWorkflowRunRepo) Create(_ context.Context, run *domain.WorkflowRun) error {
@@ -498,6 +623,9 @@ func (r *stubWorkflowRunRepo) Create(_ context.Context, run *domain.WorkflowRun)
 }
 
 func (r *stubWorkflowRunRepo) Update(_ context.Context, run *domain.WorkflowRun) error {
+	if r.updateErr != nil {
+		return r.updateErr
+	}
 	if r.runs == nil {
 		r.runs = map[string]*domain.WorkflowRun{}
 	}

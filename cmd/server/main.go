@@ -108,22 +108,6 @@ func runWithConfig(cfg config.Config, workspaceRoot string, selectedStandaloneFa
 	workspaceSvc := service.NewWorkspaceArticleService(runtimeRepos.WorkspaceRepo)
 	reviewSvc := service.NewReviewService(runtimeRepos.ReviewRepo, runtimeRepos.WorkspaceRepo)
 	publishSvc := service.NewPublishGateService(runtimeRepos.ReviewRepo, runtimeRepos.AssetRepo, runtimeRepos.DraftRepo, runtimeRepos.PublishRepo, runtimeRepos.WorkspaceRepo, map[string]service.PublisherProvider{"wechat": runtimePublishProvider{}})
-	var folderIntakeRuntime *service.FolderIntakeRuntime
-	if !selectedStandaloneFallback {
-		resolvedWorkspace, resolveErr := workspaceinfra.NewLoader().Resolve(workspaceRoot)
-		if resolveErr != nil {
-			return fmt.Errorf("resolve workspace config: %w", resolveErr)
-		}
-		folderCfg, cfgErr := service.BuildFolderIntakeConfigFromWorkspace(resolvedWorkspace)
-		if cfgErr != nil {
-			return cfgErr
-		}
-		folderIntakeRuntime, err = service.BuildFolderIntakeRuntime(runtimeRepos, folderCfg)
-		if err != nil {
-			return err
-		}
-		automationSvc.SetFolderIntake(service.NewRuntimeAutomationFolderIntake(folderIntakeRuntime))
-	}
 	rewriteRuntime, err := service.BuildRewriteRuntime(runtimeRepos)
 	if err != nil {
 		return err
@@ -163,12 +147,10 @@ func runWithConfig(cfg config.Config, workspaceRoot string, selectedStandaloneFa
 		JobSvc:              jobSvc,
 		ReviewSvc:           reviewSvc,
 		PublishSvc:          publishSvc,
-		FolderIntakeRuntime: folderIntakeRuntime,
 		RewriteRuntime:      rewriteRuntime,
 		WebControlRuntime:   webControlRuntime,
 		WorkflowEngine:      workflowEngine,
 		ConfigLoader:        loader,
-		SourceDocumentRepo:  runtimeRepos.SourceDocumentRepo,
 		RewriteRunRepo:      runtimeRepos.RewritePipelineRunRepo,
 		RewriteStageRepo:    runtimeRepos.RewriteStageRunRepo,
 		WorkflowRunRepo:     runtimeRepos.WorkflowRunRepo,

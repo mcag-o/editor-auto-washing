@@ -56,7 +56,7 @@ func TestBuildRuntimeReposDoesNotExposeRSSRepos(t *testing.T) {
 	}
 }
 
-func TestBuildRuntimeReposExposesFolderIntakeRepos(t *testing.T) {
+func TestBuildRuntimeReposOmitsFolderIntakeCompatibilityRepos(t *testing.T) {
 	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
 	if cleanup != nil {
 		defer func() {
@@ -68,11 +68,12 @@ func TestBuildRuntimeReposExposesFolderIntakeRepos(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildRuntimeRepos returned error: %v", err)
 	}
-	if repos.SourceDocumentRepo == nil {
-		t.Fatal("expected SourceDocumentRepo to be wired")
+	repoType := reflect.TypeOf(*repos)
+	if _, ok := repoType.FieldByName("SourceDocumentRepo"); ok {
+		t.Fatal("expected RuntimeRepos to omit SourceDocumentRepo field")
 	}
-	if repos.ImportRunRepo == nil {
-		t.Fatal("expected ImportRunRepo to be wired")
+	if _, ok := repoType.FieldByName("ImportRunRepo"); ok {
+		t.Fatal("expected RuntimeRepos to omit ImportRunRepo field")
 	}
 }
 

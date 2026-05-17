@@ -3,7 +3,6 @@ package repo
 import (
 	"content-hub/domain"
 	"context"
-	"time"
 )
 
 type ArticleRepo interface {
@@ -74,6 +73,7 @@ type IngestionRepo interface {
 
 type WorkspaceRepo interface {
 	Create(ctx context.Context, w *domain.ArticleWorkspaceRecord) error
+	Update(ctx context.Context, w *domain.ArticleWorkspaceRecord) error
 	GetByID(ctx context.Context, id string) (*domain.ArticleWorkspaceRecord, error)
 	List(ctx context.Context, status *string) ([]domain.ArticleWorkspaceRecord, error)
 	ListByIngestionID(ctx context.Context, ingestionID string) ([]domain.ArticleWorkspaceRecord, error)
@@ -100,26 +100,6 @@ type RewriteStageRunRepo interface {
 	Update(ctx context.Context, run *domain.RewriteStageRun) error
 	DeleteByPipelineRunID(ctx context.Context, pipelineRunID string) error
 	ListByPipelineRunID(ctx context.Context, pipelineRunID string) ([]domain.RewriteStageRun, error)
-}
-
-type SourceDocumentRepo interface {
-	Create(ctx context.Context, doc *domain.SourceDocument) error
-	Update(ctx context.Context, doc *domain.SourceDocument) error
-	UpdateIfStatus(ctx context.Context, doc *domain.SourceDocument, expectedStatuses ...string) error
-	Delete(ctx context.Context, id string) error
-	DeleteIfStatus(ctx context.Context, id string, expectedStatuses ...string) error
-	GetByID(ctx context.Context, id string) (*domain.SourceDocument, error)
-	List(ctx context.Context, limit int) ([]domain.SourceDocument, error)
-	FindByHash(ctx context.Context, hash string) (*domain.SourceDocument, error)
-	ClaimPending(ctx context.Context, limit int, claimedBy string, now time.Time) ([]domain.SourceDocument, error)
-	ListByStatus(ctx context.Context, status string, limit int) ([]domain.SourceDocument, error)
-}
-
-type ImportRunRepo interface {
-	Create(ctx context.Context, run *domain.ImportRun) error
-	Update(ctx context.Context, run *domain.ImportRun) error
-	GetByID(ctx context.Context, id string) (*domain.ImportRun, error)
-	List(ctx context.Context, limit int) ([]domain.ImportRun, error)
 }
 
 type PromptTemplateRepo interface {

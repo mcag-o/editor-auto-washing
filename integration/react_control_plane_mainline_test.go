@@ -13,6 +13,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type reactBrowserArticlePayload struct {
+	ID                 string         `json:"id"`
+	WorkspaceArticleID string         `json:"workspace_article_id"`
+	Title              string         `json:"title"`
+	Summary            string         `json:"summary"`
+	Body               string         `json:"body"`
+	Status             string         `json:"status"`
+	SourceType         string         `json:"source_type"`
+	OriginalPath       string         `json:"original_path"`
+	OriginalFilename   string         `json:"original_filename"`
+	FileType           string         `json:"file_type"`
+	RewriteRunID       string         `json:"rewrite_run_id"`
+	WorkflowRunID      string         `json:"workflow_run_id"`
+	ErrorSummary       string         `json:"error_summary"`
+	ImportedAt         string         `json:"imported_at"`
+	ProcessingStartedAt string        `json:"processing_started_at"`
+	CompletedAt        string         `json:"completed_at"`
+	Metadata           map[string]any `json:"metadata"`
+}
+
 func TestReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t *testing.T) {
 	runReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t)
 }
@@ -86,7 +106,7 @@ func runReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t *testing.T)
 
 	var createdDoc domain.SourceDocument
 	require.NoError(t, json.NewDecoder(pasteResp.Body).Decode(&createdDoc))
-	require.Equal(t, domain.SourceDocumentStatusPending, createdDoc.Status)
+	require.Equal(t, domain.ArticleWorkspaceStatusImported, createdDoc.Status)
 
 	assignResp := postJSON(t, serverURL+"/api/articles/"+createdDoc.ID+"/workflow-template", map[string]any{
 		"workflow_template_id": "react-mainline-workflow-template",
@@ -114,9 +134,9 @@ func runReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t *testing.T)
 	defer articleResp.Body.Close()
 	require.Equal(t, http.StatusOK, articleResp.StatusCode)
 
-	var article domain.SourceDocument
+	var article reactBrowserArticlePayload
 	require.NoError(t, json.NewDecoder(articleResp.Body).Decode(&article))
-	require.Equal(t, domain.SourceDocumentStatusCompleted, article.Status)
+	require.Equal(t, domain.ArticleWorkspaceStatusRendered, article.Status)
 	require.Equal(t, "react-mainline-workflow-template", article.Metadata["workflow_template_id"])
 	require.NotEmpty(t, article.WorkspaceArticleID)
 	require.NotEmpty(t, article.RewriteRunID)
@@ -128,12 +148,12 @@ func runReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t *testing.T)
 	require.Equal(t, http.StatusOK, articleListResp.StatusCode)
 
 	var articleList struct {
-		Data []domain.SourceDocument `json:"data"`
+		Data []reactBrowserArticlePayload `json:"data"`
 	}
 	require.NoError(t, json.NewDecoder(articleListResp.Body).Decode(&articleList))
 	require.Len(t, articleList.Data, 1)
 	require.Equal(t, createdDoc.ID, articleList.Data[0].ID)
-	require.Equal(t, domain.SourceDocumentStatusCompleted, articleList.Data[0].Status)
+	require.Equal(t, domain.ArticleWorkspaceStatusRendered, articleList.Data[0].Status)
 
 	stagesResp, err := http.Get(serverURL + "/api/articles/" + createdDoc.ID + "/stages")
 	require.NoError(t, err)
@@ -141,12 +161,12 @@ func runReactControlPlanePasteToRenderedResultWithWorkflowTemplate(t *testing.T)
 	require.Equal(t, http.StatusOK, stagesResp.StatusCode)
 
 	var stagesPayload struct {
-		Article domain.SourceDocument      `json:"article"`
+		Article reactBrowserArticlePayload      `json:"article"`
 		Run     *domain.RewritePipelineRun `json:"run"`
 		Stages  []domain.RewriteStageRun   `json:"stages"`
 	}
 	require.NoError(t, json.NewDecoder(stagesResp.Body).Decode(&stagesPayload))
-	require.Equal(t, domain.SourceDocumentStatusCompleted, stagesPayload.Article.Status)
+	require.Equal(t, domain.ArticleWorkspaceStatusRendered, stagesPayload.Article.Status)
 	require.NotNil(t, stagesPayload.Run)
 	require.Equal(t, domain.RewriteRunSucceeded, stagesPayload.Run.Status)
 	require.Equal(t, "react-mainline-workflow-template", stagesPayload.Run.Metadata["workflow_template_id"])

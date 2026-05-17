@@ -286,6 +286,10 @@ func (failingWorkspaceRepoForFormatting) Create(context.Context, *domain.Article
 	return nil
 }
 
+func (failingWorkspaceRepoForFormatting) Update(context.Context, *domain.ArticleWorkspaceRecord) error {
+	return nil
+}
+
 func (f failingWorkspaceRepoForFormatting) GetByID(context.Context, string) (*domain.ArticleWorkspaceRecord, error) {
 	return nil, f.err
 }

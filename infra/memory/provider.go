@@ -563,6 +563,16 @@ func (r *memWorkspaceRepo) Create(_ context.Context, w *domain.ArticleWorkspaceR
 	return nil
 }
 
+func (r *memWorkspaceRepo) Update(_ context.Context, w *domain.ArticleWorkspaceRecord) error {
+	r.p.mu.Lock()
+	defer r.p.mu.Unlock()
+	if _, ok := r.p.workspaces[w.ID]; !ok {
+		return domain.NewNotFoundErr("workspace", w.ID)
+	}
+	r.p.workspaces[w.ID] = w
+	return nil
+}
+
 func (r *memWorkspaceRepo) GetByID(_ context.Context, id string) (*domain.ArticleWorkspaceRecord, error) {
 	r.p.mu.RLock()
 	defer r.p.mu.RUnlock()

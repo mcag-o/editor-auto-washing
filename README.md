@@ -12,7 +12,7 @@
 - workflow/template 管理通过同一浏览器界面完成，前端基础设施以 Material UI 与 React Flow 为主
 - 业务配置以数据库中的 runtime state 为准
 - 默认自动处理结果停在 draft + render；review / publish 为后续可选人工步骤
-- folder-intake 保留为后端/内部兼容能力，不作为默认操作入口
+- 浏览器 upload / paste workflow 由当前 Go runtime 统一承接，不再单列兼容 intake 模型
 - 当前版本变更摘要见 `version.md`
 
 ---
@@ -34,14 +34,13 @@
 
 ### 2. Intake 与文章工作区
 
-- 浏览器 upload / paste workflow 为默认 intake 主路径
+- 浏览器 upload / paste workflow 为当前唯一文档化 intake 主路径
 - 内容导入后进入 intake、rewrite、draft materialize、render 组成的默认处理链
 - article workspace record 与状态流转由 Go runtime 持久化
 - workflow/template 管理通过 `8123` 上的 browser UI 完成
 
 相关代码：
 
-- `service/folder_intake_runtime.go`
 - `service/article_intake.go`
 - `infra/sqlite/article_workspace_repo.go`
 
@@ -165,7 +164,7 @@ curl http://localhost:8123/ready
 ## 验证命令
 
 ```bash
-go test ./service -run 'TestSource|TestFolder|TestRewrite|TestBuildWebControlRuntime|TestWorkflowTemplate|TestTemplateDefinition|TestWebControlPlaneService'
+go test ./service -run 'TestSource|TestRewrite|TestBuildWebControlRuntime|TestWorkflowTemplate|TestTemplateDefinition|TestWebControlPlaneService'
 go test ./transport/http/... -run 'TestAPI|TestAdminFrontend|TestRewrite'
 npm --prefix webapp run test
 npm --prefix webapp run build

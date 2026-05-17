@@ -63,27 +63,25 @@ func (s *Server) Handler() http.Handler {
 }
 
 type Provider struct {
-	ContentSvc          *service.ContentService
-	TemplateSvc         *service.TemplateService
-	DraftSvc            *service.DraftService
-	FormattingSvc       *service.FormattingPipelineService
-	AutomationSvc       *service.AutomationService
-	WorkspaceSvc        *service.WorkspaceArticleService
-	JobSvc              *service.JobService
-	ReviewSvc           *service.ReviewService
-	PublishSvc          *service.PublishGateService
-	FolderIntakeRuntime *service.FolderIntakeRuntime
-	RewriteRuntime      *service.RewriteRuntime
-	WebControlRuntime   *service.WebControlRuntime
-	WorkflowEngine      *service.WorkflowEngine
-	ConfigLoader        *config.Loader
-	SourceDocumentRepo  repo.SourceDocumentRepo
-	RewriteRunRepo      repo.RewritePipelineRunRepo
-	RewriteStageRepo    repo.RewriteStageRunRepo
-	WorkflowRunRepo     repo.WorkflowRunRepo
+	ContentSvc             *service.ContentService
+	TemplateSvc            *service.TemplateService
+	DraftSvc               *service.DraftService
+	FormattingSvc          *service.FormattingPipelineService
+	AutomationSvc          *service.AutomationService
+	WorkspaceSvc           *service.WorkspaceArticleService
+	JobSvc                 *service.JobService
+	ReviewSvc              *service.ReviewService
+	PublishSvc             *service.PublishGateService
+	RewriteRuntime         *service.RewriteRuntime
+	WebControlRuntime      *service.WebControlRuntime
+	WorkflowEngine         *service.WorkflowEngine
+	ConfigLoader           *config.Loader
+	RewriteRunRepo         repo.RewritePipelineRunRepo
+	RewriteStageRepo       repo.RewriteStageRunRepo
+	WorkflowRunRepo        repo.WorkflowRunRepo
 	WorkflowCheckpointRepo repo.WorkflowCheckpointRepo
-	AuditLogRepo        repo.AuditLogRepo
-	WorkspaceRoot       string
+	AuditLogRepo           repo.AuditLogRepo
+	WorkspaceRoot          string
 }
 
 func NewServer(cfg config.Config, provider *Provider) *Server {
@@ -173,9 +171,6 @@ func validateProvider(provider *Provider) error {
 			missing = append(missing, "WebControlRuntime.Templates")
 		}
 	}
-	if provider.SourceDocumentRepo == nil {
-		missing = append(missing, "SourceDocumentRepo")
-	}
 	if provider.RewriteRunRepo == nil {
 		missing = append(missing, "RewriteRunRepo")
 	}
@@ -232,7 +227,7 @@ func (s *Server) registerRoutes() {
 	reviewHandler := handlers.NewReviewHandler(s.provider.ReviewSvc)
 	publishHandler := handlers.NewPublishHandler(s.provider.PublishSvc)
 	apiIntakeHandler := handlers.NewAPIIntakeHandler(s.provider.WebControlRuntime.Intake)
-	apiArticlesHandler := handlers.NewAPIArticlesHandler(s.provider.WebControlRuntime.Articles, s.provider.RewriteRunRepo, s.provider.RewriteStageRepo, s.provider.SourceDocumentRepo, s.provider.WebControlRuntime.Workflows, s.provider.AuditLogRepo, s.provider.WebControlRuntime.Control)
+	apiArticlesHandler := handlers.NewAPIArticlesHandler(s.provider.WebControlRuntime.Articles, s.provider.RewriteRunRepo, s.provider.RewriteStageRepo, s.provider.WebControlRuntime.Workflows, s.provider.AuditLogRepo, s.provider.WebControlRuntime.Control, s.provider.WorkflowCheckpointRepo)
 	apiConfigHandler := handlers.NewAPIConfigHandler(s.provider.WebControlRuntime.Config)
 	apiSystemHandler := handlers.NewAPISystemHandler(s.provider.WebControlRuntime.Control)
 	apiAuditHandler := handlers.NewAPIAuditHandler(s.provider.WebControlRuntime.Audit, s.provider.AuditLogRepo)

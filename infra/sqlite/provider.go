@@ -36,8 +36,6 @@ type Provider struct {
 	workflowCheckpointRepo      repo.WorkflowCheckpointRepo
 	workflowDefinitionRepo      repo.WorkflowDefinitionRepo
 	templateDefinitionRepo      repo.TemplateDefinitionRepo
-	sourceDocumentRepo          repo.SourceDocumentRepo
-	importRunRepo               repo.ImportRunRepo
 	promptTemplateRepo          repo.PromptTemplateRepo
 	llmProfileRepo              repo.LLMProfileRepo
 }
@@ -88,8 +86,6 @@ func NewProvider(dbPath string) (*Provider, error) {
 	p.workflowCheckpointRepo = &workflowCheckpointRepo{db: db}
 	p.workflowDefinitionRepo = &workflowDefinitionRepo{db: db}
 	p.templateDefinitionRepo = &templateDefinitionRepo{db: db}
-	p.sourceDocumentRepo = &sourceDocumentRepo{db: db}
-	p.importRunRepo = &importRunRepo{db: db}
 	p.promptTemplateRepo = &promptTemplateRepo{db: db}
 	p.llmProfileRepo = &llmProfileRepo{db: db}
 
@@ -182,14 +178,6 @@ func (p *Provider) WorkflowDefinitionRepo() repo.WorkflowDefinitionRepo {
 
 func (p *Provider) TemplateDefinitionRepo() repo.TemplateDefinitionRepo {
 	return p.templateDefinitionRepo
-}
-
-func (p *Provider) SourceDocumentRepo() repo.SourceDocumentRepo {
-	return p.sourceDocumentRepo
-}
-
-func (p *Provider) ImportRunRepo() repo.ImportRunRepo {
-	return p.importRunRepo
 }
 
 func (p *Provider) PromptTemplateRepo() repo.PromptTemplateRepo {

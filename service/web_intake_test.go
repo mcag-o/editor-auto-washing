@@ -14,6 +14,83 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type stubWebIntakeWorkspaceRepo struct {
+	created []*domain.ArticleWorkspaceRecord
+	err     error
+}
+
+func (r *stubWebIntakeWorkspaceRepo) Create(_ context.Context, record *domain.ArticleWorkspaceRecord) error {
+	if r.err != nil {
+		return r.err
+	}
+	copyValue := cloneWorkspaceRecord(record)
+	r.created = append(r.created, copyValue)
+	return nil
+}
+
+func (r *stubWebIntakeWorkspaceRepo) Update(_ context.Context, record *domain.ArticleWorkspaceRecord) error {
+	if r.err != nil {
+		return r.err
+	}
+	for i, item := range r.created {
+		if item.ID == record.ID {
+			r.created[i] = cloneWorkspaceRecord(record)
+			return nil
+		}
+	}
+	return domain.NewNotFoundErr("workspace_article", record.ID)
+}
+
+func (r *stubWebIntakeWorkspaceRepo) GetByID(_ context.Context, id string) (*domain.ArticleWorkspaceRecord, error) {
+	for _, item := range r.created {
+		if item.ID == id {
+			return cloneWorkspaceRecord(item), nil
+		}
+	}
+	return nil, domain.NewNotFoundErr("workspace_article", id)
+}
+
+func (r *stubWebIntakeWorkspaceRepo) List(context.Context, *string) ([]domain.ArticleWorkspaceRecord, error) {
+	return nil, nil
+}
+
+func (r *stubWebIntakeWorkspaceRepo) ListByIngestionID(context.Context, string) ([]domain.ArticleWorkspaceRecord, error) {
+	return nil, nil
+}
+
+func (r *stubWebIntakeWorkspaceRepo) TransitionStatus(_ context.Context, id string, newStatus, notes string) error {
+	for _, item := range r.created {
+		if item.ID == id {
+			item.Status = newStatus
+			item.Notes = notes
+			item.StatusHistory = append(item.StatusHistory, newStatus)
+			item.LifecycleHistory = append(item.LifecycleHistory, domain.ArticleWorkspaceLifecycleEntry{Status: newStatus, Notes: notes, CreatedAt: item.UpdatedAt})
+			return nil
+		}
+	}
+	return domain.NewNotFoundErr("workspace_article", id)
+}
+
+func (r *stubWebIntakeWorkspaceRepo) Delete(context.Context, string) error {
+	return nil
+}
+
+func cloneWorkspaceRecord(record *domain.ArticleWorkspaceRecord) *domain.ArticleWorkspaceRecord {
+	if record == nil {
+		return nil
+	}
+	copyValue := *record
+	copyValue.StatusHistory = append([]string(nil), record.StatusHistory...)
+	copyValue.LifecycleHistory = append([]domain.ArticleWorkspaceLifecycleEntry(nil), record.LifecycleHistory...)
+	if record.Metadata != nil {
+		copyValue.Metadata = map[string]any{}
+		for key, value := range record.Metadata {
+			copyValue.Metadata[key] = value
+		}
+	}
+	return &copyValue
+}
+
 type stubAuditLogRepoWithCreateError struct {
 	err  error
 	logs []*domain.AuditLog
@@ -69,82 +146,77 @@ func (r *stubAuditLogRepoWithCreateError) ListByQuery(_ context.Context, query r
 	return out, nil
 }
 
-func TestWebIntakeServiceCreateFromPastePersistsPendingSourceDocument(t *testing.T) {
-	repo := &stubSourceDocumentRepo{}
+func TestWebIntakeServiceCreateFromPastePersistsWorkspaceIntakeItem(t *testing.T) {
+	workspaceRepo := &stubWebIntakeWorkspaceRepo{}
 	audit := &stubAuditLogRepo{}
-	svc := NewWebIntakeService(repo, audit)
+	svc := NewWebIntakeService(workspaceRepo, audit)
 
-	doc, err := svc.CreateFromPaste(t.Context(), CreatePasteIntakeInput{
+	workspace, err := svc.CreateFromPaste(t.Context(), CreatePasteIntakeInput{
 		Actor: "local-admin",
 		Title: "Title",
 		Body:  "Body",
 	})
 
 	require.NoError(t, err)
-	require.NotNil(t, doc)
-	require.Equal(t, "paste", doc.SourceType)
-	require.Equal(t, domain.SourceDocumentStatusPending, doc.Status)
-	require.Equal(t, "Title", doc.Title)
-	require.Equal(t, "Body", doc.Body)
-	require.Equal(t, "paste", doc.OriginalFilename)
-	require.Equal(t, "paste", doc.OriginalPath)
-	require.Equal(t, "txt", doc.FileType)
-	require.NotEmpty(t, doc.Hash)
-	require.Nil(t, doc.ImportedAt)
-	require.Len(t, repo.created, 1)
-	require.Equal(t, domain.SourceDocumentStatusPending, repo.created[0].Status)
-	require.Equal(t, defaultWebIntakeTargetType, doc.Metadata["target_type"])
-	require.Equal(t, defaultWebPasteSourceProfile, doc.Metadata["source_profile"])
-	require.Equal(t, defaultWebIntakeRenderPlatform, doc.Metadata["render_platform"])
-	require.Equal(t, defaultWebIntakeRewriteProfileVersion, doc.Metadata["rewrite_profile_version"])
+	require.NotNil(t, workspace)
+	require.Equal(t, domain.ArticleWorkspaceStatusImported, workspace.Status)
+	require.Equal(t, "Title", workspace.Title)
+	require.Equal(t, "paste", workspace.Source.SourceType)
+	require.Equal(t, browserPasteOriginalURL("Title"), workspace.Source.URL)
+	require.Equal(t, "Body", workspace.Metadata["source_body"])
+	require.Equal(t, defaultWebIntakeTargetType, workspace.Metadata["target_type"])
+	require.Equal(t, defaultWebPasteSourceProfile, workspace.Metadata["source_profile"])
+	require.Equal(t, defaultWebIntakeRenderPlatform, workspace.Metadata["render_platform"])
+	require.Equal(t, defaultWebIntakeRewriteProfileVersion, workspace.Metadata["rewrite_profile_version"])
+	require.Len(t, workspaceRepo.created, 1)
+	require.Equal(t, workspace.ID, workspaceRepo.created[0].ID)
 	require.Len(t, audit.logs, 1)
 	require.Equal(t, "local-admin", audit.logs[0].Actor)
 	require.Equal(t, "web_intake.create_from_paste", audit.logs[0].Action)
-	require.Equal(t, "source_document", audit.logs[0].Resource)
-	require.Equal(t, doc.ID, audit.logs[0].ResourceID)
+	require.Equal(t, "workspace_article", audit.logs[0].Resource)
+	require.Equal(t, workspace.ID, audit.logs[0].ResourceID)
 	require.Equal(t, "success", audit.logs[0].Result)
 }
 
 func TestWebIntakeServiceCreateFromPastePreservesOriginalBodyText(t *testing.T) {
-	repo := &stubSourceDocumentRepo{}
-	audit := &stubAuditLogRepo{}
-	svc := NewWebIntakeService(repo, audit)
-
 	originalBody := "  Body with preserved edges\n"
-	doc, err := svc.CreateFromPaste(t.Context(), CreatePasteIntakeInput{
+	workspaceRepo := &stubWebIntakeWorkspaceRepo{}
+	audit := &stubAuditLogRepo{}
+	svc := NewWebIntakeService(workspaceRepo, audit)
+
+	workspace, err := svc.CreateFromPaste(t.Context(), CreatePasteIntakeInput{
 		Actor: "local-admin",
 		Title: "Title",
 		Body:  originalBody,
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, originalBody, doc.Body)
-	require.Equal(t, originalBody, repo.created[0].Body)
+	require.Equal(t, originalBody, workspace.Metadata["source_body"])
 }
 
 func TestWebIntakeServiceCreateFromPasteRejectsEffectivelyEmptyBody(t *testing.T) {
-	repo := &stubSourceDocumentRepo{}
+	workspaceRepo := &stubWebIntakeWorkspaceRepo{}
 	audit := &stubAuditLogRepo{}
-	svc := NewWebIntakeService(repo, audit)
+	svc := NewWebIntakeService(workspaceRepo, audit)
 
-	doc, err := svc.CreateFromPaste(t.Context(), CreatePasteIntakeInput{
+	workspace, err := svc.CreateFromPaste(t.Context(), CreatePasteIntakeInput{
 		Actor: "local-admin",
 		Title: "Title",
 		Body:  "   \n\t  ",
 	})
 
-	require.Nil(t, doc)
+	require.Nil(t, workspace)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "body is required")
-	require.Empty(t, repo.created)
+	require.Empty(t, workspaceRepo.created)
 }
 
-func TestWebIntakeServiceCreateFromUploadSupportsMarkdown(t *testing.T) {
-	repo := &stubSourceDocumentRepo{}
+func TestWebIntakeServiceCreateFromUploadPersistsWorkspaceIntakeItem(t *testing.T) {
+	workspaceRepo := &stubWebIntakeWorkspaceRepo{}
 	audit := &stubAuditLogRepo{}
-	svc := NewWebIntakeService(repo, audit)
+	svc := NewWebIntakeService(workspaceRepo, audit)
 
-	doc, err := svc.CreateFromUpload(t.Context(), CreateUploadIntakeInput{
+	workspace, err := svc.CreateFromUpload(t.Context(), CreateUploadIntakeInput{
 		Actor:       "local-admin",
 		Filename:    "article.md",
 		ContentType: "text/markdown",
@@ -152,31 +224,30 @@ func TestWebIntakeServiceCreateFromUploadSupportsMarkdown(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.NotNil(t, doc)
-	require.Equal(t, "upload", doc.SourceType)
-	require.Equal(t, domain.SourceDocumentStatusPending, doc.Status)
-	require.Equal(t, "article.md", doc.OriginalFilename)
-	require.Equal(t, "article.md", doc.OriginalPath)
-	require.Equal(t, "md", doc.FileType)
-	require.Equal(t, "Title", doc.Title)
-	require.Equal(t, "# Title\n\nBody", doc.Body)
-	require.Equal(t, defaultWebIntakeTargetType, doc.Metadata["target_type"])
-	require.Equal(t, defaultWebUploadSourceProfile, doc.Metadata["source_profile"])
-	require.Equal(t, defaultWebIntakeRenderPlatform, doc.Metadata["render_platform"])
-	require.Equal(t, defaultWebIntakeRewriteProfileVersion, doc.Metadata["rewrite_profile_version"])
-	require.Len(t, repo.created, 1)
+	require.NotNil(t, workspace)
+	require.Equal(t, domain.ArticleWorkspaceStatusImported, workspace.Status)
+	require.Equal(t, "Title", workspace.Title)
+	require.Equal(t, "upload", workspace.Source.SourceType)
+	require.Equal(t, browserUploadOriginalURL("article.md"), workspace.Source.URL)
+	require.Equal(t, "# Title\n\nBody", workspace.Metadata["source_body"])
+	require.Equal(t, defaultWebIntakeTargetType, workspace.Metadata["target_type"])
+	require.Equal(t, defaultWebUploadSourceProfile, workspace.Metadata["source_profile"])
+	require.Equal(t, defaultWebIntakeRenderPlatform, workspace.Metadata["render_platform"])
+	require.Equal(t, defaultWebIntakeRewriteProfileVersion, workspace.Metadata["rewrite_profile_version"])
+	require.Equal(t, "text/markdown", workspace.Metadata["content_type"])
+	require.Len(t, workspaceRepo.created, 1)
 	require.Len(t, audit.logs, 1)
 	require.Equal(t, "web_intake.create_from_upload", audit.logs[0].Action)
 	require.Equal(t, "success", audit.logs[0].Result)
-	require.Equal(t, doc.ID, audit.logs[0].ResourceID)
+	require.Equal(t, workspace.ID, audit.logs[0].ResourceID)
 }
 
 func TestWebIntakeServiceCreateFromUploadSucceedsWhenSuccessAuditWriteFails(t *testing.T) {
-	repo := &stubSourceDocumentRepo{}
+	workspaceRepo := &stubWebIntakeWorkspaceRepo{}
 	audit := &stubAuditLogRepoWithCreateError{err: fmt.Errorf("audit down")}
-	svc := NewWebIntakeService(repo, audit)
+	svc := NewWebIntakeService(workspaceRepo, audit)
 
-	doc, err := svc.CreateFromUpload(t.Context(), CreateUploadIntakeInput{
+	workspace, err := svc.CreateFromUpload(t.Context(), CreateUploadIntakeInput{
 		Actor:       "local-admin",
 		Filename:    "article.md",
 		ContentType: "text/markdown",
@@ -184,19 +255,17 @@ func TestWebIntakeServiceCreateFromUploadSucceedsWhenSuccessAuditWriteFails(t *t
 	})
 
 	require.NoError(t, err)
-	require.NotNil(t, doc)
-	require.Len(t, repo.created, 1)
-	require.Equal(t, doc.ID, repo.created[0].ID)
+	require.NotNil(t, workspace)
 	require.Len(t, audit.logs, 1)
 	require.Equal(t, "success", audit.logs[0].Result)
 }
 
 func TestWebIntakeServiceCreateFromUploadUsesOriginalFilenameForFallbackTitle(t *testing.T) {
-	repo := &stubSourceDocumentRepo{}
+	workspaceRepo := &stubWebIntakeWorkspaceRepo{}
 	audit := &stubAuditLogRepo{}
-	svc := NewWebIntakeService(repo, audit)
+	svc := NewWebIntakeService(workspaceRepo, audit)
 
-	doc, err := svc.CreateFromUpload(t.Context(), CreateUploadIntakeInput{
+	workspace, err := svc.CreateFromUpload(t.Context(), CreateUploadIntakeInput{
 		Actor:       "local-admin",
 		Filename:    "notes.txt",
 		ContentType: "text/plain",
@@ -204,44 +273,44 @@ func TestWebIntakeServiceCreateFromUploadUsesOriginalFilenameForFallbackTitle(t 
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, "notes", doc.Title)
+	require.Equal(t, "notes", workspace.Title)
 }
 
 func TestWebIntakeServiceCreateFromUploadRejectsUnsupportedExtension(t *testing.T) {
-	repo := &stubSourceDocumentRepo{}
+	workspaceRepo := &stubWebIntakeWorkspaceRepo{}
 	audit := &stubAuditLogRepo{}
-	svc := NewWebIntakeService(repo, audit)
+	svc := NewWebIntakeService(workspaceRepo, audit)
 
-	doc, err := svc.CreateFromUpload(t.Context(), CreateUploadIntakeInput{
+	workspace, err := svc.CreateFromUpload(t.Context(), CreateUploadIntakeInput{
 		Actor:       "local-admin",
 		Filename:    "article.docx",
 		ContentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 		Content:     bytes.NewBufferString("not-used"),
 	})
 
-	require.Nil(t, doc)
+	require.Nil(t, workspace)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "unsupported source document type")
-	require.Empty(t, repo.created)
+	require.Empty(t, workspaceRepo.created)
 	require.Len(t, audit.logs, 1)
 	require.Equal(t, "web_intake.create_from_upload", audit.logs[0].Action)
 	require.Equal(t, "failure", audit.logs[0].Result)
 }
 
-func TestWebIntakeServiceCreateFromPasteRecordsFailedAuditWhenCreateFails(t *testing.T) {
-	repo := &stubSourceDocumentRepo{createErr: errors.New("db down")}
+func TestWebIntakeServiceCreateFromPasteRecordsFailedAuditWhenWorkspaceCreateFails(t *testing.T) {
+	workspaceRepo := &stubWebIntakeWorkspaceRepo{err: errors.New("db down")}
 	audit := &stubAuditLogRepo{}
-	svc := NewWebIntakeService(repo, audit)
+	svc := NewWebIntakeService(workspaceRepo, audit)
 
-	doc, err := svc.CreateFromPaste(t.Context(), CreatePasteIntakeInput{
+	workspace, err := svc.CreateFromPaste(t.Context(), CreatePasteIntakeInput{
 		Actor: "local-admin",
 		Title: "Title",
 		Body:  "Body",
 	})
 
-	require.Nil(t, doc)
+	require.Nil(t, workspace)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "create source document")
+	require.ErrorContains(t, err, "create workspace article")
 	require.Len(t, audit.logs, 1)
 	require.Equal(t, "web_intake.create_from_paste", audit.logs[0].Action)
 	require.Equal(t, "failure", audit.logs[0].Result)

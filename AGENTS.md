@@ -29,7 +29,7 @@ This repository is the active `content-hub` Go workspace rooted at the repositor
 - Treat business configuration as DB-backed runtime state, not file-first operator setup.
 - Draft + render are the default automated result path.
 - Review/publish are optional later manual steps, not part of the default automated chain.
-- Folder-intake remains backend/internal compatibility only unless a task explicitly targets it.
+- Do not describe legacy compatibility intake paths as current operator entrypoints unless a task explicitly targets them.
 - Do not present static shell or background ingestion HTTP surfaces as current supported operator entrypoints.
 - Preserve Chinese user-facing documentation where it already exists; bilingual docs are normal here.
 - Prefer minimal, local edits over broad cleanup unless the task explicitly asks for broader normalization.
@@ -45,7 +45,7 @@ Run from repository root.
 - Install dependencies: `go mod download`
 - Build server binary: `go build ./cmd/server`
 - Run server / web control plane: `go run ./cmd/server`
-- Web control plane service verification: `go test ./service -run 'TestSource|TestFolder|TestRewrite|TestBuildWebControlRuntime|TestWorkflowTemplate|TestTemplateDefinition|TestWebControlPlaneService'`
+- Web control plane service verification: `go test ./service -run 'TestSource|TestRewrite|TestBuildWebControlRuntime|TestWorkflowTemplate|TestTemplateDefinition|TestWebControlPlaneService'`
 - Web control plane transport verification: `go test ./transport/http/... -run 'TestAPI|TestAdminFrontend|TestRewrite'`
 - Web control plane integration verification: `go test ./integration -run 'TestWebControlPlanePasteToRenderedResult|TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate|TestReactControlPlanePasteToRenderedResultWithWorkflowTemplate|TestRewritePipelineMainlineMaterializesDraft'`
 - Run all tests: `go test ./...`
@@ -54,7 +54,7 @@ Run from repository root.
 - Run one exact test: `go test ./service -run TestRewriteOrchestratorRunsPipelineAndCreatesDraft`
 - Run rewrite service tests: `go test ./service -run TestRewrite`
 - Run rewrite integration test: `go test ./integration -run TestRewritePipelineMainlineMaterializesDraft`
-- Run verbose package test: `go test -v ./transport/http/handlers -run 'TestFolder|TestRewrite'`
+- Run verbose package test: `go test -v ./transport/http/handlers -run 'TestRewrite'`
 - Build via Makefile: `make build`
 - Run built server: `make run`
 - Clean build artifacts: `make clean`
@@ -127,6 +127,6 @@ Notes:
 ## Common Mistakes To Avoid
 
 - Treating compatibility-only surfaces as the live operator workflow.
-- Presenting folder-intake as the default operator entrypoint.
+- Presenting legacy compatibility intake paths as the default operator entrypoint.
 - Claiming lint, formatter, or build workflows exist when the repository does not define them.
 - Mixing unrelated cleanup with active-runtime feature work without an explicit request.

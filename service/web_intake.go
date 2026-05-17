@@ -2,6 +2,7 @@ package service
 
 import (
 	"content-hub/domain"
+	"content-hub/pkg/id"
 	"content-hub/pkg/repo"
 	"context"
 	"fmt"
@@ -33,16 +34,16 @@ type CreateUploadIntakeInput struct {
 }
 
 type WebIntakeService struct {
-	repo  repo.SourceDocumentRepo
-	audit repo.AuditLogRepo
+	workspaces repo.WorkspaceRepo
+	audit      repo.AuditLogRepo
 }
 
-func NewWebIntakeService(repo repo.SourceDocumentRepo, audit repo.AuditLogRepo) *WebIntakeService {
-	return &WebIntakeService{repo: repo, audit: audit}
+func NewWebIntakeService(workspaces repo.WorkspaceRepo, audit repo.AuditLogRepo) *WebIntakeService {
+	return &WebIntakeService{workspaces: workspaces, audit: audit}
 }
 
-func (s *WebIntakeService) CreateFromPaste(ctx context.Context, input CreatePasteIntakeInput) (*domain.SourceDocument, error) {
-	if s.repo == nil || s.audit == nil {
+func (s *WebIntakeService) CreateFromPaste(ctx context.Context, input CreatePasteIntakeInput) (*domain.ArticleWorkspaceRecord, error) {
+	if s.workspaces == nil || s.audit == nil {
 		return nil, domain.NewInternalErr("web intake service is not configured", nil)
 	}
 
@@ -59,16 +60,18 @@ func (s *WebIntakeService) CreateFromPaste(ctx context.Context, input CreatePast
 		return nil, err
 	}
 
-	doc := domain.NewSourceDocument("paste", "paste", "txt", title, body, hashParsedSourceDocument(&ParsedSourceDocument{
-		Title: title,
-		Body:  body,
-	}))
-	doc.SourceType = "paste"
-	doc.Metadata = webIntakeMetadata(defaultWebPasteSourceProfile)
-	doc.Status = domain.SourceDocumentStatusPending
+	workspace := domain.NewArticleWorkspaceRecord(id.New(), title, "", domain.ArticleWorkspaceSource{
+		SourceType: "paste",
+		URL:        browserPasteOriginalURL(title),
+	}, webIntakeWorkspaceMetadata(body, webIntakeMetadata(defaultWebPasteSourceProfile)))
+	workspace.LifecycleHistory = []domain.ArticleWorkspaceLifecycleEntry{{
+		Status:    domain.ArticleWorkspaceStatusImported,
+		Notes:     "created from browser paste intake",
+		CreatedAt: workspace.CreatedAt,
+	}}
 
-	if err := s.repo.Create(ctx, doc); err != nil {
-		wrapped := fmt.Errorf("create source document: %w", err)
+	if err := s.workspaces.Create(ctx, workspace); err != nil {
+		wrapped := fmt.Errorf("create workspace article: %w", err)
 		s.recordFailureAudit(ctx, input.Actor, "web_intake.create_from_paste", wrapped.Error(), map[string]any{"title": title})
 		return nil, wrapped
 	}
@@ -76,22 +79,22 @@ func (s *WebIntakeService) CreateFromPaste(ctx context.Context, input CreatePast
 	if err := s.recordAudit(ctx, AuditLogCreateInput{
 		Actor:      input.Actor,
 		Action:     "web_intake.create_from_paste",
-		Resource:   "source_document",
-		ResourceID: doc.ID,
+		Resource:   "workspace_article",
+		ResourceID: workspace.ID,
 		Result:     "success",
-		Message:    "created source document from pasted text",
+		Message:    "created workspace article from pasted text",
 		Metadata: map[string]any{
 			"title": title,
 		},
 	}); err != nil {
-		s.logAuditFailure("web_intake.create_from_paste", doc.ID, err)
+		s.logAuditFailure("web_intake.create_from_paste", workspace.ID, err)
 	}
 
-	return doc, nil
+	return workspace, nil
 }
 
-func (s *WebIntakeService) CreateFromUpload(ctx context.Context, input CreateUploadIntakeInput) (*domain.SourceDocument, error) {
-	if s.repo == nil || s.audit == nil {
+func (s *WebIntakeService) CreateFromUpload(ctx context.Context, input CreateUploadIntakeInput) (*domain.ArticleWorkspaceRecord, error) {
+	if s.workspaces == nil || s.audit == nil {
 		return nil, domain.NewInternalErr("web intake service is not configured", nil)
 	}
 
@@ -118,30 +121,26 @@ func (s *WebIntakeService) CreateFromUpload(ctx context.Context, input CreateUpl
 		return nil, err
 	}
 
-	doc := domain.NewSourceDocument(
-		filename,
-		filename,
-		strings.TrimPrefix(strings.ToLower(filepath.Ext(filename)), "."),
-		parsed.Title,
-		parsed.Body,
-		hashParsedSourceDocument(parsed),
-	)
-	doc.SourceType = "upload"
-	doc.Summary = parsed.Summary
-	doc.Metadata = sourceDocumentMetadata(parsed)
-	if doc.Metadata == nil {
-		doc.Metadata = map[string]any{}
-	}
-	for key, value := range webIntakeMetadata(defaultWebUploadSourceProfile) {
-		doc.Metadata[key] = value
+	metadata := webIntakeMetadata(defaultWebUploadSourceProfile)
+	for key, value := range sourceDocumentMetadata(parsed) {
+		metadata[key] = value
 	}
 	if contentType := strings.TrimSpace(input.ContentType); contentType != "" {
-		doc.Metadata["content_type"] = contentType
+		metadata["content_type"] = contentType
 	}
-	doc.Status = domain.SourceDocumentStatusPending
 
-	if err := s.repo.Create(ctx, doc); err != nil {
-		wrapped := fmt.Errorf("create source document: %w", err)
+	workspace := domain.NewArticleWorkspaceRecord(id.New(), parsed.Title, parsed.Summary, domain.ArticleWorkspaceSource{
+		SourceType: "upload",
+		URL:        browserUploadOriginalURL(filename),
+	}, webIntakeWorkspaceMetadata(parsed.Body, metadata))
+	workspace.LifecycleHistory = []domain.ArticleWorkspaceLifecycleEntry{{
+		Status:    domain.ArticleWorkspaceStatusImported,
+		Notes:     "created from browser upload intake",
+		CreatedAt: workspace.CreatedAt,
+	}}
+
+	if err := s.workspaces.Create(ctx, workspace); err != nil {
+		wrapped := fmt.Errorf("create workspace article: %w", err)
 		s.recordFailureAudit(ctx, input.Actor, "web_intake.create_from_upload", wrapped.Error(), map[string]any{"filename": filename})
 		return nil, wrapped
 	}
@@ -149,19 +148,19 @@ func (s *WebIntakeService) CreateFromUpload(ctx context.Context, input CreateUpl
 	if err := s.recordAudit(ctx, AuditLogCreateInput{
 		Actor:      input.Actor,
 		Action:     "web_intake.create_from_upload",
-		Resource:   "source_document",
-		ResourceID: doc.ID,
+		Resource:   "workspace_article",
+		ResourceID: workspace.ID,
 		Result:     "success",
-		Message:    "created source document from browser upload",
+		Message:    "created workspace article from browser upload",
 		Metadata: map[string]any{
 			"filename":  filename,
-			"file_type": doc.FileType,
+			"file_type": strings.TrimPrefix(strings.ToLower(filepath.Ext(filename)), "."),
 		},
 	}); err != nil {
-		s.logAuditFailure("web_intake.create_from_upload", doc.ID, err)
+		s.logAuditFailure("web_intake.create_from_upload", workspace.ID, err)
 	}
 
-	return doc, nil
+	return workspace, nil
 }
 
 func (s *WebIntakeService) parseUploadedDocument(filename string, content io.Reader) (*ParsedSourceDocument, error) {
@@ -186,7 +185,7 @@ func (s *WebIntakeService) recordFailureAudit(ctx context.Context, actor, action
 	_ = s.recordAudit(ctx, AuditLogCreateInput{
 		Actor:    actor,
 		Action:   action,
-		Resource: "source_document",
+		Resource: "workspace_article",
 		Result:   "failure",
 		Message:  message,
 		Metadata: metadata,
@@ -212,4 +211,29 @@ func webIntakeMetadata(sourceProfile string) map[string]any {
 		"render_platform":         defaultWebIntakeRenderPlatform,
 		"rewrite_profile_version": defaultWebIntakeRewriteProfileVersion,
 	}
+}
+
+func webIntakeWorkspaceMetadata(body string, metadata map[string]any) map[string]any {
+	workspaceMetadata := map[string]any{}
+	for key, value := range metadata {
+		workspaceMetadata[key] = value
+	}
+	workspaceMetadata["source_body"] = body
+	return workspaceMetadata
+}
+
+func browserPasteOriginalURL(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return "browser://paste"
+	}
+	return "browser://paste/" + title
+}
+
+func browserUploadOriginalURL(filename string) string {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return "browser://upload"
+	}
+	return "browser://upload/" + filename
 }

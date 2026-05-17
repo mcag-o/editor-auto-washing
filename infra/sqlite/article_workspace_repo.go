@@ -40,6 +40,34 @@ func (r *articleWorkspaceRepo) Create(ctx context.Context, record *domain.Articl
 	return nil
 }
 
+func (r *articleWorkspaceRepo) Update(ctx context.Context, record *domain.ArticleWorkspaceRecord) error {
+	statusHistory, err := json.Marshal(record.StatusHistory)
+	if err != nil {
+		return fmt.Errorf("marshal status history: %w", err)
+	}
+	lifecycleHistory, err := json.Marshal(record.LifecycleHistory)
+	if err != nil {
+		return fmt.Errorf("marshal lifecycle history: %w", err)
+	}
+	source, err := json.Marshal(record.Source)
+	if err != nil {
+		return fmt.Errorf("marshal workspace source: %w", err)
+	}
+	metadata, err := json.Marshal(record.Metadata)
+	if err != nil {
+		return fmt.Errorf("marshal workspace metadata: %w", err)
+	}
+	result, err := r.db.ExecContext(ctx, `UPDATE workspace_articles SET title = ?, summary = ?, status = ?, status_history = ?, lifecycle_history = ?, source = ?, metadata = ?, notes = ?, created_at = ?, updated_at = ? WHERE id = ?`, record.Title, record.Summary, record.Status, string(statusHistory), string(lifecycleHistory), string(source), string(metadata), record.Notes, record.CreatedAt.Format(time.RFC3339), record.UpdatedAt.Format(time.RFC3339), record.ID)
+	if err != nil {
+		return fmt.Errorf("update workspace article: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err == nil && rows == 0 {
+		return domain.NewNotFoundErr("workspace", record.ID)
+	}
+	return nil
+	}
+
 func (r *articleWorkspaceRepo) GetByID(ctx context.Context, id string) (*domain.ArticleWorkspaceRecord, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT id, title, summary, status, status_history, lifecycle_history, source, metadata, notes, created_at, updated_at FROM workspace_articles WHERE id = ?`, id)
 	record, err := scanWorkspaceArticle(row)

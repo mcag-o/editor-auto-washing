@@ -2,7 +2,6 @@ package integration
 
 import (
 	"bytes"
-	"context"
 	"content-hub/domain"
 	"content-hub/infra/config"
 	llminfra "content-hub/infra/llm"
@@ -18,6 +17,26 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+type webControlBrowserArticlePayload struct {
+	ID                 string         `json:"id"`
+	WorkspaceArticleID string         `json:"workspace_article_id"`
+	Title              string         `json:"title"`
+	Summary            string         `json:"summary"`
+	Body               string         `json:"body"`
+	Status             string         `json:"status"`
+	SourceType         string         `json:"source_type"`
+	OriginalPath       string         `json:"original_path"`
+	OriginalFilename   string         `json:"original_filename"`
+	FileType           string         `json:"file_type"`
+	RewriteRunID       string         `json:"rewrite_run_id"`
+	WorkflowRunID      string         `json:"workflow_run_id"`
+	ErrorSummary       string         `json:"error_summary"`
+	ImportedAt         string         `json:"imported_at"`
+	ProcessingStartedAt string        `json:"processing_started_at"`
+	CompletedAt        string         `json:"completed_at"`
+	Metadata           map[string]any `json:"metadata"`
+}
 
 func TestWebControlPlanePasteToRenderedResult(t *testing.T) {
 	root := t.TempDir()
@@ -102,7 +121,6 @@ func TestWebControlPlanePasteToRenderedResult(t *testing.T) {
 		WebControlRuntime:  webControlRuntime,
 		WorkflowEngine:     service.NewWorkflowEngine(),
 		ConfigLoader:       configLoader,
-		SourceDocumentRepo: repos.SourceDocumentRepo,
 		RewriteRunRepo:     repos.RewritePipelineRunRepo,
 		RewriteStageRepo:   repos.RewriteStageRunRepo,
 		AuditLogRepo:       repos.AuditLogRepo,
@@ -122,7 +140,7 @@ func TestWebControlPlanePasteToRenderedResult(t *testing.T) {
 
 	var createdDoc domain.SourceDocument
 	require.NoError(t, json.NewDecoder(pasteResp.Body).Decode(&createdDoc))
-	require.Equal(t, domain.SourceDocumentStatusPending, createdDoc.Status)
+	require.Equal(t, domain.ArticleWorkspaceStatusImported, createdDoc.Status)
 
 	startResp := postJSON(t, httpTestServer.URL+"/api/system/start", map[string]any{
 		"concurrency_limit": 1,
@@ -149,12 +167,12 @@ func TestWebControlPlanePasteToRenderedResult(t *testing.T) {
 	require.Equal(t, http.StatusOK, articleListResp.StatusCode)
 
 	var articleList struct {
-		Data []domain.SourceDocument `json:"data"`
+		Data []webControlBrowserArticlePayload `json:"data"`
 	}
 	require.NoError(t, json.NewDecoder(articleListResp.Body).Decode(&articleList))
 	require.Len(t, articleList.Data, 1)
 	require.Equal(t, createdDoc.ID, articleList.Data[0].ID)
-	require.Equal(t, domain.SourceDocumentStatusCompleted, articleList.Data[0].Status)
+	require.Equal(t, domain.ArticleWorkspaceStatusRendered, articleList.Data[0].Status)
 	require.NotEmpty(t, articleList.Data[0].WorkspaceArticleID)
 	require.NotEmpty(t, articleList.Data[0].RewriteRunID)
 	require.NotNil(t, articleList.Data[0].CompletedAt)
@@ -164,9 +182,9 @@ func TestWebControlPlanePasteToRenderedResult(t *testing.T) {
 	defer articleResp.Body.Close()
 	require.Equal(t, http.StatusOK, articleResp.StatusCode)
 
-	var article domain.SourceDocument
+	var article webControlBrowserArticlePayload
 	require.NoError(t, json.NewDecoder(articleResp.Body).Decode(&article))
-	require.Equal(t, domain.SourceDocumentStatusCompleted, article.Status)
+	require.Equal(t, domain.ArticleWorkspaceStatusRendered, article.Status)
 	require.Equal(t, articleList.Data[0].WorkspaceArticleID, article.WorkspaceArticleID)
 
 	stagesResp, err := http.Get(httpTestServer.URL + "/api/articles/" + createdDoc.ID + "/stages")
@@ -175,12 +193,12 @@ func TestWebControlPlanePasteToRenderedResult(t *testing.T) {
 	require.Equal(t, http.StatusOK, stagesResp.StatusCode)
 
 	var stagesPayload struct {
-		Article domain.SourceDocument     `json:"article"`
+		Article webControlBrowserArticlePayload     `json:"article"`
 		Run     *domain.RewritePipelineRun `json:"run"`
 		Stages  []domain.RewriteStageRun  `json:"stages"`
 	}
 	require.NoError(t, json.NewDecoder(stagesResp.Body).Decode(&stagesPayload))
-	require.Equal(t, domain.SourceDocumentStatusCompleted, stagesPayload.Article.Status)
+	require.Equal(t, domain.ArticleWorkspaceStatusRendered, stagesPayload.Article.Status)
 	require.NotNil(t, stagesPayload.Run)
 	require.Equal(t, domain.RewriteRunSucceeded, stagesPayload.Run.Status)
 	require.Len(t, stagesPayload.Stages, 1)
@@ -243,20 +261,4 @@ func postJSON(t *testing.T, url string, payload any) *http.Response {
 	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
 	return resp
-}
-
-type noopJobExecutor struct{}
-
-func (noopJobExecutor) Execute(_ context.Context, _ *domain.WorkflowDefinition, _ *domain.WorkflowContext) error {
-	return nil
-}
-
-type integrationPublishProviderStub struct{}
-
-func (integrationPublishProviderStub) Publish(_ context.Context, req domain.PublishRequest) (*domain.PublishResult, error) {
-	return &domain.PublishResult{Success: true, Platform: req.Platform, Message: "published", Metadata: map[string]any{"provider": "integration-test"}}, nil
-}
-
-func (integrationPublishProviderStub) Platforms() []string {
-	return []string{"wechat"}
 }

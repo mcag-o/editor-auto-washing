@@ -273,34 +273,6 @@ func TestRunWorkerExecutesRetryFailedWithFolderIntakeAutomation(t *testing.T) {
 	<-done
 }
 
-func TestNewRuntimeAutomationServiceImportsFolderDocumentsWithDefaultProcessingMetadata(t *testing.T) {
-	root := newAutomationWorkspace(t)
-	automationSvc, cleanup, err := NewRuntimeAutomationService(root)
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, cleanup())
-	}()
-
-	runtimeIntake, ok := automationSvc.folderIntake.(*runtimeAutomationFolderIntake)
-	require.True(t, ok)
-	require.NotNil(t, runtimeIntake.runtime)
-
-	sourcePath := filepath.Join(root, "incoming", "article.md")
-	require.NoError(t, os.WriteFile(sourcePath, []byte("# Folder Source Title\n\nSource body from runtime automation."), 0o644))
-
-	run, err := runtimeIntake.runtime.Scanner.ScanOnce(t.Context(), runtimeIntake.runtime.WatchDir, runtimeIntake.runtime.ArchiveDir)
-	require.NoError(t, err)
-	require.Equal(t, domain.ImportRunStatusCompleted, run.Status)
-
-	docs, err := runtimeIntake.runtime.SourceDocumentRepo.ListByStatus(t.Context(), domain.SourceDocumentStatusPending, 10)
-	require.NoError(t, err)
-	require.Len(t, docs, 1)
-	require.Equal(t, "wechat-longform", docs[0].Metadata["target_type"])
-	require.Equal(t, "folder-default", docs[0].Metadata["source_profile"])
-	require.Equal(t, "wechat", docs[0].Metadata["render_platform"])
-	require.Equal(t, "v1", docs[0].Metadata["rewrite_profile_version"])
-}
-
 func newAutomationWorkspace(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()

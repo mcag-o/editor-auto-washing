@@ -563,6 +563,16 @@ func (r *txWorkspaceRepo) Create(_ context.Context, w *domain.ArticleWorkspaceRe
 	return nil
 }
 
+func (r *txWorkspaceRepo) Update(_ context.Context, w *domain.ArticleWorkspaceRecord) error {
+	r.tx.mu.Lock()
+	defer r.tx.mu.Unlock()
+	if _, ok := r.tx.workspaces[w.ID]; !ok {
+		return domain.NewNotFoundErr("workspace", w.ID)
+	}
+	r.tx.workspaces[w.ID] = w
+	return nil
+}
+
 func (r *txWorkspaceRepo) GetByID(_ context.Context, id string) (*domain.ArticleWorkspaceRecord, error) {
 	r.tx.mu.RLock()
 	defer r.tx.mu.RUnlock()

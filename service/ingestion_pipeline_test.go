@@ -441,6 +441,10 @@ func (f failingWorkspaceRepo) Create(context.Context, *domain.ArticleWorkspaceRe
 	return f.createErr
 }
 
+func (f failingWorkspaceRepo) Update(context.Context, *domain.ArticleWorkspaceRecord) error {
+	return f.createErr
+}
+
 func (f failingWorkspaceRepo) GetByID(context.Context, string) (*domain.ArticleWorkspaceRecord, error) {
 	return nil, domain.NewNotFoundErr("workspace", "missing")
 }

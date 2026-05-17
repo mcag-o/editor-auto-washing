@@ -5,6 +5,7 @@ import (
 	"content-hub/pkg/repo"
 	"context"
 	"fmt"
+	"strings"
 )
 
 type WebControlRuntime struct {
@@ -19,6 +20,15 @@ type WebControlRuntime struct {
 
 type webControlProcessingCycleRunner interface {
 	ProcessPending(context.Context, int) error
+}
+
+type browserWorkspaceContinuationIntake interface {
+	IntakeResultIntoWorkspace(ctx context.Context, workspaceArticleID string, article domain.IntakeArticle) (*ArticleIntakeResult, error)
+	ResumeResult(ctx context.Context, rewriteRunID string, article domain.IntakeArticle) (*SourceProcessingRewriteResult, error)
+}
+
+type browserWorkspaceContinuationRenderer interface {
+	Render(ctx context.Context, draftID, platform, templateName string) (*domain.RenderedAssetRecord, error)
 }
 
 type WebControlPlaneService struct {
@@ -128,20 +138,89 @@ func (s *WebControlPlaneService) recordAudit(ctx context.Context, input AuditLog
 	return nil
 }
 
-type sourceProcessingSchedulerCycleRunner struct {
-	repo   repo.SourceDocumentRepo
-	worker sourceProcessingSchedulerWorker
-	owner  string
+type browserWorkspaceContinuationRunner struct {
+	workspaces repo.WorkspaceRepo
+	intake     browserWorkspaceContinuationIntake
+	renderer   browserWorkspaceContinuationRenderer
 }
 
-func newSourceProcessingSchedulerCycleRunner(repo repo.SourceDocumentRepo, worker sourceProcessingSchedulerWorker, owner string) *sourceProcessingSchedulerCycleRunner {
-	return &sourceProcessingSchedulerCycleRunner{repo: repo, worker: worker, owner: owner}
+func newBrowserWorkspaceContinuationRunner(workspaces repo.WorkspaceRepo, intake browserWorkspaceContinuationIntake, renderer browserWorkspaceContinuationRenderer) *browserWorkspaceContinuationRunner {
+	return &browserWorkspaceContinuationRunner{workspaces: workspaces, intake: intake, renderer: renderer}
 }
 
-func (r *sourceProcessingSchedulerCycleRunner) ProcessPending(ctx context.Context, concurrencyLimit int) error {
-	scheduler := NewSourceProcessingScheduler(r.repo, r.worker, concurrencyLimit, r.owner)
-	_, err := scheduler.ProcessPending(ctx)
-	return err
+func (r *browserWorkspaceContinuationRunner) ProcessPending(ctx context.Context, concurrencyLimit int) error {
+	if r == nil || r.workspaces == nil || r.intake == nil || r.renderer == nil {
+		return domain.NewInternalErr("browser workspace continuation runner is not configured", nil)
+	}
+	status := domain.ArticleWorkspaceStatusImported
+	items, err := r.workspaces.List(ctx, &status)
+	if err != nil {
+		return fmt.Errorf("list imported workspace articles: %w", err)
+	}
+	processed := 0
+	for _, item := range items {
+		if concurrencyLimit > 0 && processed >= concurrencyLimit {
+			break
+		}
+		if !isBrowserIntakeWorkspace(item) {
+			continue
+		}
+		if rewriteRunID := browserWorkspaceResumeRewriteRunID(item); rewriteRunID != "" {
+			result, err := r.intake.ResumeResult(ctx, rewriteRunID, browserWorkspaceToIntakeArticle(item))
+			if err != nil {
+				return fmt.Errorf("resume browser workspace %s: %w", item.ID, err)
+			}
+			if result == nil || strings.TrimSpace(result.DraftID) == "" {
+				return domain.NewInternalErr("browser workspace continuation did not return a draft id", nil)
+			}
+			updated, getErr := r.workspaces.GetByID(ctx, item.ID)
+			if getErr != nil {
+				return fmt.Errorf("load resumed browser workspace %s: %w", item.ID, getErr)
+			}
+			delete(updated.Metadata, "resume_rewrite_run_id")
+			updated.UpdatedAt = updated.UpdatedAt.UTC()
+			if err := r.workspaces.Update(ctx, updated); err != nil {
+				return fmt.Errorf("clear browser workspace resume marker %s: %w", item.ID, err)
+			}
+			if _, err := r.renderer.Render(ctx, strings.TrimSpace(result.DraftID), browserWorkspaceRenderPlatform(item), ""); err != nil {
+				return fmt.Errorf("render browser workspace %s: %w", item.ID, err)
+			}
+			processed++
+			continue
+		}
+		result, err := r.intake.IntakeResultIntoWorkspace(ctx, item.ID, browserWorkspaceToIntakeArticle(item))
+		if err != nil {
+			return fmt.Errorf("continue browser workspace %s: %w", item.ID, err)
+		}
+		if result == nil || strings.TrimSpace(result.DraftID) == "" {
+			return domain.NewInternalErr("browser workspace continuation did not return a draft id", nil)
+		}
+		if _, err := r.renderer.Render(ctx, strings.TrimSpace(result.DraftID), browserWorkspaceRenderPlatform(item), ""); err != nil {
+			return fmt.Errorf("render browser workspace %s: %w", item.ID, err)
+		}
+		processed++
+	}
+	return nil
+}
+
+type combinedWebControlProcessingRunner struct {
+	runners []webControlProcessingCycleRunner
+}
+
+func newCombinedWebControlProcessingRunner(runners ...webControlProcessingCycleRunner) *combinedWebControlProcessingRunner {
+	return &combinedWebControlProcessingRunner{runners: runners}
+}
+
+func (r *combinedWebControlProcessingRunner) ProcessPending(ctx context.Context, concurrencyLimit int) error {
+	for _, runner := range r.runners {
+		if runner == nil {
+			continue
+		}
+		if err := runner.ProcessPending(ctx, concurrencyLimit); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func BuildWebControlRuntime(repos *RuntimeRepos) (*WebControlRuntime, error) {
@@ -154,18 +233,56 @@ func BuildWebControlRuntime(repos *RuntimeRepos) (*WebControlRuntime, error) {
 	rewriteAssembly := buildRewriteAssembly(repos)
 	articleIntake := NewArticleIntakeServiceWithWorkflows(repos.WorkspaceRepo, rewriteAssembly.orchestrator, repos.WorkflowDefinitionRepo)
 	renderer := NewFormattingPipelineService(repos.DraftRepo, repos.AssetRepo, repos.WorkspaceRepo, repos.Formatter).WithRenderedDir(repos.RenderedDir)
-	rewriteRunner := NewArticleIntakeSourceProcessingRewriteRunner(articleIntake)
-	renderRunner := NewFormattingPipelineSourceProcessingRenderRunner(renderer, "")
-	worker := NewSourceProcessingWorker(repos.SourceDocumentRepo, rewriteRunner, renderRunner)
-	runner := newSourceProcessingSchedulerCycleRunner(repos.SourceDocumentRepo, worker, "web-control-runtime")
+	browserRunner := newBrowserWorkspaceContinuationRunner(repos.WorkspaceRepo, articleIntake, renderer)
+	runner := newCombinedWebControlProcessingRunner(browserRunner)
 
 	return &WebControlRuntime{
 		Config:    NewBusinessConfigService(repos.BusinessConfigRepo),
 		Control:   NewWebControlPlaneService(control, audit, runner),
 		Audit:     audit,
-		Intake:    NewWebIntakeService(repos.SourceDocumentRepo, repos.AuditLogRepo),
-		Articles:  NewArticleQueryService(repos.SourceDocumentRepo),
+		Intake:    NewWebIntakeService(repos.WorkspaceRepo, repos.AuditLogRepo),
+		Articles:  NewBrowserArticleQueryService(repos.WorkspaceRepo, repos.RewritePipelineRunRepo, repos.WorkflowRunRepo),
 		Workflows: NewWorkflowTemplateService(repos.WorkflowDefinitionRepo),
 		Templates: NewTemplateDefinitionService(repos.TemplateDefinitionRepo),
 	}, nil
+}
+
+func isBrowserIntakeWorkspace(item domain.ArticleWorkspaceRecord) bool {
+	return item.Source.SourceType == "paste" || item.Source.SourceType == "upload"
+}
+
+func browserWorkspaceToIntakeArticle(item domain.ArticleWorkspaceRecord) domain.IntakeArticle {
+	metadata := map[string]any{}
+	for key, value := range item.Metadata {
+		metadata[key] = value
+	}
+	body, _ := metadata["source_body"].(string)
+	targetType, _ := metadata["target_type"].(string)
+	sourceProfile, _ := metadata["source_profile"].(string)
+	rewriteProfileVersion, _ := metadata["rewrite_profile_version"].(string)
+	return domain.IntakeArticle{
+		SourceType:            strings.TrimSpace(item.Source.SourceType),
+		Title:                 strings.TrimSpace(item.Title),
+		Body:                  body,
+		Summary:               strings.TrimSpace(item.Summary),
+		OriginalURL:           strings.TrimSpace(item.Source.URL),
+		TargetType:            strings.TrimSpace(targetType),
+		SourceProfile:         strings.TrimSpace(sourceProfile),
+		RewriteProfileVersion: strings.TrimSpace(rewriteProfileVersion),
+		Metadata:              metadata,
+	}
+}
+
+func browserWorkspaceRenderPlatform(item domain.ArticleWorkspaceRecord) string {
+	if value, ok := item.Metadata["render_platform"].(string); ok && strings.TrimSpace(value) != "" {
+		return strings.TrimSpace(value)
+	}
+	return defaultWebIntakeRenderPlatform
+}
+
+func browserWorkspaceResumeRewriteRunID(item domain.ArticleWorkspaceRecord) string {
+	if value, ok := item.Metadata["resume_rewrite_run_id"].(string); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
 }

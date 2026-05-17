@@ -11,6 +11,7 @@ import (
 
 type testWebControlRepos struct {
 	SourceDocuments *stubSourceDocumentRepo
+	Workspaces      repo.WorkspaceRepo
 	AuditLogs       *stubAuditLogRepo
 	Configs         *stubBusinessConfigRepo
 	ControlStates   *stubSystemControlStateRepo

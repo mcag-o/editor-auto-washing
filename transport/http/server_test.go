@@ -65,6 +65,7 @@ func newTestServer(t *testing.T) (*Server, *testWebControlRepos) {
 	auditLogRepo := &stubAuditLogRepo{}
 	webRepos := &testWebControlRepos{
 		SourceDocuments: sourceDocumentRepo,
+		Workspaces:      memProvider.WorkspaceRepo(),
 		AuditLogs:       auditLogRepo,
 		Configs:         businessConfigRepo,
 		ControlStates:   systemControlStateRepo,
@@ -92,15 +93,14 @@ func newTestServer(t *testing.T) (*Server, *testWebControlRepos) {
 	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, workspaceinfra.WorkspaceSecretsFileName), []byte("env:\n  LLM_API_KEY: test\nwechat:\n  main: token\n"), 0o600))
 	automationSvc := service.NewAutomationService(service.NewWorkspaceConfigService(workspaceinfra.NewLoader(), workspaceinfra.NewValidator()), ingestionSvc, nil, jobSvc)
 	runtimeRepos := &service.RuntimeRepos{
-		DraftRepo:               memProvider.DraftRepo(),
-		AssetRepo:               memProvider.AssetRepo(),
-		WorkspaceRepo:           memProvider.WorkspaceRepo(),
-		Formatter:               &testFormatter{},
-		WorkflowDefinitionRepo:  workflowDefinitionRepo,
-		TemplateDefinitionRepo:  templateDefinitionRepo,
-		WorkflowRunRepo:         memProvider.WorkflowRunRepo(),
-		WorkflowCheckpointRepo:  memProvider.WorkflowCheckpointRepo(),
-		SourceDocumentRepo:     sourceDocumentRepo,
+		DraftRepo:              memProvider.DraftRepo(),
+		AssetRepo:              memProvider.AssetRepo(),
+		WorkspaceRepo:          memProvider.WorkspaceRepo(),
+		Formatter:              &testFormatter{},
+		WorkflowDefinitionRepo: workflowDefinitionRepo,
+		TemplateDefinitionRepo: templateDefinitionRepo,
+		WorkflowRunRepo:        memProvider.WorkflowRunRepo(),
+		WorkflowCheckpointRepo: memProvider.WorkflowCheckpointRepo(),
 		BusinessConfigRepo:     businessConfigRepo,
 		SystemControlStateRepo: systemControlStateRepo,
 		AuditLogRepo:           auditLogRepo,
@@ -111,25 +111,24 @@ func newTestServer(t *testing.T) (*Server, *testWebControlRepos) {
 	loader.SetCurrent(cfg)
 
 	provider := &Provider{
-		ContentSvc:         contentSvc,
-		TemplateSvc:        templateSvc,
-		DraftSvc:           draftSvc,
-		FormattingSvc:      formattingSvc,
-		AutomationSvc:      automationSvc,
-		WorkspaceSvc:       workspaceSvc,
-		JobSvc:             jobSvc,
-		ReviewSvc:          reviewSvc,
-		PublishSvc:         publishSvc,
-		WebControlRuntime:  webControlRuntime,
-		WorkflowEngine:     workflowEngine,
-		ConfigLoader:       loader,
-		SourceDocumentRepo: sourceDocumentRepo,
-		RewriteRunRepo:     memProvider.RewritePipelineRunRepo(),
-		RewriteStageRepo:   memProvider.RewriteStageRunRepo(),
-		WorkflowRunRepo:    memProvider.WorkflowRunRepo(),
+		ContentSvc:             contentSvc,
+		TemplateSvc:            templateSvc,
+		DraftSvc:               draftSvc,
+		FormattingSvc:          formattingSvc,
+		AutomationSvc:          automationSvc,
+		WorkspaceSvc:           workspaceSvc,
+		JobSvc:                 jobSvc,
+		ReviewSvc:              reviewSvc,
+		PublishSvc:             publishSvc,
+		WebControlRuntime:      webControlRuntime,
+		WorkflowEngine:         workflowEngine,
+		ConfigLoader:           loader,
+		RewriteRunRepo:         memProvider.RewritePipelineRunRepo(),
+		RewriteStageRepo:       memProvider.RewriteStageRunRepo(),
+		WorkflowRunRepo:        memProvider.WorkflowRunRepo(),
 		WorkflowCheckpointRepo: memProvider.WorkflowCheckpointRepo(),
-		AuditLogRepo:       auditLogRepo,
-		WorkspaceRoot:      workspaceRoot,
+		AuditLogRepo:           auditLogRepo,
+		WorkspaceRoot:          workspaceRoot,
 	}
 
 	return NewServer(cfg, provider), webRepos
@@ -150,6 +149,23 @@ func TestServerExposesWorkflowRunAuditRouteWhenReposPresent(t *testing.T) {
 	var payload []domain.AuditLog
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&payload))
 	require.Empty(t, payload)
+}
+
+func TestServerBuildsWithoutCompatibilitySourceRepoExposure(t *testing.T) {
+	disableTestFrontendFS(t)
+	server, _ := newTestServer(t)
+	require.NotNil(t, server)
+	require.NotNil(t, server.Handler())
+}
+
+func TestServerProviderValidationDoesNotRequireCompatibilitySourceRepo(t *testing.T) {
+	disableTestFrontendFS(t)
+	server, _ := newTestServer(t)
+	require.NotNil(t, server)
+
+	provider := server.provider
+	require.NotNil(t, provider)
+	require.Nil(t, validateProvider(provider))
 }
 
 type testJobExecutor struct {
@@ -748,9 +764,13 @@ func TestConfigEndpoint(t *testing.T) {
 func TestAPIRoutesAreRegistered(t *testing.T) {
 	s, repos := newTestServer(t)
 
-	doc := domain.NewSourceDocument("article.md", "article.md", "md", "Title", "Body", "hash-api")
-	doc.Status = domain.SourceDocumentStatusFailed
-	require.NoError(t, repos.SourceDocuments.Create(t.Context(), doc))
+	workspace := domain.NewArticleWorkspaceRecord("article-api", "Title", "", domain.ArticleWorkspaceSource{SourceType: "paste", URL: "browser://paste/title"}, map[string]any{"source_body": "Body", "source_profile": "web-paste", "workflow_template_id": "wf-1", "workflow_template_version": "v1"})
+	workspace.Status = domain.ArticleWorkspaceStatusRewriteFailed
+	require.NoError(t, repos.Workspaces.Create(t.Context(), workspace))
+	run := domain.NewRewritePipelineRun("profile-1", "v1", workspace.ID, "wechat-longform", "web-paste")
+	run.ID = "run-api"
+	run.Status = domain.RewriteRunFailed
+	require.NoError(t, s.provider.RewriteRunRepo.Create(t.Context(), run))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/articles", nil)
 	w := httptest.NewRecorder()
@@ -758,75 +778,78 @@ func TestAPIRoutesAreRegistered(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), "data")
 
-	req = httptest.NewRequest(http.MethodGet, "/api/articles/"+doc.ID, nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/articles/"+workspace.ID, nil)
 	w = httptest.NewRecorder()
 	s.engine.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Contains(t, w.Body.String(), doc.ID)
+	require.Contains(t, w.Body.String(), workspace.ID)
 
-	req = httptest.NewRequest(http.MethodGet, "/api/articles/"+doc.ID+"/stages", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/articles/"+workspace.ID+"/stages", nil)
 	w = httptest.NewRecorder()
 	s.engine.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), "stages")
 
-	req = httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/retry", strings.NewReader(`{}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/articles/"+workspace.ID+"/retry", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	s.engine.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
-	doc.Status = domain.SourceDocumentStatusProcessing
+	storedWorkspace, err := repos.Workspaces.GetByID(t.Context(), workspace.ID)
+	require.NoError(t, err)
+	storedWorkspace.Status = domain.ArticleWorkspaceStatusRewriting
 	now := time.Now().UTC()
-	doc.ClaimedBy = "worker-1"
-	doc.ClaimedAt = &now
-	doc.ProcessingStartedAt = &now
-	require.NoError(t, repos.SourceDocuments.Update(t.Context(), doc))
+	storedWorkspace.UpdatedAt = now
+	require.NoError(t, repos.Workspaces.Update(t.Context(), storedWorkspace))
+	workflowRun, err := domain.NewWorkflowRun(domain.WorkflowRunSpec{WorkflowID: "wf-1", WorkflowVersion: "v1", EntryNodeID: "review", WorkspaceArticleID: workspace.ID})
+	require.NoError(t, err)
+	workflowRun.ID = "workflow-run-api"
+	workflowRun.Status = domain.WorkflowRunRunning
+	require.NoError(t, s.provider.WorkflowRunRepo.Create(t.Context(), workflowRun))
 
-	req = httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/stop", strings.NewReader(`{}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/articles/"+workspace.ID+"/stop", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	s.engine.ServeHTTP(w, req)
 	require.Equal(t, http.StatusAccepted, w.Code)
 
-	storedDoc, err := repos.SourceDocuments.GetByID(t.Context(), doc.ID)
+	storedWorkspace, err = repos.Workspaces.GetByID(t.Context(), workspace.ID)
 	require.NoError(t, err)
-	storedDoc.Status = "paused"
-	storedDoc.ClaimedBy = ""
-	storedDoc.ClaimedAt = nil
-	storedDoc.ProcessingStartedAt = nil
-	require.NoError(t, repos.SourceDocuments.Update(t.Context(), storedDoc))
+	storedWorkflowRun, err := s.provider.WorkflowRunRepo.GetByID(t.Context(), workflowRun.ID)
+	require.NoError(t, err)
+	storedWorkflowRun.Status = domain.WorkflowRunPaused
+	require.NoError(t, s.provider.WorkflowRunRepo.Update(t.Context(), storedWorkflowRun))
+	storedWorkspace.Status = domain.WorkflowRunPaused
+	require.NoError(t, repos.Workspaces.Update(t.Context(), storedWorkspace))
 
-	req = httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/resume", strings.NewReader(`{}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/articles/"+workspace.ID+"/resume", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	s.engine.ServeHTTP(w, req)
 	require.Equal(t, http.StatusAccepted, w.Code)
 
-	storedDoc, err = repos.SourceDocuments.GetByID(t.Context(), doc.ID)
+	storedWorkflowRun, err = s.provider.WorkflowRunRepo.GetByID(t.Context(), workflowRun.ID)
 	require.NoError(t, err)
-	storedDoc.Status = "paused"
-	activeNow := time.Now().UTC()
-	storedDoc.ClaimedBy = "worker-1"
-	storedDoc.ClaimedAt = &activeNow
-	storedDoc.ProcessingStartedAt = &activeNow
-	require.NoError(t, repos.SourceDocuments.Update(t.Context(), storedDoc))
+	storedWorkflowRun.Status = domain.WorkflowRunPaused
+	require.NoError(t, s.provider.WorkflowRunRepo.Update(t.Context(), storedWorkflowRun))
+	storedWorkspace, err = repos.Workspaces.GetByID(t.Context(), workspace.ID)
+	require.NoError(t, err)
+	storedWorkspace.Status = domain.WorkflowRunPaused
+	require.NoError(t, repos.Workspaces.Update(t.Context(), storedWorkspace))
 
-	req = httptest.NewRequest(http.MethodPost, "/api/articles/"+doc.ID+"/resume", strings.NewReader(`{}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/articles/"+workspace.ID+"/resume", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	s.engine.ServeHTTP(w, req)
-	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Equal(t, http.StatusAccepted, w.Code)
 
-	storedDoc, err = repos.SourceDocuments.GetByID(t.Context(), doc.ID)
+	storedWorkspace, err = repos.Workspaces.GetByID(t.Context(), workspace.ID)
 	require.NoError(t, err)
-	storedDoc.Status = domain.SourceDocumentStatusCompleted
-	storedDoc.ClaimedBy = ""
-	storedDoc.ClaimedAt = nil
-	storedDoc.ProcessingStartedAt = nil
-	require.NoError(t, repos.SourceDocuments.Update(t.Context(), storedDoc))
+	storedWorkspace.Status = domain.ArticleWorkspaceStatusRendered
+	require.NoError(t, repos.Workspaces.Update(t.Context(), storedWorkspace))
 
-	req = httptest.NewRequest(http.MethodDelete, "/api/articles/"+doc.ID, nil)
+	req = httptest.NewRequest(http.MethodDelete, "/api/articles/"+workspace.ID, nil)
 	w = httptest.NewRecorder()
 	s.engine.ServeHTTP(w, req)
 	require.Equal(t, http.StatusNoContent, w.Code)
@@ -931,7 +954,7 @@ func TestNewServerMissingWebControlDependenciesFailsExplicitly(t *testing.T) {
 	cfg := config.DefaultConfig()
 	provider := &Provider{}
 
-	require.PanicsWithValue(t, "http server provider validation failed: missing ConfigLoader, ContentSvc, TemplateSvc, DraftSvc, FormattingSvc, AutomationSvc, WorkspaceSvc, JobSvc, ReviewSvc, PublishSvc, WorkflowEngine, WebControlRuntime, SourceDocumentRepo, RewriteRunRepo, RewriteStageRepo, AuditLogRepo", func() {
+	require.PanicsWithValue(t, "http server provider validation failed: missing ConfigLoader, ContentSvc, TemplateSvc, DraftSvc, FormattingSvc, AutomationSvc, WorkspaceSvc, JobSvc, ReviewSvc, PublishSvc, WorkflowEngine, WebControlRuntime, RewriteRunRepo, RewriteStageRepo, AuditLogRepo", func() {
 		NewServer(cfg, provider)
 	})
 }

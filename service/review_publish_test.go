@@ -521,6 +521,10 @@ func (r failingWorkspaceRepoForReview) Create(ctx context.Context, w *domain.Art
 	return r.base.Create(ctx, w)
 }
 
+func (r failingWorkspaceRepoForReview) Update(ctx context.Context, w *domain.ArticleWorkspaceRecord) error {
+	return r.base.Update(ctx, w)
+}
+
 func (r failingWorkspaceRepoForReview) GetByID(ctx context.Context, id string) (*domain.ArticleWorkspaceRecord, error) {
 	return r.base.GetByID(ctx, id)
 }
