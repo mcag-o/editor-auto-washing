@@ -45,7 +45,7 @@ Run from repository root.
 - Install dependencies: `go mod download`
 - Build server binary: `go build ./cmd/server`
 - Run server / web control plane: `go run ./cmd/server`
-- Web control plane service verification: `go test ./service -run 'TestSource|TestRewrite|TestBuildWebControlRuntime|TestWorkflowTemplate|TestTemplateDefinition|TestWebControlPlaneService'`
+- Web control plane service verification: `go test ./service -run 'TestRewrite|TestBuildWebControlRuntime|TestWorkflowTemplate|TestTemplateDefinition|TestWebControlPlaneService'`
 - Web control plane transport verification: `go test ./transport/http/... -run 'TestAPI|TestAdminFrontend|TestRewrite'`
 - Web control plane integration verification: `go test ./integration -run 'TestWebControlPlanePasteToRenderedResult|TestWebControlPlaneUploadToRenderedResultWithWorkflowTemplate|TestReactControlPlanePasteToRenderedResultWithWorkflowTemplate|TestRewritePipelineMainlineMaterializesDraft'`
 - Run all tests: `go test ./...`

@@ -12,7 +12,7 @@
 - workflow/template 管理通过同一浏览器界面完成，前端基础设施以 Material UI 与 React Flow 为主
 - 业务配置以数据库中的 runtime state 为准
 - 默认自动处理结果停在 draft + render；review / publish 为后续可选人工步骤
-- 浏览器 upload / paste workflow 由当前 Go runtime 统一承接，不再单列兼容 intake 模型
+- 浏览器 upload / paste workflow 由当前 Go runtime 统一承接，形成当前文章 intake 模型
 - 当前版本变更摘要见 `version.md`
 
 ---
@@ -164,7 +164,7 @@ curl http://localhost:8123/ready
 ## 验证命令
 
 ```bash
-go test ./service -run 'TestSource|TestRewrite|TestBuildWebControlRuntime|TestWorkflowTemplate|TestTemplateDefinition|TestWebControlPlaneService'
+go test ./service -run 'TestRewrite|TestBuildWebControlRuntime|TestWorkflowTemplate|TestTemplateDefinition|TestWebControlPlaneService'
 go test ./transport/http/... -run 'TestAPI|TestAdminFrontend|TestRewrite'
 npm --prefix webapp run test
 npm --prefix webapp run build
