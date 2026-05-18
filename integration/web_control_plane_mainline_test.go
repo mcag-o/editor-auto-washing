@@ -138,7 +138,7 @@ func TestWebControlPlanePasteToRenderedResult(t *testing.T) {
 	defer pasteResp.Body.Close()
 	require.Equal(t, http.StatusCreated, pasteResp.StatusCode)
 
-	var createdDoc domain.SourceDocument
+	var createdDoc webControlBrowserArticlePayload
 	require.NoError(t, json.NewDecoder(pasteResp.Body).Decode(&createdDoc))
 	require.Equal(t, domain.ArticleWorkspaceStatusImported, createdDoc.Status)
 

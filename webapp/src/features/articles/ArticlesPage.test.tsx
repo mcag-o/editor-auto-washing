@@ -33,6 +33,29 @@ function renderArticlesPage() {
   );
 }
 
+function makeBrowserArticle(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'article-1',
+    workspace_article_id: 'article-1',
+    source_type: 'upload',
+    original_filename: 'a.md',
+    original_path: 'browser://upload/a.md',
+    file_type: 'md',
+    title: '测试文章',
+    body: '正文内容',
+    summary: '',
+    metadata: {},
+    imported_at: '2026-05-07T03:00:00Z',
+    status: 'rendered',
+    rewrite_run_id: '',
+    workflow_run_id: '',
+    processing_started_at: null,
+    completed_at: '2026-05-07T03:10:00Z',
+    error_summary: '',
+    ...overrides,
+  };
+}
+
 describe('ArticlesPage', () => {
   beforeEach(() => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
@@ -114,35 +137,14 @@ describe('ArticlesPage', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const method = init?.method ?? 'GET';
 
-      if (url.endsWith('/api/articles') && method === 'GET') {
-        return Promise.resolve(
-          jsonResponse({
-            data: [
-              {
-                id: 'article-1',
-                source_type: 'upload',
-                original_filename: 'a.md',
-                original_path: '',
-                archived_path: '',
-                file_type: 'markdown',
-                title: '测试文章',
-                body: '正文内容',
-                summary: '',
-                metadata: {},
-                hash: 'hash-1',
-                imported_at: '2026-05-07T03:00:00Z',
-                status: 'completed',
-                workspace_article_id: '',
-                rewrite_run_id: '',
-                claimed_by: '',
-                claimed_at: null,
-                processing_started_at: null,
-                completed_at: '2026-05-07T03:10:00Z',
-                error_summary: '',
-              },
-            ],
-          }),
-        );
+        if (url.endsWith('/api/articles') && method === 'GET') {
+          return Promise.resolve(
+            jsonResponse({
+              data: [
+                makeBrowserArticle({ status: 'rendered' }),
+              ],
+            }),
+          );
       }
 
       if (url.endsWith('/api/articles/article-1/stages') && method === 'GET') {
@@ -171,35 +173,14 @@ describe('ArticlesPage', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const method = init?.method ?? 'GET';
 
-      if (url.endsWith('/api/articles') && method === 'GET') {
-        return Promise.resolve(
-          jsonResponse({
-            data: [
-              {
-                id: 'article-1',
-                source_type: 'upload',
-                original_filename: 'a.md',
-                original_path: '',
-                archived_path: '',
-                file_type: 'markdown',
-                title: '测试文章',
-                body: '正文内容',
-                summary: '',
-                metadata: {},
-                hash: 'hash-1',
-                imported_at: '2026-05-07T03:00:00Z',
-                status: 'completed',
-                workspace_article_id: '',
-                rewrite_run_id: '',
-                claimed_by: '',
-                claimed_at: null,
-                processing_started_at: null,
-                completed_at: '2026-05-07T03:10:00Z',
-                error_summary: '',
-              },
-            ],
-          }),
-        );
+        if (url.endsWith('/api/articles') && method === 'GET') {
+          return Promise.resolve(
+            jsonResponse({
+              data: [
+                makeBrowserArticle({ status: 'rendered' }),
+              ],
+            }),
+          );
       }
 
       if (url.endsWith('/api/articles/article-1/stages') && method === 'GET') {
@@ -230,61 +211,21 @@ describe('ArticlesPage', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const method = init?.method ?? 'GET';
 
-      if (url.endsWith('/api/articles') && method === 'GET') {
-        return Promise.resolve(
-          jsonResponse({
-            data: [
-              {
-                id: 'article-1',
-                source_type: 'upload',
-                original_filename: 'a.md',
-                original_path: '',
-                archived_path: '',
-                file_type: 'markdown',
-                title: '测试文章',
-                body: '正文内容',
-                summary: '',
-                metadata: {},
-                hash: 'hash-1',
-                imported_at: '2026-05-07T03:00:00Z',
-                status: 'paused',
-                workspace_article_id: '',
-                rewrite_run_id: 'run-1',
-                claimed_by: '',
-                claimed_at: null,
-                processing_started_at: '2026-05-07T03:05:00Z',
-                completed_at: null,
-                error_summary: '',
-              },
-            ],
-          }),
-        );
+        if (url.endsWith('/api/articles') && method === 'GET') {
+          return Promise.resolve(
+            jsonResponse({
+              data: [
+                makeBrowserArticle({ status: 'paused', rewrite_run_id: 'run-1', processing_started_at: '2026-05-07T03:05:00Z', completed_at: null }),
+              ],
+            }),
+          );
       }
 
       if (url.endsWith('/api/articles/article-1/stages') && method === 'GET') {
         return Promise.resolve(
           jsonResponse({
             article: {
-              id: 'article-1',
-              source_type: 'upload',
-              original_filename: 'a.md',
-              original_path: '',
-              archived_path: '',
-              file_type: 'markdown',
-              title: '测试文章',
-              body: '正文内容',
-              summary: '',
-              metadata: {},
-              hash: 'hash-1',
-              imported_at: '2026-05-07T03:00:00Z',
-              status: 'paused',
-              workspace_article_id: '',
-              rewrite_run_id: 'run-1',
-              claimed_by: '',
-              claimed_at: null,
-              processing_started_at: '2026-05-07T03:05:00Z',
-              completed_at: null,
-              error_summary: '',
+              ...makeBrowserArticle({ status: 'paused', rewrite_run_id: 'run-1', processing_started_at: '2026-05-07T03:05:00Z', completed_at: null }),
             },
             run: {
               id: 'run-1',
@@ -341,5 +282,78 @@ describe('ArticlesPage', () => {
     expect(within(detailCard).getByText('当前阶段')).toBeInTheDocument();
     expect(within(detailCard).getAllByText('rewrite').length).toBeGreaterThan(0);
     expect(within(detailCard).getByText((_, element) => element?.textContent === '类型：llm / 第 2 次尝试')).toBeInTheDocument();
+  });
+
+  it('accepts browser-first article payloads without legacy source document fields', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? 'GET';
+
+      if (url.endsWith('/api/articles') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({
+            data: [
+              makeBrowserArticle({
+                id: 'article-1',
+                workspace_article_id: 'workspace-1',
+                title: '浏览器文章',
+                status: 'paused',
+                rewrite_run_id: 'run-1',
+                workflow_run_id: 'workflow-run-1',
+                metadata: { workflow_template_id: 'workflow-1' },
+                processing_started_at: '2026-05-07T03:05:00Z',
+                completed_at: null,
+              }),
+            ],
+          }),
+        );
+      }
+
+      if (url.endsWith('/api/articles/article-1/stages') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({
+            article: makeBrowserArticle({
+              id: 'article-1',
+              workspace_article_id: 'workspace-1',
+              title: '浏览器文章',
+              status: 'paused',
+              rewrite_run_id: 'run-1',
+              workflow_run_id: 'workflow-run-1',
+              metadata: { workflow_template_id: 'workflow-1' },
+              processing_started_at: '2026-05-07T03:05:00Z',
+              completed_at: null,
+            }),
+            run: {
+              id: 'run-1',
+              profile_id: 'profile-1',
+              profile_version: 'v1',
+              workspace_article_id: 'workspace-1',
+              target_type: 'web',
+              source_profile: 'default',
+              status: 'paused',
+              current_stage: 'rewrite',
+              started_at: '2026-05-07T03:05:00Z',
+              completed_at: null,
+              final_draft_id: '',
+              error_summary: '',
+              metadata: {},
+            },
+            stages: [],
+          }),
+        );
+      }
+
+      throw new Error(`Unhandled fetch: ${method} ${url}`);
+    });
+
+    renderArticlesPage();
+
+    expect(await screen.findByText('浏览器文章')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '查看阶段' }));
+
+    const detailCard = screen.getByTestId('articles-detail-card');
+    expect(await within(detailCard).findByText('当前运行状态')).toBeInTheDocument();
+    expect(within(detailCard).getByText('run-1')).toBeInTheDocument();
+    expect(within(detailCard).getByText('rewrite')).toBeInTheDocument();
   });
 });

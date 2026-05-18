@@ -1,16 +1,16 @@
 import type {
-  ApiEnvelope,
-  ApiErrorPayload,
-  ApiRequestOptions,
-  ArticleQueueActionResponse,
-  ArticleStagesResponse,
-  AuditLog,
-  HealthResponse,
-  JsonObject,
-  SourceDocument,
-  SystemControlState,
-  TemplateDefinition,
-  TemplateDefinitionInput,
+ApiEnvelope,
+ApiErrorPayload,
+ApiRequestOptions,
+BrowserArticle,
+ArticleQueueActionResponse,
+ArticleStagesResponse,
+AuditLog,
+HealthResponse,
+JsonObject,
+SystemControlState,
+TemplateDefinition,
+TemplateDefinitionInput,
   WorkflowDefinition,
   WorkflowDefinitionInput,
 } from './types';
@@ -118,21 +118,21 @@ export function getHealth(options?: ApiRequestOptions) {
 }
 
 export function uploadIntake(file: File, options?: ApiRequestOptions) {
-  const formData = new FormData();
-  formData.set('file', file);
-  return apiClient.upload<SourceDocument>('/intake/upload', formData, options);
+const formData = new FormData();
+formData.set('file', file);
+ return apiClient.upload<BrowserArticle>('/intake/upload', formData, options);
 }
 
 export function pasteIntake(body: { title: string; body: string }, options?: ApiRequestOptions) {
-  return apiClient.post<SourceDocument, { title: string; body: string }>('/intake/paste', body, options);
+ return apiClient.post<BrowserArticle, { title: string; body: string }>('/intake/paste', body, options);
 }
 
 export function listArticles(options?: ApiRequestOptions) {
-  return apiClient.get<ApiEnvelope<SourceDocument[]>>('/articles', options).then(unwrapEnvelope);
+ return apiClient.get<ApiEnvelope<BrowserArticle[]>>('/articles', options).then(unwrapEnvelope);
 }
 
 export function getArticle(id: string, options?: ApiRequestOptions) {
-  return apiClient.get<SourceDocument>(`/articles/${id}`, options);
+ return apiClient.get<BrowserArticle>(`/articles/${id}`, options);
 }
 
 export function getArticleStages(id: string, options?: ApiRequestOptions) {

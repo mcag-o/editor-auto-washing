@@ -22,7 +22,7 @@ import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { ApiError, deleteArticle, getArticleStages, listArticles, resumeArticle, retryArticle, stopArticle } from '../../lib/api/client';
-import type { ArticleStagesResponse, SourceDocument } from '../../lib/api/types';
+import type { ArticleStagesResponse, BrowserArticle } from '../../lib/api/types';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PageCard from '../../components/PageCard';
 import PageState from '../../components/PageState';
@@ -93,7 +93,7 @@ function formatTime(value: string | null) {
   });
 }
 
-function articleWordCount(item: SourceDocument) {
+function articleWordCount(item: BrowserArticle) {
   return (item.body || '').trim().length;
 }
 
@@ -114,7 +114,7 @@ function canDelete(status: string) {
 }
 
 export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
-  const [articles, setArticles] = useState<SourceDocument[]>([]);
+  const [articles, setArticles] = useState<BrowserArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -124,7 +124,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
-  const [pendingAction, setPendingAction] = useState<{ action: ArticleAction; row: SourceDocument } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ action: ArticleAction; row: BrowserArticle } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [stageDetail, setStageDetail] = useState<ArticleStagesResponse | null>(null);
@@ -191,7 +191,7 @@ export default function ArticlesPage({ onNavigate }: ArticlesPageProps) {
     return filteredRows.slice(start, start + rowsPerPage);
   }, [filteredRows, page, rowsPerPage]);
 
-  const openActionDialog = (action: ArticleAction, row: SourceDocument) => {
+  const openActionDialog = (action: ArticleAction, row: BrowserArticle) => {
     setPendingAction({ action, row });
   };
 

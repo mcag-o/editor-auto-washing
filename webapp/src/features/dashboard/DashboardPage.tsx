@@ -16,20 +16,20 @@ import PageCard from '../../components/PageCard';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
 import { ApiError, getSystemStatus, listArticles, listAudit, listTemplates } from '../../lib/api/client';
-import type { AuditLog, SourceDocument, SystemControlState, TemplateDefinition } from '../../lib/api/types';
+import type { AuditLog, BrowserArticle, SystemControlState, TemplateDefinition } from '../../lib/api/types';
 import type { AppPage } from '../../layout/AppShell';
 
 type DashboardPageProps = {
   onNavigate?: (page: AppPage) => void;
 };
 
-function countByStatus(articles: SourceDocument[], ...statuses: string[]) {
+function countByStatus(articles: BrowserArticle[], ...statuses: string[]) {
   return articles.filter((item) => statuses.includes(item.status)).length;
 }
 
 export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const [systemState, setSystemState] = useState<SystemControlState | null>(null);
-  const [articles, setArticles] = useState<SourceDocument[]>([]);
+ const [articles, setArticles] = useState<BrowserArticle[]>([]);
   const [templates, setTemplates] = useState<TemplateDefinition[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);

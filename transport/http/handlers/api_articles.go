@@ -43,6 +43,25 @@ type rewriteStageRunUpdater interface {
 	Update(context.Context, *domain.RewriteStageRun) error
 }
 
+type browserArticleListResponse struct {
+	Data []service.BrowserArticle `json:"data"`
+}
+
+type browserArticleStagesResponse struct {
+	Article *service.BrowserArticle `json:"article"`
+	Run     *domain.RewritePipelineRun `json:"run"`
+	Stages  []domain.RewriteStageRun `json:"stages"`
+}
+
+type browserArticleActionResponse struct {
+	Status         string                  `json:"status"`
+	Message        string                  `json:"message"`
+	WorkerRunning  bool                    `json:"worker_running,omitempty"`
+	SystemState    string                  `json:"system_state,omitempty"`
+	RequestedPause bool                    `json:"requested_pause,omitempty"`
+	Article        *service.BrowserArticle `json:"article"`
+}
+
 const articleOperationsActor = "local-admin"
 
 func NewAPIArticlesHandler(articles *service.ArticleQueryService, runs repo.RewritePipelineRunRepo, stages repo.RewriteStageRunRepo, workflows interface {
@@ -69,7 +88,7 @@ func (h *APIArticlesHandler) List(c *gin.Context) {
 		HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": items})
+	c.JSON(http.StatusOK, browserArticleListPayload(items))
 }
 
 func (h *APIArticlesHandler) Get(c *gin.Context) {
@@ -78,7 +97,7 @@ func (h *APIArticlesHandler) Get(c *gin.Context) {
 		HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, item)
+	c.JSON(http.StatusOK, browserArticlePayload(item))
 }
 
 func (h *APIArticlesHandler) Stages(c *gin.Context) {
@@ -103,10 +122,10 @@ func (h *APIArticlesHandler) Stages(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"article": item,
-		"run":     run,
-		"stages":  stageRuns,
+	c.JSON(http.StatusOK, browserArticleStagesResponse{
+		Article: browserArticlePayload(item),
+		Run:     run,
+		Stages:  stageRuns,
 	})
 }
 
@@ -189,12 +208,12 @@ func (h *APIArticlesHandler) Retry(c *gin.Context) {
 		item = updatedItem
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"status":         "requeued",
-		"message":        message,
-		"worker_running": workerRunning,
-		"system_state":   systemState,
-		"article":        item,
+	c.JSON(http.StatusOK, browserArticleActionResponse{
+		Status:        "requeued",
+		Message:       message,
+		WorkerRunning: workerRunning,
+		SystemState:   systemState,
+		Article:       browserArticlePayload(item),
 	})
 }
 
@@ -257,11 +276,11 @@ func (h *APIArticlesHandler) Stop(c *gin.Context) {
 		"pause_source":                "manual",
 	})
 
-	c.JSON(http.StatusAccepted, gin.H{
-		"status":          domain.WorkflowRunPaused,
-		"requested_pause": true,
-		"message":         message,
-		"article":         mustLoadBrowserArticle(c.Request.Context(), h.articles, workspace.ID, item),
+	c.JSON(http.StatusAccepted, browserArticleActionResponse{
+		Status:         domain.WorkflowRunPaused,
+		RequestedPause: true,
+		Message:        message,
+		Article:        browserArticlePayload(mustLoadBrowserArticle(c.Request.Context(), h.articles, workspace.ID, item)),
 	})
 }
 
@@ -324,12 +343,12 @@ func (h *APIArticlesHandler) Resume(c *gin.Context) {
 		"resume_mode":                 "continue_saved_position",
 	})
 
-	c.JSON(http.StatusAccepted, gin.H{
-		"status":         "requeued",
-		"message":        message,
-		"worker_running": workerRunning,
-		"system_state":   systemState,
-		"article":        mustLoadBrowserArticle(c.Request.Context(), h.articles, workspace.ID, item),
+	c.JSON(http.StatusAccepted, browserArticleActionResponse{
+		Status:        "requeued",
+		Message:       message,
+		WorkerRunning: workerRunning,
+		SystemState:   systemState,
+		Article:       browserArticlePayload(mustLoadBrowserArticle(c.Request.Context(), h.articles, workspace.ID, item)),
 	})
 }
 
@@ -438,7 +457,15 @@ func (h *APIArticlesHandler) AssignWorkflowTemplate(c *gin.Context) {
 		HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, item)
+	c.JSON(http.StatusOK, browserArticlePayload(item))
+}
+
+func browserArticleListPayload(items []service.BrowserArticle) browserArticleListResponse {
+	return browserArticleListResponse{Data: items}
+}
+
+func browserArticlePayload(item *service.BrowserArticle) *service.BrowserArticle {
+	return item
 }
 
 func (h *APIArticlesHandler) recordArticleAudit(ctx context.Context, item *service.BrowserArticle, action, result, message string, metadata map[string]any) error {

@@ -57,14 +57,12 @@ func newTestServer(t *testing.T) (*Server, *testWebControlRepos) {
 	cfg.HTTP.Port = 0
 
 	memProvider := memory.NewProvider()
-	sourceDocumentRepo := &stubSourceDocumentRepo{storedByID: map[string]*domain.SourceDocument{}}
 	workflowDefinitionRepo := &serverWorkflowDefinitionRepo{}
 	templateDefinitionRepo := &serverTemplateDefinitionRepo{}
 	businessConfigRepo := &stubBusinessConfigRepo{}
 	systemControlStateRepo := &stubSystemControlStateRepo{}
 	auditLogRepo := &stubAuditLogRepo{}
 	webRepos := &testWebControlRepos{
-		SourceDocuments: sourceDocumentRepo,
 		Workspaces:      memProvider.WorkspaceRepo(),
 		AuditLogs:       auditLogRepo,
 		Configs:         businessConfigRepo,

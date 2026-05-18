@@ -40,7 +40,7 @@ func (h *APIIntakeHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, doc)
+	c.JSON(http.StatusCreated, service.BuildBrowserIntakeResponse(doc))
 }
 
 func (h *APIIntakeHandler) Paste(c *gin.Context) {
@@ -63,5 +63,5 @@ func (h *APIIntakeHandler) Paste(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, doc)
+	c.JSON(http.StatusCreated, service.BuildBrowserIntakeResponse(doc))
 }

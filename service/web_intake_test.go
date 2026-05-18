@@ -297,6 +297,61 @@ func TestWebIntakeServiceCreateFromUploadRejectsUnsupportedExtension(t *testing.
 	require.Equal(t, "failure", audit.logs[0].Result)
 }
 
+func TestBuildBrowserIntakeResponseProjectsWorkspaceRecordWithoutLegacyShape(t *testing.T) {
+	workspace := domain.NewArticleWorkspaceRecord("workspace-1", "Title", "Summary", domain.ArticleWorkspaceSource{
+		SourceType: "upload",
+		URL:        browserUploadOriginalURL("article.md"),
+	}, map[string]any{
+		"source_body":             "Body",
+		"target_type":             defaultWebIntakeTargetType,
+		"source_profile":          defaultWebUploadSourceProfile,
+		"render_platform":         defaultWebIntakeRenderPlatform,
+		"rewrite_profile_version": defaultWebIntakeRewriteProfileVersion,
+	})
+
+	resp := BuildBrowserIntakeResponse(workspace)
+
+	require.NotNil(t, resp)
+	require.Equal(t, workspace.ID, resp.ID)
+	require.Equal(t, workspace.Title, resp.Title)
+	require.Equal(t, workspace.Summary, resp.Summary)
+	require.Equal(t, workspace.Status, resp.Status)
+	require.Equal(t, "Body", resp.Body)
+	require.Equal(t, "upload", resp.Metadata.SourceType)
+	require.Equal(t, browserUploadOriginalURL("article.md"), resp.Metadata.OriginalURL)
+	require.Equal(t, defaultWebIntakeTargetType, resp.Metadata.TargetType)
+	require.Equal(t, defaultWebUploadSourceProfile, resp.Metadata.SourceProfile)
+	require.Equal(t, defaultWebIntakeRenderPlatform, resp.Metadata.RenderPlatform)
+	require.Equal(t, defaultWebIntakeRewriteProfileVersion, resp.Metadata.RewriteProfileVersion)
+}
+
+func TestBuildBrowserIntakeResponseProjectsPersistedValuesAsStored(t *testing.T) {
+	workspace := domain.NewArticleWorkspaceRecord(" workspace-1 ", " Title ", " Summary ", domain.ArticleWorkspaceSource{
+		SourceType: " upload ",
+		URL:        " browser://upload/article.md ",
+	}, map[string]any{
+		"source_body":             " Body ",
+		"target_type":             " wechat-longform ",
+		"source_profile":          " web-upload ",
+		"render_platform":         " wechat ",
+		"rewrite_profile_version": " v1 ",
+	})
+
+	resp := BuildBrowserIntakeResponse(workspace)
+
+	require.NotNil(t, resp)
+	require.Equal(t, " workspace-1 ", resp.ID)
+	require.Equal(t, " Title ", resp.Title)
+	require.Equal(t, " Summary ", resp.Summary)
+	require.Equal(t, " Body ", resp.Body)
+	require.Equal(t, " upload ", resp.Metadata.SourceType)
+	require.Equal(t, " browser://upload/article.md ", resp.Metadata.OriginalURL)
+	require.Equal(t, " wechat-longform ", resp.Metadata.TargetType)
+	require.Equal(t, " web-upload ", resp.Metadata.SourceProfile)
+	require.Equal(t, " wechat ", resp.Metadata.RenderPlatform)
+	require.Equal(t, " v1 ", resp.Metadata.RewriteProfileVersion)
+}
+
 func TestWebIntakeServiceCreateFromPasteRecordsFailedAuditWhenWorkspaceCreateFails(t *testing.T) {
 	workspaceRepo := &stubWebIntakeWorkspaceRepo{err: errors.New("db down")}
 	audit := &stubAuditLogRepo{}

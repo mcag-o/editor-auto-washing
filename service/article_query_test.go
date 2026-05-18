@@ -142,6 +142,11 @@ func TestArticleQueryServiceGetsBrowserArticleDetailByID(t *testing.T) {
 	require.Equal(t, domain.ArticleWorkspaceStatusRewriteFailed, loaded.Status)
 	require.Equal(t, "web-upload", loaded.Metadata["source_profile"])
 	require.Equal(t, run.ID, loaded.RewriteRunID)
+	require.Equal(t, workspace.ID, loaded.WorkspaceArticleID)
+	require.Equal(t, "upload", loaded.SourceType)
+	require.Equal(t, "article.json", loaded.OriginalFilename)
+	require.Equal(t, "json", loaded.FileType)
+	require.Equal(t, "browser://upload/article.json", loaded.OriginalPath)
 }
 
 func TestArticleQueryServiceListsPausedBrowserArticlesFromWorkflowRunState(t *testing.T) {

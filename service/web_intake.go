@@ -33,6 +33,24 @@ type CreateUploadIntakeInput struct {
 	Content     io.Reader
 }
 
+type BrowserIntakeResponse struct {
+	ID       string                        `json:"id"`
+	Title    string                        `json:"title"`
+	Summary  string                        `json:"summary"`
+	Status   string                        `json:"status"`
+	Body     string                        `json:"body"`
+	Metadata BrowserIntakeResponseMetadata `json:"metadata"`
+}
+
+type BrowserIntakeResponseMetadata struct {
+	SourceType            string `json:"source_type"`
+	OriginalURL           string `json:"original_url"`
+	TargetType            string `json:"target_type"`
+	SourceProfile         string `json:"source_profile"`
+	RenderPlatform        string `json:"render_platform"`
+	RewriteProfileVersion string `json:"rewrite_profile_version"`
+}
+
 type WebIntakeService struct {
 	workspaces repo.WorkspaceRepo
 	audit      repo.AuditLogRepo
@@ -236,4 +254,34 @@ func browserUploadOriginalURL(filename string) string {
 		return "browser://upload"
 	}
 	return "browser://upload/" + filename
+}
+
+func BuildBrowserIntakeResponse(workspace *domain.ArticleWorkspaceRecord) *BrowserIntakeResponse {
+	if workspace == nil {
+		return nil
+	}
+
+	return &BrowserIntakeResponse{
+		ID:      workspace.ID,
+		Title:   workspace.Title,
+		Summary: workspace.Summary,
+		Status:  workspace.Status,
+		Body:    browserWorkspaceMetadataString(workspace.Metadata, "source_body"),
+		Metadata: BrowserIntakeResponseMetadata{
+			SourceType:            workspace.Source.SourceType,
+			OriginalURL:           workspace.Source.URL,
+			TargetType:            browserWorkspaceMetadataString(workspace.Metadata, "target_type"),
+			SourceProfile:         browserWorkspaceMetadataString(workspace.Metadata, "source_profile"),
+			RenderPlatform:        browserWorkspaceMetadataString(workspace.Metadata, "render_platform"),
+			RewriteProfileVersion: browserWorkspaceMetadataString(workspace.Metadata, "rewrite_profile_version"),
+		},
+	}
+}
+
+func browserWorkspaceMetadataString(metadata map[string]any, key string) string {
+	if metadata == nil {
+		return ""
+	}
+	value, _ := metadata[key].(string)
+	return value
 }

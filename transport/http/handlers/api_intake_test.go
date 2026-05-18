@@ -16,6 +16,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type browserIntakeResponse struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Summary  string `json:"summary"`
+	Status   string `json:"status"`
+	Body     string `json:"body"`
+	Metadata struct {
+		SourceType            string `json:"source_type"`
+		OriginalURL           string `json:"original_url"`
+		TargetType            string `json:"target_type"`
+		SourceProfile         string `json:"source_profile"`
+		RenderPlatform        string `json:"render_platform"`
+		RewriteProfileVersion string `json:"rewrite_profile_version"`
+	} `json:"metadata"`
+}
+
 func TestAPIIntakeUploadCreatesWorkspaceBackedIntakeItem(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	workspaceRepo := &serviceStubWebIntakeWorkspaceRepo{}
@@ -41,12 +57,19 @@ func TestAPIIntakeUploadCreatesWorkspaceBackedIntakeItem(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusCreated, w.Code)
-	var resp domain.ArticleWorkspaceRecord
+	var resp browserIntakeResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.NotEmpty(t, resp.ID)
 	require.Equal(t, domain.ArticleWorkspaceStatusImported, resp.Status)
-	require.Equal(t, "upload", resp.Source.SourceType)
 	require.Equal(t, "Title", resp.Title)
-	require.Equal(t, "# Title\n\nBody", resp.Metadata["source_body"])
+	require.Equal(t, "# Title\n\nBody", resp.Body)
+	require.Equal(t, "upload", resp.Metadata.SourceType)
+	require.Equal(t, "browser://upload/article.md", resp.Metadata.OriginalURL)
+	require.Equal(t, "wechat-longform", resp.Metadata.TargetType)
+	require.Equal(t, "web-upload", resp.Metadata.SourceProfile)
+	require.Equal(t, "wechat", resp.Metadata.RenderPlatform)
+	require.Equal(t, "v1", resp.Metadata.RewriteProfileVersion)
+	assertIntakeResponseDoesNotExposeLegacyFields(t, w.Body.Bytes())
 	require.Len(t, workspaceRepo.created, 1)
 	require.Len(t, audit.logs, 1)
 	require.Equal(t, "web_intake.create_from_upload", audit.logs[0].Action)
@@ -69,15 +92,43 @@ func TestAPIIntakePasteCreatesWorkspaceBackedIntakeItem(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusCreated, w.Code)
-	var resp domain.ArticleWorkspaceRecord
+	var resp browserIntakeResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	require.Equal(t, "paste", resp.Source.SourceType)
+	require.NotEmpty(t, resp.ID)
 	require.Equal(t, domain.ArticleWorkspaceStatusImported, resp.Status)
 	require.Equal(t, "Pasted", resp.Title)
-	require.Equal(t, "Body", resp.Metadata["source_body"])
+	require.Equal(t, "Body", resp.Body)
+	require.Equal(t, "paste", resp.Metadata.SourceType)
+	require.Equal(t, "browser://paste/Pasted", resp.Metadata.OriginalURL)
+	require.Equal(t, "wechat-longform", resp.Metadata.TargetType)
+	require.Equal(t, "web-paste", resp.Metadata.SourceProfile)
+	require.Equal(t, "wechat", resp.Metadata.RenderPlatform)
+	require.Equal(t, "v1", resp.Metadata.RewriteProfileVersion)
+	assertIntakeResponseDoesNotExposeLegacyFields(t, w.Body.Bytes())
 	require.Len(t, workspaceRepo.created, 1)
 	require.Len(t, audit.logs, 1)
 	require.Equal(t, "web_intake.create_from_paste", audit.logs[0].Action)
+}
+
+func assertIntakeResponseDoesNotExposeLegacyFields(t *testing.T, body []byte) {
+	t.Helper()
+
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(body, &raw))
+	require.NotContains(t, raw, "source")
+	require.NotContains(t, raw, "source_body")
+	require.NotContains(t, raw, "original_path")
+	require.NotContains(t, raw, "original_filename")
+	require.NotContains(t, raw, "file_type")
+	require.NotContains(t, raw, "status_history")
+	require.NotContains(t, raw, "lifecycle_history")
+	require.NotContains(t, raw, "created_at")
+	require.NotContains(t, raw, "updated_at")
+	require.NotContains(t, raw, "published_at")
+	require.NotContains(t, raw, "notes")
+	metadata, ok := raw["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, metadata, "source_body")
 }
 
 func TestAPIIntakePasteReturnsValidationError(t *testing.T) {

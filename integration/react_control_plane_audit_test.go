@@ -41,7 +41,7 @@ func TestReactAuditPageDataPathRemainsStable(t *testing.T) {
 	defer pasteResp.Body.Close()
 	require.Equal(t, http.StatusCreated, pasteResp.StatusCode)
 
-	var createdDoc domain.SourceDocument
+	var createdDoc reactBrowserArticlePayload
 	require.NoError(t, json.NewDecoder(pasteResp.Body).Decode(&createdDoc))
 
 	startResp := postJSON(t, serverURL+"/api/system/start", map[string]any{

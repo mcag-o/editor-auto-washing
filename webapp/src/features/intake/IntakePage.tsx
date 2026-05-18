@@ -12,7 +12,7 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { ApiError, pasteIntake, uploadIntake } from '../../lib/api/client';
-import type { SourceDocument } from '../../lib/api/types';
+import type { BrowserArticle } from '../../lib/api/types';
 import PageCard from '../../components/PageCard';
 import PageToolbar from '../../components/PageToolbar';
 import StatusChip from '../../components/StatusChip';
@@ -27,7 +27,7 @@ type IntakePageProps = {
 export default function IntakePage({ onNavigate }: IntakePageProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [uploadedItems, setUploadedItems] = useState<SourceDocument[]>([]);
+ const [uploadedItems, setUploadedItems] = useState<BrowserArticle[]>([]);
   const [pasteValue, setPasteValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);

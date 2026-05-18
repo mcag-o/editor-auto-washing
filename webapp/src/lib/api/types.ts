@@ -33,27 +33,24 @@ export type HealthResponse = {
   updated_at?: string;
 };
 
-export type SourceDocument = {
+export type BrowserArticle = {
   id: string;
   source_type: string;
   original_filename: string;
   original_path: string;
-  archived_path: string;
   file_type: string;
   title: string;
   body: string;
   summary: string;
   metadata: Record<string, unknown>;
-  hash: string;
   imported_at: string | null;
   status: string;
   workspace_article_id: string;
   rewrite_run_id: string;
-  claimed_by: string;
-  claimed_at: string | null;
+  workflow_run_id: string;
   processing_started_at: string | null;
   completed_at: string | null;
-  error_summary: string;
+error_summary: string;
 };
 
 export type RewritePipelineRun = {
@@ -90,7 +87,7 @@ export type RewriteStageRun = {
 };
 
 export type ArticleStagesResponse = {
-  article: SourceDocument;
+  article: BrowserArticle;
   run: RewritePipelineRun | null;
   stages: RewriteStageRun[];
 };
@@ -101,7 +98,7 @@ export type ArticleQueueActionResponse = {
   worker_running?: boolean;
   system_state?: string;
   requested_pause?: boolean;
-  article: SourceDocument;
+  article: BrowserArticle;
 };
 
 export type SystemControlState = {

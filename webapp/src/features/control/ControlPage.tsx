@@ -13,7 +13,7 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { ApiError, getSystemStatus, listArticles, pauseSystem, resumeSystem, startSystem } from '../../lib/api/client';
-import type { SourceDocument, SystemControlState } from '../../lib/api/types';
+import type { BrowserArticle, SystemControlState } from '../../lib/api/types';
 import MetricCards from '../../components/MetricCards';
 import PageCard from '../../components/PageCard';
 import PageToolbar from '../../components/PageToolbar';
@@ -26,7 +26,7 @@ type ControlPageProps = {
 
 export default function ControlPage({ onNavigate }: ControlPageProps) {
   const [systemState, setSystemState] = useState<SystemControlState | null>(null);
-  const [articles, setArticles] = useState<SourceDocument[]>([]);
+ const [articles, setArticles] = useState<BrowserArticle[]>([]);
   const [systemLoading, setSystemLoading] = useState(true);
   const [queueLoading, setQueueLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
