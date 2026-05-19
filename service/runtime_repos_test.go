@@ -70,10 +70,10 @@ func TestBuildRuntimeReposOmitsLegacyIntakeCompatibilityRepos(t *testing.T) {
 	}
 	repoType := reflect.TypeOf(*repos)
 	if _, ok := repoType.FieldByName("SourceDocumentRepo"); ok {
-		t.Fatal("expected RuntimeRepos to omit SourceDocumentRepo field")
+		t.Fatal("expected RuntimeRepos to omit browser intake compatibility repo field")
 	}
 	if _, ok := repoType.FieldByName("ImportRunRepo"); ok {
-		t.Fatal("expected RuntimeRepos to omit ImportRunRepo field")
+		t.Fatal("expected RuntimeRepos to omit browser intake import-run compatibility field")
 	}
 }
 

@@ -81,7 +81,7 @@ func (s *WebControlPlaneService) Start(ctx context.Context, updatedBy string, co
 	}
 	if s.runner != nil {
 		if err := s.runner.ProcessPending(ctx, limit); err != nil {
-			wrapped := fmt.Errorf("process pending source documents: %w", err)
+			wrapped := fmt.Errorf("process pending browser intake items: %w", err)
 			stoppedState, stopErr := stopState("cycle_failed")
 			if stopErr != nil {
 				return nil, stopErr

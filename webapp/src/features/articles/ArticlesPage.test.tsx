@@ -284,7 +284,7 @@ describe('ArticlesPage', () => {
     expect(within(detailCard).getByText((_, element) => element?.textContent === '类型：llm / 第 2 次尝试')).toBeInTheDocument();
   });
 
-  it('accepts browser-first article payloads without legacy source document fields', async () => {
+	it('accepts browser-first article payloads without legacy compatibility fields', async () => {
     vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const method = init?.method ?? 'GET';

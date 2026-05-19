@@ -128,7 +128,7 @@ func TestWebControlPlaneServiceStartReturnsFailureSemanticsWhenProcessingCycleFa
 
 	require.Nil(t, state)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "process pending source documents")
+	require.ErrorContains(t, err, "process pending browser intake items")
 	require.True(t, runner.called)
 	require.Len(t, auditRepo.logs, 1)
 	require.Equal(t, "control_plane.started", auditRepo.logs[0].Action)
