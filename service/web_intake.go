@@ -140,7 +140,7 @@ func (s *WebIntakeService) CreateFromUpload(ctx context.Context, input CreateUpl
 	}
 
 	metadata := webIntakeMetadata(defaultWebUploadSourceProfile)
-	for key, value := range inputDocumentMetadata(parsed) {
+	for key, value := range intakeDocumentMetadata(parsed) {
 		metadata[key] = value
 	}
 	if contentType := strings.TrimSpace(input.ContentType); contentType != "" {
@@ -181,13 +181,13 @@ func (s *WebIntakeService) CreateFromUpload(ctx context.Context, input CreateUpl
 	return workspace, nil
 }
 
-func (s *WebIntakeService) parseUploadedDocument(filename string, content io.Reader) (*ParsedInputDocument, error) {
+func (s *WebIntakeService) parseUploadedDocument(filename string, content io.Reader) (*ParsedIntakeDocument, error) {
 	body, err := io.ReadAll(content)
 	if err != nil {
 		return nil, fmt.Errorf("read upload content: %w", err)
 	}
 
-	return ParseInputDocumentBytes(filename, body)
+	return ParseIntakeDocumentBytes(filename, body)
 }
 
 func isSupportedWebUploadExtension(filename string) bool {
