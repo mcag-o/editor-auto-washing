@@ -56,7 +56,7 @@ func TestBuildRuntimeReposDoesNotExposeRSSRepos(t *testing.T) {
 	}
 }
 
-func TestBuildRuntimeReposOmitsLegacyIntakeCompatibilityRepos(t *testing.T) {
+func TestBuildRuntimeReposOmitsLegacyInputCompatibilityRepos(t *testing.T) {
 	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
 	if cleanup != nil {
 		defer func() {
@@ -69,7 +69,7 @@ func TestBuildRuntimeReposOmitsLegacyIntakeCompatibilityRepos(t *testing.T) {
 		t.Fatalf("BuildRuntimeRepos returned error: %v", err)
 	}
 	repoType := reflect.TypeOf(*repos)
-	if _, ok := repoType.FieldByName("SourceDocumentRepo"); ok {
+	if _, ok := repoType.FieldByName("InputDocumentRepo"); ok {
 		t.Fatal("expected RuntimeRepos to omit browser intake compatibility repo field")
 	}
 	if _, ok := repoType.FieldByName("ImportRunRepo"); ok {

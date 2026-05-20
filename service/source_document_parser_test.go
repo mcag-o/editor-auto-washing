@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseMarkdownExtractsTitleAndBody(t *testing.T) {
+func TestParseInputDocumentExtractsMarkdownTitleAndBody(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "article.md")
 	require.NoError(t, os.WriteFile(path, []byte("# Title\n\nBody text"), 0o644))
 
-	parsed, err := ParseSourceDocument(path)
+	parsed, err := ParseInputDocument(path)
 
 	require.NoError(t, err)
 	require.Equal(t, "Title", parsed.Title)
@@ -24,15 +24,15 @@ func TestParseMarkdownExtractsTitleAndBody(t *testing.T) {
 	require.Empty(t, parsed.Tags)
 }
 
-func TestParseSourceDocumentBytesMatchesFilePathForMarkdown(t *testing.T) {
+func TestParseInputDocumentBytesMatchesFilePathForMarkdown(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "article.md")
 	raw := []byte("# Title\n\nBody text")
 	require.NoError(t, os.WriteFile(path, raw, 0o644))
 
-	fromPath, err := ParseSourceDocument(path)
+	fromPath, err := ParseInputDocument(path)
 	require.NoError(t, err)
 
-	fromBytes, err := ParseSourceDocumentBytes("article.md", raw)
+	fromBytes, err := ParseInputDocumentBytes("article.md", raw)
 	require.NoError(t, err)
 
 	require.Equal(t, fromPath.Title, fromBytes.Title)
@@ -41,22 +41,22 @@ func TestParseSourceDocumentBytesMatchesFilePathForMarkdown(t *testing.T) {
 	require.Equal(t, fromPath.Tags, fromBytes.Tags)
 }
 
-func TestParseTextUsesFilenameAsFallbackTitle(t *testing.T) {
+func TestParseInputDocumentUsesFilenameAsFallbackTitleForText(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "notes.txt")
 	require.NoError(t, os.WriteFile(path, []byte("Plain text body"), 0o644))
 
-	parsed, err := ParseSourceDocument(path)
+	parsed, err := ParseInputDocument(path)
 
 	require.NoError(t, err)
 	require.Equal(t, "notes", parsed.Title)
 	require.Equal(t, "Plain text body", parsed.Body)
 }
 
-func TestParseJSONExtractsStructuredFields(t *testing.T) {
+func TestParseInputDocumentExtractsStructuredFieldsFromJSON(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "article.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"title":"Title","content":"Body","summary":"Summary","tags":["a","b"]}`), 0o644))
 
-	parsed, err := ParseSourceDocument(path)
+	parsed, err := ParseInputDocument(path)
 
 	require.NoError(t, err)
 	require.Equal(t, "Title", parsed.Title)
@@ -65,63 +65,63 @@ func TestParseJSONExtractsStructuredFields(t *testing.T) {
 	require.Equal(t, []string{"a", "b"}, parsed.Tags)
 }
 
-func TestParseJSONMissingContentFails(t *testing.T) {
+func TestParseInputDocumentJSONMissingContentFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "article.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"title":"Title"}`), 0o644))
 
-	parsed, err := ParseSourceDocument(path)
+	parsed, err := ParseInputDocument(path)
 
 	require.Nil(t, parsed)
 	appErr, ok := err.(*domain.AppError)
 	require.True(t, ok)
 	require.Equal(t, domain.ErrValidation, appErr.Code)
-	require.ErrorContains(t, err, "source document content is required")
+	require.ErrorContains(t, err, "input document content is required")
 }
 
-func TestParseJSONWhitespaceOnlyContentFails(t *testing.T) {
+func TestParseInputDocumentJSONWhitespaceOnlyContentFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "article.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"title":"Title","content":"   \n\t  "}`), 0o644))
 
-	parsed, err := ParseSourceDocument(path)
+	parsed, err := ParseInputDocument(path)
 
 	require.Nil(t, parsed)
 	appErr, ok := err.(*domain.AppError)
 	require.True(t, ok)
 	require.Equal(t, domain.ErrValidation, appErr.Code)
-	require.ErrorContains(t, err, "source document content is required")
+	require.ErrorContains(t, err, "input document content is required")
 }
 
-func TestParseJSONMissingTitleFallsBackToFilename(t *testing.T) {
+func TestParseInputDocumentJSONMissingTitleFallsBackToFilename(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "article.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"content":"Body"}`), 0o644))
 
-	parsed, err := ParseSourceDocument(path)
+	parsed, err := ParseInputDocument(path)
 
 	require.NoError(t, err)
 	require.Equal(t, "article", parsed.Title)
 	require.Equal(t, "Body", parsed.Body)
 }
 
-func TestParseJSONWhitespaceOnlyTitleFallsBackToFilename(t *testing.T) {
+func TestParseInputDocumentJSONWhitespaceOnlyTitleFallsBackToFilename(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "article.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"title":"   \n\t  ","content":"Body"}`), 0o644))
 
-	parsed, err := ParseSourceDocument(path)
+	parsed, err := ParseInputDocument(path)
 
 	require.NoError(t, err)
 	require.Equal(t, "article", parsed.Title)
 	require.Equal(t, "Body", parsed.Body)
 }
 
-func TestParseSourceDocumentBytesMatchesFilePathForTitlelessJSONFallback(t *testing.T) {
+func TestParseInputDocumentBytesMatchesFilePathForTitlelessJSONFallback(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "article.json")
 	raw := []byte(`{"content":"Body"}`)
 	require.NoError(t, os.WriteFile(path, raw, 0o644))
 
-	fromPath, err := ParseSourceDocument(path)
+	fromPath, err := ParseInputDocument(path)
 	require.NoError(t, err)
 
-	fromBytes, err := ParseSourceDocumentBytes("article.json", raw)
+	fromBytes, err := ParseInputDocumentBytes("article.json", raw)
 	require.NoError(t, err)
 
 	require.Equal(t, fromPath.Title, fromBytes.Title)
@@ -130,11 +130,11 @@ func TestParseSourceDocumentBytesMatchesFilePathForTitlelessJSONFallback(t *test
 	require.Equal(t, fromPath.Tags, fromBytes.Tags)
 }
 
-func TestParseDOCXExtractsPlainText(t *testing.T) {
+func TestParseInputDocumentExtractsPlainTextFromDOCX(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "report.docx")
 	require.NoError(t, os.WriteFile(path, buildDOCXFixture(t, []string{"Docx Title", "Docx body text"}), 0o644))
 
-	parsed, err := ParseSourceDocument(path)
+	parsed, err := ParseInputDocument(path)
 
 	require.NoError(t, err)
 	require.Equal(t, "report", parsed.Title)
@@ -142,17 +142,17 @@ func TestParseDOCXExtractsPlainText(t *testing.T) {
 	require.Contains(t, parsed.Body, "Docx body text")
 }
 
-func TestParseSourceDocumentReturnsValidationErrorForUnsupportedExtension(t *testing.T) {
+func TestParseInputDocumentReturnsValidationErrorForUnsupportedExtension(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "article.pdf")
 	require.NoError(t, os.WriteFile(path, []byte("not supported"), 0o644))
 
-	parsed, err := ParseSourceDocument(path)
+	parsed, err := ParseInputDocument(path)
 
 	require.Nil(t, parsed)
 	appErr, ok := err.(*domain.AppError)
 	require.True(t, ok)
 	require.Equal(t, domain.ErrValidation, appErr.Code)
-	require.ErrorContains(t, err, "unsupported source document type")
+	require.ErrorContains(t, err, "unsupported input document type")
 }
 
 func buildDOCXFixture(t *testing.T, paragraphs []string) []byte {

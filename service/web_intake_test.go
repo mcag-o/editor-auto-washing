@@ -290,7 +290,7 @@ func TestWebIntakeServiceCreateFromUploadRejectsUnsupportedExtension(t *testing.
 
 	require.Nil(t, workspace)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "unsupported source document type")
+	require.ErrorContains(t, err, "unsupported input document type")
 	require.Empty(t, workspaceRepo.created)
 	require.Len(t, audit.logs, 1)
 	require.Equal(t, "web_intake.create_from_upload", audit.logs[0].Action)

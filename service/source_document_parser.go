@@ -13,17 +13,17 @@ import (
 	"strings"
 )
 
-type ParsedSourceDocument struct {
+type ParsedInputDocument struct {
 	Title   string
 	Body    string
 	Summary string
 	Tags    []string
 }
 
-func ParseSourceDocument(path string) (*ParsedSourceDocument, error) {
+func ParseInputDocument(path string) (*ParsedInputDocument, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return nil, domain.NewValidationErr("source document path is required", nil)
+		return nil, domain.NewValidationErr("input document path is required", nil)
 	}
 
 	body, err := os.ReadFile(path)
@@ -38,17 +38,17 @@ func ParseSourceDocument(path string) (*ParsedSourceDocument, error) {
 		case ".docx":
 			return nil, fmt.Errorf("read docx document: %w", err)
 		default:
-			return nil, domain.NewValidationErr("unsupported source document type", nil)
+			return nil, domain.NewValidationErr("unsupported input document type", nil)
 		}
 	}
 
-	return ParseSourceDocumentBytes(path, body)
+	return ParseInputDocumentBytes(path, body)
 }
 
-func ParseSourceDocumentBytes(filename string, raw []byte) (*ParsedSourceDocument, error) {
+func ParseInputDocumentBytes(filename string, raw []byte) (*ParsedInputDocument, error) {
 	filename = strings.TrimSpace(filename)
 	if filename == "" {
-		return nil, domain.NewValidationErr("source document filename is required", nil)
+		return nil, domain.NewValidationErr("input document filename is required", nil)
 	}
 
 	switch strings.ToLower(filepath.Ext(filename)) {
@@ -61,11 +61,11 @@ func ParseSourceDocumentBytes(filename string, raw []byte) (*ParsedSourceDocumen
 	case ".docx":
 		return parseDOCXDocumentBytes(filename, raw)
 	default:
-		return nil, domain.NewValidationErr("unsupported source document type", nil)
+		return nil, domain.NewValidationErr("unsupported input document type", nil)
 	}
 }
 
-func sourceDocumentMetadata(parsed *ParsedSourceDocument) map[string]any {
+func inputDocumentMetadata(parsed *ParsedInputDocument) map[string]any {
 	metadata := map[string]any{}
 	if parsed == nil {
 		return metadata
@@ -76,23 +76,23 @@ func sourceDocumentMetadata(parsed *ParsedSourceDocument) map[string]any {
 	return metadata
 }
 
-func parseMarkdownDocumentBytes(filename string, body []byte) (*ParsedSourceDocument, error) {
+func parseMarkdownDocumentBytes(filename string, body []byte) (*ParsedInputDocument, error) {
 	text := string(body)
-	return &ParsedSourceDocument{
+	return &ParsedInputDocument{
 		Title: inferMarkdownTitle(text, filename),
 		Body:  text,
 	}, nil
 }
 
-func parseTextDocumentBytes(filename string, body []byte) (*ParsedSourceDocument, error) {
+func parseTextDocumentBytes(filename string, body []byte) (*ParsedInputDocument, error) {
 	text := string(body)
-	return &ParsedSourceDocument{
+	return &ParsedInputDocument{
 		Title: fallbackTitle(filename),
 		Body:  text,
 	}, nil
 }
 
-func parseJSONDocumentBytes(filename string, body []byte) (*ParsedSourceDocument, error) {
+func parseJSONDocumentBytes(filename string, body []byte) (*ParsedInputDocument, error) {
 	var payload struct {
 		Title   string   `json:"title"`
 		Content string   `json:"content"`
@@ -100,11 +100,11 @@ func parseJSONDocumentBytes(filename string, body []byte) (*ParsedSourceDocument
 		Tags    []string `json:"tags"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, domain.NewValidationErr("decode source document json", err)
+		return nil, domain.NewValidationErr("decode input document json", err)
 	}
 
 	if strings.TrimSpace(payload.Content) == "" {
-		return nil, domain.NewValidationErr("source document content is required", nil)
+		return nil, domain.NewValidationErr("input document content is required", nil)
 	}
 
 	title := strings.TrimSpace(payload.Title)
@@ -112,7 +112,7 @@ func parseJSONDocumentBytes(filename string, body []byte) (*ParsedSourceDocument
 		title = fallbackTitle(filename)
 	}
 
-	return &ParsedSourceDocument{
+	return &ParsedInputDocument{
 		Title:   title,
 		Body:    payload.Content,
 		Summary: strings.TrimSpace(payload.Summary),
@@ -120,7 +120,7 @@ func parseJSONDocumentBytes(filename string, body []byte) (*ParsedSourceDocument
 	}, nil
 }
 
-func parseDOCXDocumentBytes(filename string, body []byte) (*ParsedSourceDocument, error) {
+func parseDOCXDocumentBytes(filename string, body []byte) (*ParsedInputDocument, error) {
 	reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
 		return nil, domain.NewValidationErr("open docx archive", err)
@@ -131,7 +131,7 @@ func parseDOCXDocumentBytes(filename string, body []byte) (*ParsedSourceDocument
 		return nil, err
 	}
 
-	return &ParsedSourceDocument{
+	return &ParsedInputDocument{
 		Title: fallbackTitle(filename),
 		Body:  text,
 	}, nil

@@ -50,7 +50,7 @@ func TestBuildWebControlRuntimeIncludesWorkflowAndTemplateServices(t *testing.T)
 	require.NotNil(t, runtime.Templates)
 }
 
-func TestBuildWebControlRuntimeDoesNotRequireCompatibilitySourceRepo(t *testing.T) {
+func TestBuildWebControlRuntimeDoesNotRequireCompatibilityInputRepo(t *testing.T) {
 	repos, cleanup, err := BuildRuntimeRepos(t.TempDir())
 	if cleanup != nil {
 		defer func() {
@@ -194,15 +194,15 @@ func (r *stubBrowserWorkspaceContinuationRepo) Delete(context.Context, string) e
 }
 
 type stubBrowserWorkspaceContinuationIntake struct {
-	called      bool
-	callCount    int
-	workspaceID string
-	article     domain.IntakeArticle
-	result      *ArticleIntakeResult
-	resumeResult *SourceProcessingRewriteResult
+	called             bool
+	callCount          int
+	workspaceID        string
+	article            domain.IntakeArticle
+	result             *ArticleIntakeResult
+	resumeResult       *SourceProcessingRewriteResult
 	resumeRewriteRunID string
-	resumeCalled bool
-	err         error
+	resumeCalled       bool
+	err                error
 }
 
 func (s *stubBrowserWorkspaceContinuationIntake) IntakeResultIntoWorkspace(_ context.Context, workspaceArticleID string, article domain.IntakeArticle) (*ArticleIntakeResult, error) {
