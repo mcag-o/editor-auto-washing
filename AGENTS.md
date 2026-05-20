@@ -29,7 +29,7 @@ This repository is the active `content-hub` Go workspace rooted at the repositor
 - Treat business configuration as DB-backed runtime state, not file-first operator setup.
 - Draft + render are the default automated result path.
 - Review/publish are optional later manual steps, not part of the default automated chain.
-- Do not describe legacy compatibility intake paths as current operator entrypoints unless a task explicitly targets them.
+- Do not describe non-default or retired intake paths as current operator entrypoints unless a task explicitly targets them.
 - Do not present static shell or background ingestion HTTP surfaces as current supported operator entrypoints.
 - Preserve Chinese user-facing documentation where it already exists; bilingual docs are normal here.
 - Prefer minimal, local edits over broad cleanup unless the task explicitly asks for broader normalization.
@@ -126,7 +126,7 @@ Notes:
 
 ## Common Mistakes To Avoid
 
-- Treating compatibility-only surfaces as the live operator workflow.
-- Presenting legacy compatibility intake paths as the default operator entrypoint.
+- Treating non-default or retired surfaces as the live operator workflow.
+- Presenting non-default or retired intake paths as the default operator entrypoint.
 - Claiming lint, formatter, or build workflows exist when the repository does not define them.
 - Mixing unrelated cleanup with active-runtime feature work without an explicit request.

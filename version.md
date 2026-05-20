@@ -13,7 +13,7 @@
 - 默认自动化主链路明确为 `intake -> rewrite -> draft -> render`。
 - `review / publish` 保留为后续可选人工步骤，不属于默认自动链路。
 - workflow runtime 已具备 Phase D 级别控制流能力，包括 branch、pause/resume、human node、parallel、fan-in、subflow、loop。
-- 仓库已移除历史 `Archive/` 目录、迁移期中间文档以及过时接入说明，当前只保留现项目本身的结构和说明。
+- 仓库当前只保留现项目自身所需的结构、配置与说明文档。
 
 ## 一致性说明
 
