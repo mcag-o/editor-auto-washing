@@ -9,13 +9,14 @@ import (
 )
 
 type WebControlRuntime struct {
-	Config    *BusinessConfigService
-	Control   *WebControlPlaneService
-	Audit     *AuditLogService
-	Intake    *WebIntakeService
-	Articles  *ArticleQueryService
-	Workflows *WorkflowTemplateService
-	Templates *TemplateDefinitionService
+	Config         *BusinessConfigService
+	Control        *WebControlPlaneService
+	Audit          *AuditLogService
+	Intake         *WebIntakeService
+	ExternalIntake ExternalIntakeProcessor
+	Articles       *ArticleQueryService
+	Workflows      *WorkflowTemplateService
+	Templates      *TemplateDefinitionService
 }
 
 type webControlProcessingCycleRunner interface {
@@ -165,40 +166,67 @@ func (r *browserWorkspaceContinuationRunner) ProcessPending(ctx context.Context,
 		if !isBrowserIntakeWorkspace(item) {
 			continue
 		}
-		if rewriteRunID := browserWorkspaceResumeRewriteRunID(item); rewriteRunID != "" {
-			result, err := r.intake.ResumeResult(ctx, rewriteRunID, browserWorkspaceToIntakeArticle(item))
-			if err != nil {
-				return fmt.Errorf("resume browser workspace %s: %w", item.ID, err)
-			}
-			if result == nil || strings.TrimSpace(result.DraftID) == "" {
-				return domain.NewInternalErr("browser workspace continuation did not return a draft id", nil)
-			}
-			updated, getErr := r.workspaces.GetByID(ctx, item.ID)
-			if getErr != nil {
-				return fmt.Errorf("load resumed browser workspace %s: %w", item.ID, getErr)
-			}
-			delete(updated.Metadata, "resume_rewrite_run_id")
-			updated.UpdatedAt = updated.UpdatedAt.UTC()
-			if err := r.workspaces.Update(ctx, updated); err != nil {
-				return fmt.Errorf("clear browser workspace resume marker %s: %w", item.ID, err)
-			}
-			if _, err := r.renderer.Render(ctx, strings.TrimSpace(result.DraftID), browserWorkspaceRenderPlatform(item), ""); err != nil {
-				return fmt.Errorf("render browser workspace %s: %w", item.ID, err)
-			}
-			processed++
-			continue
-		}
-		result, err := r.intake.IntakeResultIntoWorkspace(ctx, item.ID, browserWorkspaceToIntakeArticle(item))
-		if err != nil {
-			return fmt.Errorf("continue browser workspace %s: %w", item.ID, err)
-		}
-		if result == nil || strings.TrimSpace(result.DraftID) == "" {
-			return domain.NewInternalErr("browser workspace continuation did not return a draft id", nil)
-		}
-		if _, err := r.renderer.Render(ctx, strings.TrimSpace(result.DraftID), browserWorkspaceRenderPlatform(item), ""); err != nil {
-			return fmt.Errorf("render browser workspace %s: %w", item.ID, err)
+		if err := r.processWorkspaceItem(ctx, item, "browser"); err != nil {
+			return err
 		}
 		processed++
+	}
+	return nil
+}
+
+func (r *browserWorkspaceContinuationRunner) ProcessWorkspace(ctx context.Context, workspaceArticleID string) error {
+	if r == nil || r.workspaces == nil || r.intake == nil || r.renderer == nil {
+		return domain.NewInternalErr("browser workspace continuation runner is not configured", nil)
+	}
+	workspaceArticleID = strings.TrimSpace(workspaceArticleID)
+	if workspaceArticleID == "" {
+		return domain.NewValidationErr("workspace article id is required", nil)
+	}
+	item, err := r.workspaces.GetByID(ctx, workspaceArticleID)
+	if err != nil {
+		return err
+	}
+	if item.Status != domain.ArticleWorkspaceStatusImported {
+		return domain.NewConflictErr("workspace article is not imported")
+	}
+	if !isExternalIntakeWorkspace(*item) {
+		return domain.NewValidationErr("workspace article is not an external API intake item", nil)
+	}
+	return r.processWorkspaceItem(ctx, *item, "external API")
+}
+
+func (r *browserWorkspaceContinuationRunner) processWorkspaceItem(ctx context.Context, item domain.ArticleWorkspaceRecord, label string) error {
+	if rewriteRunID := browserWorkspaceResumeRewriteRunID(item); rewriteRunID != "" {
+		result, err := r.intake.ResumeResult(ctx, rewriteRunID, browserWorkspaceToIntakeArticle(item))
+		if err != nil {
+			return fmt.Errorf("resume %s workspace %s: %w", label, item.ID, err)
+		}
+		if result == nil || strings.TrimSpace(result.DraftID) == "" {
+			return domain.NewInternalErr(label+" workspace continuation did not return a draft id", nil)
+		}
+		updated, getErr := r.workspaces.GetByID(ctx, item.ID)
+		if getErr != nil {
+			return fmt.Errorf("load resumed %s workspace %s: %w", label, item.ID, getErr)
+		}
+		delete(updated.Metadata, "resume_rewrite_run_id")
+		updated.UpdatedAt = updated.UpdatedAt.UTC()
+		if err := r.workspaces.Update(ctx, updated); err != nil {
+			return fmt.Errorf("clear %s workspace resume marker %s: %w", label, item.ID, err)
+		}
+		if _, err := r.renderer.Render(ctx, strings.TrimSpace(result.DraftID), browserWorkspaceRenderPlatform(item), ""); err != nil {
+			return fmt.Errorf("render %s workspace %s: %w", label, item.ID, err)
+		}
+		return nil
+	}
+	result, err := r.intake.IntakeResultIntoWorkspace(ctx, item.ID, browserWorkspaceToIntakeArticle(item))
+	if err != nil {
+		return fmt.Errorf("continue %s workspace %s: %w", label, item.ID, err)
+	}
+	if result == nil || strings.TrimSpace(result.DraftID) == "" {
+		return domain.NewInternalErr(label+" workspace continuation did not return a draft id", nil)
+	}
+	if _, err := r.renderer.Render(ctx, strings.TrimSpace(result.DraftID), browserWorkspaceRenderPlatform(item), ""); err != nil {
+		return fmt.Errorf("render %s workspace %s: %w", label, item.ID, err)
 	}
 	return nil
 }
@@ -237,18 +265,27 @@ func BuildWebControlRuntime(repos *RuntimeRepos) (*WebControlRuntime, error) {
 	runner := newCombinedWebControlProcessingRunner(browserRunner)
 
 	return &WebControlRuntime{
-		Config:    NewBusinessConfigService(repos.BusinessConfigRepo),
-		Control:   NewWebControlPlaneService(control, audit, runner),
-		Audit:     audit,
-		Intake:    NewWebIntakeService(repos.WorkspaceRepo, repos.AuditLogRepo),
-		Articles:  NewBrowserArticleQueryService(repos.WorkspaceRepo, repos.RewritePipelineRunRepo, repos.WorkflowRunRepo),
-		Workflows: NewWorkflowTemplateService(repos.WorkflowDefinitionRepo),
-		Templates: NewTemplateDefinitionService(repos.TemplateDefinitionRepo),
+		Config:         NewBusinessConfigService(repos.BusinessConfigRepo),
+		Control:        NewWebControlPlaneService(control, audit, runner),
+		Audit:          audit,
+		Intake:         NewWebIntakeService(repos.WorkspaceRepo, repos.AuditLogRepo),
+		ExternalIntake: browserRunner,
+		Articles:       NewBrowserArticleQueryService(repos.WorkspaceRepo, repos.RewritePipelineRunRepo, repos.WorkflowRunRepo),
+		Workflows:      NewWorkflowTemplateService(repos.WorkflowDefinitionRepo),
+		Templates:      NewTemplateDefinitionService(repos.TemplateDefinitionRepo),
 	}, nil
 }
 
 func isBrowserIntakeWorkspace(item domain.ArticleWorkspaceRecord) bool {
 	return item.Source.SourceType == "paste" || item.Source.SourceType == "upload"
+}
+
+func isExternalIntakeWorkspace(item domain.ArticleWorkspaceRecord) bool {
+	if item.Metadata == nil {
+		return false
+	}
+	origin, _ := item.Metadata["intake_origin"].(string)
+	return strings.TrimSpace(origin) == "external_api"
 }
 
 func browserWorkspaceToIntakeArticle(item domain.ArticleWorkspaceRecord) domain.IntakeArticle {

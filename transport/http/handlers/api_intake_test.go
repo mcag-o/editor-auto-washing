@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"content-hub/domain"
+	"content-hub/infra/memory"
 	"content-hub/service"
 	"content-hub/transport/http/middleware"
 	"context"
@@ -110,6 +111,80 @@ func TestAPIIntakePasteCreatesWorkspaceBackedIntakeItem(t *testing.T) {
 	require.Equal(t, "web_intake.create_from_paste", audit.logs[0].Action)
 }
 
+func TestAPIIntakeArticleCreatesWorkspaceAndQueuesJob(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	workspaceRepo := &serviceStubWebIntakeWorkspaceRepo{}
+	audit := &stubAuditLogRepo{}
+	provider := memory.NewProvider()
+	jobSvc := service.NewJobService(provider.JobRepo(), provider.JobEventRepo(), nil)
+	handler := NewAPIIntakeHandler(service.NewWebIntakeService(workspaceRepo, audit), jobSvc)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/intake/articles", handler.Article)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/intake/articles", bytes.NewBufferString(`{"source_type":"xiaohongshu","title":"Article","body":"Body","original_url":"https://example.com/a/1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusAccepted, w.Code)
+	var resp struct {
+		WorkspaceArticle browserIntakeResponse `json:"workspace_article"`
+		Job              domain.JobRun         `json:"job"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.NotEmpty(t, resp.WorkspaceArticle.ID)
+	require.NotEmpty(t, resp.Job.ID)
+	require.Equal(t, service.ExternalIntakeProcessTopic, resp.Job.Topic)
+	require.NotNil(t, resp.Job.ArtifactPath)
+	require.Equal(t, resp.WorkspaceArticle.ID, *resp.Job.ArtifactPath)
+	require.Len(t, workspaceRepo.created, 1)
+	require.Len(t, audit.logs, 1)
+	require.Equal(t, "api_intake.create_external_article", audit.logs[0].Action)
+}
+
+func TestAPIIntakeFileCreatesWorkspaceAndQueuesJob(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	workspaceRepo := &serviceStubWebIntakeWorkspaceRepo{}
+	audit := &stubAuditLogRepo{}
+	provider := memory.NewProvider()
+	jobSvc := service.NewJobService(provider.JobRepo(), provider.JobEventRepo(), nil)
+	handler := NewAPIIntakeHandler(service.NewWebIntakeService(workspaceRepo, audit), jobSvc)
+
+	router := gin.New()
+	router.Use(middleware.TraceID())
+	router.POST("/api/intake/files", handler.File)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "article.md")
+	require.NoError(t, err)
+	_, err = part.Write([]byte("# Title\n\nBody"))
+	require.NoError(t, err)
+	require.NoError(t, writer.WriteField("metadata", `{"external_id":"file-1"}`))
+	require.NoError(t, writer.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/intake/files", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusAccepted, w.Code)
+	var resp struct {
+		WorkspaceArticle browserIntakeResponse `json:"workspace_article"`
+		Job              domain.JobRun         `json:"job"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Equal(t, "Title", resp.WorkspaceArticle.Title)
+	require.Equal(t, service.ExternalIntakeProcessTopic, resp.Job.Topic)
+	require.NotNil(t, resp.Job.ArtifactPath)
+	require.Equal(t, resp.WorkspaceArticle.ID, *resp.Job.ArtifactPath)
+	require.Equal(t, "file-1", workspaceRepo.created[0].Metadata["external_id"])
+}
+
 func assertIntakeResponseDoesNotExposeLegacyFields(t *testing.T, body []byte) {
 	t.Helper()
 
@@ -152,7 +227,6 @@ func TestAPIIntakePasteReturnsValidationError(t *testing.T) {
 type serviceStubWebIntakeWorkspaceRepo struct {
 	created []*domain.ArticleWorkspaceRecord
 }
-
 
 func (r *serviceStubWebIntakeWorkspaceRepo) Create(_ context.Context, record *domain.ArticleWorkspaceRecord) error {
 	copyValue := *record

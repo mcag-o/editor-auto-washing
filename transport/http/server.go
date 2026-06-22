@@ -226,7 +226,7 @@ func (s *Server) registerRoutes() {
 	jobHandler := handlers.NewJobHandler(s.provider.JobSvc)
 	reviewHandler := handlers.NewReviewHandler(s.provider.ReviewSvc)
 	publishHandler := handlers.NewPublishHandler(s.provider.PublishSvc)
-	apiIntakeHandler := handlers.NewAPIIntakeHandler(s.provider.WebControlRuntime.Intake)
+	apiIntakeHandler := handlers.NewAPIIntakeHandler(s.provider.WebControlRuntime.Intake, s.provider.JobSvc)
 	apiArticlesHandler := handlers.NewAPIArticlesHandler(s.provider.WebControlRuntime.Articles, s.provider.RewriteRunRepo, s.provider.RewriteStageRepo, s.provider.WebControlRuntime.Workflows, s.provider.AuditLogRepo, s.provider.WebControlRuntime.Control, s.provider.WorkflowCheckpointRepo)
 	apiConfigHandler := handlers.NewAPIConfigHandler(s.provider.WebControlRuntime.Config)
 	apiSystemHandler := handlers.NewAPISystemHandler(s.provider.WebControlRuntime.Control)
@@ -363,6 +363,8 @@ func (s *Server) registerRoutes() {
 	{
 		api.POST("/intake/upload", apiIntakeHandler.Upload)
 		api.POST("/intake/paste", apiIntakeHandler.Paste)
+		api.POST("/intake/articles", apiIntakeHandler.Article)
+		api.POST("/intake/files", apiIntakeHandler.File)
 		api.GET("/articles", apiArticlesHandler.List)
 		api.GET("/articles/:id", apiArticlesHandler.Get)
 		api.GET("/articles/:id/stages", apiArticlesHandler.Stages)

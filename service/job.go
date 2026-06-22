@@ -6,21 +6,29 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
+
+const ExternalIntakeProcessTopic = "external-intake.process"
 
 type WorkflowExecutor interface {
 	Execute(ctx context.Context, wf *domain.WorkflowDefinition, wc *domain.WorkflowContext) error
 }
 
+type ExternalIntakeProcessor interface {
+	ProcessWorkspace(ctx context.Context, workspaceArticleID string) error
+}
+
 type JobService struct {
-	repo      repo.JobRepo
-	eventRepo repo.JobEventRepo
-	executor  WorkflowExecutor
-	queue     chan *domain.JobRun
-	closed    chan struct{}
-	closeOnce sync.Once
+	repo           repo.JobRepo
+	eventRepo      repo.JobEventRepo
+	executor       WorkflowExecutor
+	externalIntake ExternalIntakeProcessor
+	queue          chan *domain.JobRun
+	closed         chan struct{}
+	closeOnce      sync.Once
 }
 
 func NewJobService(r repo.JobRepo, er repo.JobEventRepo, exec WorkflowExecutor) *JobService {
@@ -33,8 +41,19 @@ func NewJobService(r repo.JobRepo, er repo.JobEventRepo, exec WorkflowExecutor) 
 	}
 }
 
-func (s *JobService) Submit(ctx context.Context, topic string) (job *domain.JobRun, err error) {
-	job = domain.NewJobRun(topic)
+func (s *JobService) SetExternalIntakeProcessor(processor ExternalIntakeProcessor) {
+	s.externalIntake = processor
+}
+
+func (s *JobService) Submit(ctx context.Context, topic string) (*domain.JobRun, error) {
+	return s.submitJob(ctx, domain.NewJobRun(topic))
+}
+
+func (s *JobService) SubmitWithArtifact(ctx context.Context, topic, artifactPath string) (*domain.JobRun, error) {
+	return s.submitJob(ctx, domain.NewJobRunWithArtifact(topic, artifactPath))
+}
+
+func (s *JobService) submitJob(ctx context.Context, job *domain.JobRun) (persisted *domain.JobRun, err error) {
 	if err := s.repo.Create(ctx, job); err != nil {
 		return nil, err
 	}
@@ -42,7 +61,7 @@ func (s *JobService) Submit(ctx context.Context, topic string) (job *domain.JobR
 		if recovered := recover(); recovered != nil {
 			_ = s.repo.Delete(ctx, job.ID)
 			err = domain.NewExternalErr("job queue closed", errors.New("submit on closed queue"))
-			job = nil
+			persisted = nil
 		}
 	}()
 	select {
@@ -158,10 +177,7 @@ func (s *JobService) executeJob(ctx context.Context, job *domain.JobRun) {
 		return
 	}
 
-	wf := domain.DefaultWorkflowDefinition()
-	wc := &domain.WorkflowContext{Command: job.Topic, Payload: map[string]any{"automation_command": job.Topic}}
-
-	err := s.executor.Execute(ctx, wf, wc)
+	err := s.dispatchJob(ctx, job)
 
 	if err != nil {
 		updateErr := s.repo.Update(ctx, job.ID, func(j *domain.JobRun) {
@@ -191,6 +207,28 @@ func (s *JobService) executeJob(ctx context.Context, job *domain.JobRun) {
 		if eventErr := s.eventRepo.Add(ctx, domain.NewJobEvent(job.ID, "completed", "job completed")); eventErr != nil {
 			return
 		}
+	}
+}
+
+func (s *JobService) dispatchJob(ctx context.Context, job *domain.JobRun) error {
+	switch job.Topic {
+	case ExternalIntakeProcessTopic:
+		if s.externalIntake == nil {
+			return domain.NewInternalErr("external intake processor is not configured", nil)
+		}
+		if job.ArtifactPath == nil || strings.TrimSpace(*job.ArtifactPath) == "" {
+			return domain.NewValidationErr("external intake job requires workspace article id", nil)
+		}
+		return s.externalIntake.ProcessWorkspace(ctx, strings.TrimSpace(*job.ArtifactPath))
+	case "run-once", "retry-failed", "daemon":
+		if s.executor == nil {
+			return domain.NewInternalErr("workflow executor is not configured", nil)
+		}
+		wf := domain.DefaultWorkflowDefinition()
+		wc := &domain.WorkflowContext{Command: job.Topic, Payload: map[string]any{"automation_command": job.Topic}}
+		return s.executor.Execute(ctx, wf, wc)
+	default:
+		return domain.NewValidationErr("unknown job topic "+job.Topic, nil)
 	}
 }
 

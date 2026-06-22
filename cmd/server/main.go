@@ -126,6 +126,7 @@ func runWithConfig(cfg config.Config, workspaceRoot string, selectedStandaloneFa
 		runtimeRepos.JobEventRepo,
 		&jobExecutor{engine: workflowEngine},
 	)
+	jobSvc.SetExternalIntakeProcessor(webControlRuntime.ExternalIntake)
 	automationSvc.SetJobService(jobSvc)
 
 	workerCtx, cancelWorker := context.WithCancel(context.Background())
@@ -138,25 +139,25 @@ func runWithConfig(cfg config.Config, workspaceRoot string, selectedStandaloneFa
 	}()
 
 	serverProvider := &httpserver.Provider{
-		ContentSvc:          contentSvc,
-		TemplateSvc:         templateSvc,
-		DraftSvc:            draftSvc,
-		FormattingSvc:       formattingSvc,
-		AutomationSvc:       automationSvc,
-		WorkspaceSvc:        workspaceSvc,
-		JobSvc:              jobSvc,
-		ReviewSvc:           reviewSvc,
-		PublishSvc:          publishSvc,
-		RewriteRuntime:      rewriteRuntime,
-		WebControlRuntime:   webControlRuntime,
-		WorkflowEngine:      workflowEngine,
-		ConfigLoader:        loader,
-		RewriteRunRepo:      runtimeRepos.RewritePipelineRunRepo,
-		RewriteStageRepo:    runtimeRepos.RewriteStageRunRepo,
-		WorkflowRunRepo:     runtimeRepos.WorkflowRunRepo,
+		ContentSvc:             contentSvc,
+		TemplateSvc:            templateSvc,
+		DraftSvc:               draftSvc,
+		FormattingSvc:          formattingSvc,
+		AutomationSvc:          automationSvc,
+		WorkspaceSvc:           workspaceSvc,
+		JobSvc:                 jobSvc,
+		ReviewSvc:              reviewSvc,
+		PublishSvc:             publishSvc,
+		RewriteRuntime:         rewriteRuntime,
+		WebControlRuntime:      webControlRuntime,
+		WorkflowEngine:         workflowEngine,
+		ConfigLoader:           loader,
+		RewriteRunRepo:         runtimeRepos.RewritePipelineRunRepo,
+		RewriteStageRepo:       runtimeRepos.RewriteStageRunRepo,
+		WorkflowRunRepo:        runtimeRepos.WorkflowRunRepo,
 		WorkflowCheckpointRepo: runtimeRepos.WorkflowCheckpointRepo,
-		AuditLogRepo:        runtimeRepos.AuditLogRepo,
-		WorkspaceRoot:       workspaceRoot,
+		AuditLogRepo:           runtimeRepos.AuditLogRepo,
+		WorkspaceRoot:          workspaceRoot,
 	}
 
 	server := newHTTPServer(cfg, serverProvider)

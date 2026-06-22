@@ -84,7 +84,7 @@ func TestJob_RunWorkerStopsOnContextCancellation(t *testing.T) {
 		close(done)
 	}()
 
-	_, err := svc.Submit(context.Background(), "cancel-test")
+	_, err := svc.Submit(context.Background(), "run-once")
 	require.NoError(t, err)
 	<-exec.started
 	cancel()
@@ -304,7 +304,7 @@ func TestJob_ExecuteJobSurfacesTerminalStatePersistFailureAsEvent(t *testing.T) 
 	repo := &failingJobRepo{jobs: map[string]*domain.JobRun{}}
 	events := &failingJobEventRepo{}
 	svc := NewJobService(repo, events, &mockExecutor{})
-	job := domain.NewJobRun("done")
+	job := domain.NewJobRun("run-once")
 	require.NoError(t, repo.Create(context.Background(), job))
 	require.NoError(t, repo.Update(context.Background(), job.ID, func(j *domain.JobRun) { j.Status = "running" }))
 	repo.updateErr = domain.NewInternalErr("complete update failed", nil)
@@ -324,7 +324,7 @@ func TestJob_ExecuteJobDoesNotWriteCompletedEventWhenTerminalUpdateFails(t *test
 	repo := &failingJobRepo{jobs: map[string]*domain.JobRun{}}
 	events := &failingJobEventRepo{}
 	svc := NewJobService(repo, events, &mockExecutor{})
-	job := domain.NewJobRun("done")
+	job := domain.NewJobRun("run-once")
 	require.NoError(t, repo.Create(context.Background(), job))
 	require.NoError(t, repo.Update(context.Background(), job.ID, func(j *domain.JobRun) { j.Status = "running" }))
 	repo.updateErr = domain.NewInternalErr("complete update failed", nil)
@@ -388,4 +388,55 @@ func TestJobServiceCancelMarksPendingJobCancelledAndRecordsEvent(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, events)
 	assert.Equal(t, "cancelled", events[len(events)-1].Status)
+}
+
+type externalIntakeProcessorStub struct {
+	workspaceID string
+}
+
+func (p *externalIntakeProcessorStub) ProcessWorkspace(_ context.Context, workspaceArticleID string) error {
+	p.workspaceID = workspaceArticleID
+	return nil
+}
+
+func TestJob_SubmitWithArtifactPersistsArtifactPath(t *testing.T) {
+	provider := memory.NewProvider()
+	svc := NewJobService(provider.JobRepo(), provider.JobEventRepo(), &mockExecutor{})
+
+	job, err := svc.SubmitWithArtifact(context.Background(), ExternalIntakeProcessTopic, "workspace-1")
+
+	require.NoError(t, err)
+	require.NotNil(t, job.ArtifactPath)
+	assert.Equal(t, "workspace-1", *job.ArtifactPath)
+}
+
+func TestJob_ExternalIntakeTopicDispatchesProcessor(t *testing.T) {
+	provider := memory.NewProvider()
+	processor := &externalIntakeProcessorStub{}
+	svc := NewJobService(provider.JobRepo(), provider.JobEventRepo(), &mockExecutor{})
+	svc.SetExternalIntakeProcessor(processor)
+	job, err := svc.SubmitWithArtifact(context.Background(), ExternalIntakeProcessTopic, "workspace-1")
+	require.NoError(t, err)
+
+	svc.executeJob(context.Background(), job)
+
+	assert.Equal(t, "workspace-1", processor.workspaceID)
+	stored, err := svc.GetJob(context.Background(), job.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "completed", stored.Status)
+}
+
+func TestJob_UnknownTopicFailsJob(t *testing.T) {
+	provider := memory.NewProvider()
+	svc := NewJobService(provider.JobRepo(), provider.JobEventRepo(), &mockExecutor{})
+	job, err := svc.Submit(context.Background(), "unknown")
+	require.NoError(t, err)
+
+	svc.executeJob(context.Background(), job)
+
+	stored, err := svc.GetJob(context.Background(), job.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "failed", stored.Status)
+	require.NotNil(t, stored.Result)
+	assert.Contains(t, *stored.Result, "unknown job topic unknown")
 }

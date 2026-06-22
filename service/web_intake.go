@@ -18,6 +18,7 @@ const (
 	defaultWebIntakeRewriteProfileVersion = "v1"
 	defaultWebPasteSourceProfile          = "web-paste"
 	defaultWebUploadSourceProfile         = "web-upload"
+	defaultExternalSourceProfile          = "external-api"
 )
 
 type CreatePasteIntakeInput struct {
@@ -31,6 +32,24 @@ type CreateUploadIntakeInput struct {
 	Filename    string
 	ContentType string
 	Content     io.Reader
+}
+
+type CreateExternalArticleIntakeInput struct {
+	Actor   string
+	Article domain.IntakeArticle
+}
+
+type CreateExternalFileIntakeInput struct {
+	Actor                 string
+	Filename              string
+	ContentType           string
+	Content               io.Reader
+	SourceType            string
+	OriginalURL           string
+	TargetType            string
+	SourceProfile         string
+	RewriteProfileVersion string
+	Metadata              map[string]any
 }
 
 type BrowserIntakeResponse struct {
@@ -179,6 +198,140 @@ func (s *WebIntakeService) CreateFromUpload(ctx context.Context, input CreateUpl
 	}
 
 	return workspace, nil
+}
+
+func (s *WebIntakeService) CreateFromExternalArticle(ctx context.Context, input CreateExternalArticleIntakeInput) (*domain.ArticleWorkspaceRecord, error) {
+	if s.workspaces == nil || s.audit == nil {
+		return nil, domain.NewInternalErr("web intake service is not configured", nil)
+	}
+
+	article := input.Article
+	article.Title = strings.TrimSpace(article.Title)
+	article.Body = strings.TrimSpace(article.Body)
+	article.Summary = strings.TrimSpace(article.Summary)
+	article.SourceType = strings.TrimSpace(article.SourceType)
+	article.OriginalURL = strings.TrimSpace(article.OriginalURL)
+	article.TargetType = strings.TrimSpace(article.TargetType)
+	if article.TargetType == "" {
+		article.TargetType = defaultWebIntakeTargetType
+	}
+	article.SourceProfile = strings.TrimSpace(article.SourceProfile)
+	if article.SourceProfile == "" {
+		article.SourceProfile = defaultExternalSourceProfile
+	}
+	article.RewriteProfileVersion = strings.TrimSpace(article.RewriteProfileVersion)
+	if article.RewriteProfileVersion == "" {
+		article.RewriteProfileVersion = defaultWebIntakeRewriteProfileVersion
+	}
+	if err := article.Validate(); err != nil {
+		s.recordFailureAudit(ctx, input.Actor, "api_intake.create_external_article", err.Error(), map[string]any{"source_type": article.SourceType, "title": article.Title})
+		return nil, err
+	}
+
+	metadata := map[string]any{}
+	for key, value := range article.Metadata {
+		metadata[key] = value
+	}
+	metadata["source_body"] = article.Body
+	metadata["target_type"] = article.TargetType
+	metadata["source_profile"] = article.SourceProfile
+	metadata["render_platform"] = defaultWebIntakeRenderPlatform
+	metadata["rewrite_profile_version"] = article.RewriteProfileVersion
+	metadata["intake_origin"] = "external_api"
+	if externalID := strings.TrimSpace(article.ExternalID); externalID != "" {
+		metadata["external_id"] = externalID
+	}
+	if subscriptionID := strings.TrimSpace(article.SubscriptionID); subscriptionID != "" {
+		metadata["subscription_id"] = subscriptionID
+	}
+	if author := strings.TrimSpace(article.Author); author != "" {
+		metadata["author"] = author
+	}
+	if len(article.Tags) > 0 {
+		metadata["tags"] = article.Tags
+	}
+	if article.PublishedAt != nil {
+		metadata["published_at"] = article.PublishedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+
+	workspace := domain.NewArticleWorkspaceRecord(id.New(), article.Title, article.Summary, domain.ArticleWorkspaceSource{
+		SourceType: article.SourceType,
+		URL:        article.OriginalURL,
+	}, metadata)
+	workspace.LifecycleHistory = []domain.ArticleWorkspaceLifecycleEntry{{
+		Status:    domain.ArticleWorkspaceStatusImported,
+		Notes:     "created from external API intake",
+		CreatedAt: workspace.CreatedAt,
+	}}
+
+	if err := s.workspaces.Create(ctx, workspace); err != nil {
+		wrapped := fmt.Errorf("create workspace article: %w", err)
+		s.recordFailureAudit(ctx, input.Actor, "api_intake.create_external_article", wrapped.Error(), map[string]any{"source_type": article.SourceType, "title": article.Title})
+		return nil, wrapped
+	}
+
+	if err := s.recordAudit(ctx, AuditLogCreateInput{
+		Actor:      input.Actor,
+		Action:     "api_intake.create_external_article",
+		Resource:   "workspace_article",
+		ResourceID: workspace.ID,
+		Result:     "success",
+		Message:    "created workspace article from external API",
+		Metadata: map[string]any{
+			"source_type": article.SourceType,
+			"source_url":  article.OriginalURL,
+		},
+	}); err != nil {
+		s.logAuditFailure("api_intake.create_external_article", workspace.ID, err)
+	}
+
+	return workspace, nil
+}
+
+func (s *WebIntakeService) CreateFromExternalFile(ctx context.Context, input CreateExternalFileIntakeInput) (*domain.ArticleWorkspaceRecord, error) {
+	filename := strings.TrimSpace(input.Filename)
+	if filename == "" {
+		return nil, domain.NewValidationErr("filename is required", nil)
+	}
+	if input.Content == nil {
+		return nil, domain.NewValidationErr("content is required", nil)
+	}
+	if !isSupportedWebUploadExtension(filename) {
+		return nil, domain.NewValidationErr("unsupported input document type", nil)
+	}
+	parsed, err := s.parseUploadedDocument(filename, input.Content)
+	if err != nil {
+		return nil, err
+	}
+	metadata := map[string]any{}
+	for key, value := range intakeDocumentMetadata(parsed) {
+		metadata[key] = value
+	}
+	for key, value := range input.Metadata {
+		metadata[key] = value
+	}
+	if contentType := strings.TrimSpace(input.ContentType); contentType != "" {
+		metadata["content_type"] = contentType
+	}
+	originalURL := strings.TrimSpace(input.OriginalURL)
+	if originalURL == "" {
+		originalURL = "external://file/" + filename
+	}
+	article := domain.IntakeArticle{
+		SourceType:            strings.TrimSpace(input.SourceType),
+		Title:                 parsed.Title,
+		Body:                  parsed.Body,
+		Summary:               parsed.Summary,
+		OriginalURL:           originalURL,
+		TargetType:            strings.TrimSpace(input.TargetType),
+		SourceProfile:         strings.TrimSpace(input.SourceProfile),
+		RewriteProfileVersion: strings.TrimSpace(input.RewriteProfileVersion),
+		Metadata:              metadata,
+	}
+	if article.SourceType == "" {
+		article.SourceType = "external-file"
+	}
+	return s.CreateFromExternalArticle(ctx, CreateExternalArticleIntakeInput{Actor: input.Actor, Article: article})
 }
 
 func (s *WebIntakeService) parseUploadedDocument(filename string, content io.Reader) (*ParsedIntakeDocument, error) {

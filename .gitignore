@@ -1,29 +1,44 @@
+# Dependencies
 node_modules/
 webapp/node_modules/
+.venv/
+
+# Build outputs
+bin/
+*.exe
 webapp/dist/
 webapp/*.tsbuildinfo
-.venv/
+coverage.out
+
+# Runtime data and generated artifacts
+data/
+workspace_data/
+swap/
+*.db
+*.log
+
+# Local configuration and secrets
+.env
+workspace.yaml
+secrets.yaml
+config.json.bak
+config.json.tmp
+
+# Python caches
 __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Local notes and plans
 findings.md
 progress.md
 task_plan.md
+
+# Agent and local tool state
 AGENTS.md
 docs/
+.claude/
 .worktrees/
-.kilo/
-.env
-workspace.yaml
-swap/
-data/
-bin/
-*.exe
-*.db
-*.log
-config.json.bak
-config.json.tmp
-workspace_data/

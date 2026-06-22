@@ -37,6 +37,12 @@ func NewJobRun(topic string) *JobRun {
 	}
 }
 
+func NewJobRunWithArtifact(topic, artifactPath string) *JobRun {
+	job := NewJobRun(topic)
+	job.ArtifactPath = &artifactPath
+	return job
+}
+
 func NewJobEvent(jobID, status, message string) *JobEvent {
 	return &JobEvent{
 		ID:        id.New(),

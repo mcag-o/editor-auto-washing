@@ -374,3 +374,67 @@ func TestWebIntakeServiceCreateFromPasteRecordsFailedAuditWhenWorkspaceCreateFai
 	require.True(t, ok)
 	require.Equal(t, "Title", metadata)
 }
+
+func TestWebIntakeServiceCreateFromExternalArticlePersistsQueuedWorkspaceItem(t *testing.T) {
+	workspaceRepo := &stubWebIntakeWorkspaceRepo{}
+	audit := &stubAuditLogRepo{}
+	svc := NewWebIntakeService(workspaceRepo, audit)
+
+	workspace, err := svc.CreateFromExternalArticle(t.Context(), CreateExternalArticleIntakeInput{
+		Actor: "crawler",
+		Article: domain.IntakeArticle{
+			SourceType:            "xiaohongshu",
+			Title:                 "Title",
+			Body:                  "Body",
+			Summary:               "Summary",
+			OriginalURL:           "https://example.com/source/1",
+			TargetType:            "wechat-longform",
+			SourceProfile:         "crawler-xhs",
+			RewriteProfileVersion: "v2",
+			Metadata: map[string]any{
+				"external_id": "note-1",
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, workspace)
+	require.Equal(t, domain.ArticleWorkspaceStatusImported, workspace.Status)
+	require.Equal(t, "xiaohongshu", workspace.Source.SourceType)
+	require.Equal(t, "https://example.com/source/1", workspace.Source.URL)
+	require.Equal(t, "Body", workspace.Metadata["source_body"])
+	require.Equal(t, "wechat-longform", workspace.Metadata["target_type"])
+	require.Equal(t, "crawler-xhs", workspace.Metadata["source_profile"])
+	require.Equal(t, "v2", workspace.Metadata["rewrite_profile_version"])
+	require.Equal(t, defaultWebIntakeRenderPlatform, workspace.Metadata["render_platform"])
+	require.Equal(t, "external_api", workspace.Metadata["intake_origin"])
+	require.Equal(t, "note-1", workspace.Metadata["external_id"])
+	require.Len(t, audit.logs, 1)
+	require.Equal(t, "api_intake.create_external_article", audit.logs[0].Action)
+}
+
+func TestWebIntakeServiceCreateFromExternalFileParsesAndPersistsWorkspaceItem(t *testing.T) {
+	workspaceRepo := &stubWebIntakeWorkspaceRepo{}
+	audit := &stubAuditLogRepo{}
+	svc := NewWebIntakeService(workspaceRepo, audit)
+
+	workspace, err := svc.CreateFromExternalFile(t.Context(), CreateExternalFileIntakeInput{
+		Actor:       "crawler",
+		Filename:    "article.md",
+		ContentType: "text/markdown",
+		Content:     bytes.NewBufferString("# Title\n\nBody"),
+		Metadata: map[string]any{
+			"external_id": "file-1",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, workspace)
+	require.Equal(t, "Title", workspace.Title)
+	require.Equal(t, "external-file", workspace.Source.SourceType)
+	require.Equal(t, "external://file/article.md", workspace.Source.URL)
+	require.Equal(t, "# Title\n\nBody", workspace.Metadata["source_body"])
+	require.Equal(t, "text/markdown", workspace.Metadata["content_type"])
+	require.Equal(t, "external_api", workspace.Metadata["intake_origin"])
+	require.Equal(t, "file-1", workspace.Metadata["external_id"])
+}

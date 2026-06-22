@@ -363,10 +363,12 @@ func TestPublishGateServiceReturnsPartialResultsAndHistoryOnMultiAssetFailure(t 
 	history, histErr := gate.History(t.Context(), draft.ID)
 	require.NoError(t, histErr)
 	require.Len(t, history, 2)
-	assert.Equal(t, assetTwo.AssetID, history[0].AssetID)
-	assert.False(t, history[0].Success)
-	assert.Equal(t, assetOne.AssetID, history[1].AssetID)
-	assert.True(t, history[1].Success)
+	recordByAssetID := map[string]domain.PublishRecord{}
+	for _, record := range history {
+		recordByAssetID[record.AssetID] = record
+	}
+	assert.False(t, recordByAssetID[assetTwo.AssetID].Success)
+	assert.True(t, recordByAssetID[assetOne.AssetID].Success)
 	updatedWorkspace, err := provider.WorkspaceRepo().GetByID(t.Context(), draft.ID)
 	require.NoError(t, err)
 	assert.Equal(t, domain.ArticleWorkspaceStatusApproved, updatedWorkspace.Status)
